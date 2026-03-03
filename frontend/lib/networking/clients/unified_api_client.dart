@@ -91,6 +91,18 @@ class UnifiedApiClient {
     try {
       // Get base URL from configuration
       _baseUrl = await _getBaseUrl();
+      // Normalize base URL: ensure it includes the API prefix.
+      // Many callers store just "http://host:port"; our endpoints are under "/api/v1".
+      if (_baseUrl != null && _baseUrl!.isNotEmpty) {
+        final trimmed = _baseUrl!.trim();
+        // Strip trailing slashes for consistent checks
+        final noTrail = trimmed.endsWith('/') ? trimmed.substring(0, trimmed.length - 1) : trimmed;
+        if (!noTrail.endsWith('/api/v1')) {
+          _baseUrl = '$noTrail/api/v1';
+        } else {
+          _baseUrl = noTrail;
+        }
+      }
       if (_baseUrl != null && _baseUrl!.isNotEmpty && !_baseUrl!.endsWith('/')) {
         _baseUrl = '${_baseUrl!}/';
       }
@@ -519,7 +531,13 @@ class UnifiedApiClient {
           // Ignore parsing errors
         }
 
+        final baseUrl = _dio?.options.baseUrl;
+        final fullUrl = (baseUrl != null && baseUrl.isNotEmpty)
+            ? '${baseUrl}${normalizedEndpoint.startsWith('/') ? normalizedEndpoint.substring(1) : normalizedEndpoint}'
+            : normalizedEndpoint;
+
         debugPrint('❌ [UnifiedApiClient] HTTP error: ${response.statusCode}${errorEnvelope != null && errorEnvelope.isNotEmpty ? " - $errorEnvelope" : ""}');
+        debugPrint('❌ [UnifiedApiClient] Request URL: $fullUrl');
         AICOLog.warn('HTTP error response',
           topic: 'network/request/http_error',
           extra: {
@@ -527,6 +545,8 @@ class UnifiedApiClient {
             'endpoint': endpoint,
             'normalized_endpoint': normalizedEndpoint,
             'method': method,
+            'base_url': baseUrl,
+            'full_url': fullUrl,
             'response_data': response.data?.toString(),
             if (errorEnvelope != null) 'error_envelope': errorEnvelope,
           });

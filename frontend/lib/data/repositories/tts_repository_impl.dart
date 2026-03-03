@@ -78,78 +78,57 @@ class TtsRepositoryImpl implements TtsRepository {
       } else {
         AICOLog.info('🎤 Cache MISS - Requesting TTS from backend: ${text.length} chars');
         
-        // Set status to preparing (NOT speaking yet)
+        // Set status to preparing
         _updateState(_currentState.copyWith(
           status: TtsStatus.initializing,
           currentText: text,
           progress: 0.0,
         ));
         
-        // Collect raw PCM chunks
+        // Buffer all chunks (backend sends single progressive WAV: header + PCM chunks)
+        // Progressive playback with just_audio requires complex handling - buffer for reliability
         final pcmBuffer = <int>[];
         int chunkCount = 0;
         
         await for (final chunk in _remoteDataSource.synthesize(
           text: text,
-          language: 'en', // NOTE: Should come from user preferences
+          language: 'en',
           speed: 1.0,
         )) {
           chunkCount++;
           pcmBuffer.addAll(chunk);
-          AICOLog.info('📦 Chunk $chunkCount: ${chunk.length} bytes PCM data');
+          AICOLog.debug('📦 Chunk $chunkCount: ${chunk.length} bytes');
         }
         
-        if (pcmBuffer.isEmpty) {
-          throw Exception('No audio data received from backend');
-        }
-        
-        AICOLog.info('✅ Received $chunkCount chunks, total ${pcmBuffer.length} bytes (complete WAV file from backend)');
-        
-        // Backend now sends complete WAV file with proper header - no need to add one
+        AICOLog.info('✅ Received $chunkCount chunks, total ${pcmBuffer.length} bytes');
         wavData = Uint8List.fromList(pcmBuffer);
         
-        // Add to cache
+        // Cache the audio
         _addToCache(cacheKey, wavData);
       }
       
-      // Set up audio source first
-      await _audioPlayer?.setAudioSource(
-        _BytesAudioSource(wavData),
-      );
+      // For cached audio, set up and play normally
+      await _audioPlayer?.setAudioSource(_BytesAudioSource(wavData));
       
-      // Set up completion listener
       _audioStreamSubscription?.cancel();
       _audioStreamSubscription = _audioPlayer?.playerStateStream.listen((playerState) async {
-        debugPrint('🎵 [TTS] Player state: ${playerState.processingState}, playing: ${playerState.playing}');
-        
-        // When playback completes, pause and rewind to avoid pop/click
-        // This is the recommended practice from just_audio documentation
         if (playerState.processingState == ProcessingState.completed) {
-          debugPrint('🎵 [TTS] ✅ Playback completed - pausing and rewinding');
           await _audioPlayer?.pause();
           await _audioPlayer?.seek(Duration.zero);
           _updateState(_currentState.copyWith(
             status: TtsStatus.idle,
             currentText: null,
-            progress: 1.0,
           ));
         }
       });
       
-      // NOW set status to speaking and pass audio data
-      debugPrint('🎵 [TTS] Setting status to SPEAKING');
       _updateState(_currentState.copyWith(
         status: TtsStatus.speaking,
         currentText: text,
-        progress: 0.0,
-        metadata: {
-          'audioData': base64.encode(wavData), // Pass audio for WebView lip-sync
-        },
+        metadata: {'audioData': base64.encode(wavData)},
       ));
       
-      // WebView will handle playback for lip-sync
-      // Don't play in Flutter to avoid double audio
-      debugPrint('🎵 [TTS] Audio passed to WebView (not playing in Flutter)');
+      debugPrint('🎵 [TTS] Audio passed to WebView (cached)');
       
     } catch (e, stackTrace) {
       AICOLog.error('TTS speak failed', error: e, stackTrace: stackTrace);
@@ -258,5 +237,100 @@ class _BytesAudioSource extends StreamAudioSource {
       stream: Stream.value(_bytes.sublist(start, end)),
       contentType: 'audio/wav',
     );
+  }
+}
+
+/// Progressive audio source for streaming playback
+/// Buffers incoming chunks and serves them to the audio player as requested
+class _ProgressiveAudioSource extends StreamAudioSource {
+  final Stream<Uint8List> _dataStream;
+  final List<int> _buffer = [];
+  final Completer<void> _completionCompleter = Completer<void>();
+  bool _streamComplete = false;
+  StreamSubscription? _subscription;
+
+  _ProgressiveAudioSource(this._dataStream) {
+    // Start listening to the stream immediately
+    _subscription = _dataStream.listen(
+      (chunk) {
+        _buffer.addAll(chunk);
+        debugPrint('🎵 [ProgressiveAudioSource] Buffered chunk: ${chunk.length} bytes, total: ${_buffer.length}');
+      },
+      onDone: () {
+        _streamComplete = true;
+        _completionCompleter.complete();
+        debugPrint('🎵 [ProgressiveAudioSource] Stream complete: ${_buffer.length} bytes total');
+      },
+      onError: (error) {
+        _streamComplete = true;
+        _completionCompleter.completeError(error);
+        debugPrint('🎵 [ProgressiveAudioSource] Stream error: $error');
+      },
+    );
+  }
+
+  @override
+  Future<StreamAudioResponse> request([int? start, int? end]) async {
+    start ??= 0;
+    
+    // For the initial request, wait for enough data to start playback
+    // Need at least WAV header (44 bytes) + some audio data (32KB minimum)
+    const minInitialData = 44 + 32768;
+    
+    if (start == 0 && _buffer.length < minInitialData && !_streamComplete) {
+      debugPrint('🎵 [ProgressiveAudioSource] Waiting for initial data... (${_buffer.length}/$minInitialData bytes)');
+      
+      // Wait for enough initial data
+      while (_buffer.length < minInitialData && !_streamComplete) {
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+      
+      debugPrint('🎵 [ProgressiveAudioSource] Initial data ready: ${_buffer.length} bytes');
+    }
+    
+    // For subsequent requests, wait for requested data or stream completion
+    final requestedEnd = end ?? start + 8192;
+    while (!_streamComplete && _buffer.length < requestedEnd) {
+      await Future.delayed(const Duration(milliseconds: 50));
+    }
+    
+    // Calculate actual end position
+    end ??= _buffer.length;
+    var actualEnd = end > _buffer.length ? _buffer.length : end;
+    
+    // CRITICAL: Ensure we return at least the WAV header (44 bytes) for initial requests
+    // just_audio needs the full header to validate the audio format
+    if (start == 0 && actualEnd < 44 && _buffer.length >= 44) {
+      actualEnd = 44;
+      debugPrint('🎵 [ProgressiveAudioSource] Forcing minimum header size: 44 bytes');
+    }
+    
+    // Also ensure we return a reasonable chunk size for playback to start
+    // Player needs enough data to decode and buffer
+    if (start == 0 && actualEnd < 8192 && _buffer.length >= 8192) {
+      actualEnd = 8192;
+      debugPrint('🎵 [ProgressiveAudioSource] Forcing minimum initial chunk: 8192 bytes');
+    }
+    
+    debugPrint('🎵 [ProgressiveAudioSource] Request: start=$start, end=$end, actualEnd=$actualEnd, bufferSize=${_buffer.length}, complete=$_streamComplete');
+    
+    return StreamAudioResponse(
+      sourceLength: _streamComplete ? _buffer.length : null,
+      contentLength: actualEnd - start,
+      offset: start,
+      stream: Stream.value(Uint8List.fromList(_buffer.sublist(start, actualEnd))),
+      contentType: 'audio/wav',
+    );
+  }
+  
+  /// Wait for the stream to complete
+  Future<void> waitForCompletion() => _completionCompleter.future;
+  
+  /// Get the complete audio data
+  Uint8List getCompleteAudio() => Uint8List.fromList(_buffer);
+  
+  /// Dispose resources
+  Future<void> dispose() async {
+    await _subscription?.cancel();
   }
 }

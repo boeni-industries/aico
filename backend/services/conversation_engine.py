@@ -909,6 +909,13 @@ class ConversationEngine(BaseService):
                 parse_buffer = ""
                 open_tag = "<think>"
                 close_tag = "</think>"
+                
+                # Define attributes for NATS publishing (used in _publish_delta and final chunk)
+                pending_data = self.pending_responses.get(request_id, {})
+                tenant_id_for_attrs = pending_data.get("tenant_id")
+                attributes = {"user_uuid": user_context.user_id}
+                if tenant_id_for_attrs:
+                    attributes["tenant_id"] = tenant_id_for_attrs
 
                 def _emit_safe_non_tag_suffix(buf: str, tag: str) -> tuple[str, str]:
                     """Return (emit_text, keep_suffix) keeping at most len(tag)-1 chars to handle split tags."""
@@ -941,7 +948,7 @@ class ConversationEngine(BaseService):
                         AICOTopics.CONVERSATION_STREAM,
                         streaming_chunk,
                         correlation_id=request_id,
-                        attributes={"user_uuid": user_context.user_id, "tenant_id": tenant_id},
+                        attributes=attributes,
                     )
 
                 async for chunk in stream_iter:
@@ -1037,6 +1044,7 @@ class ConversationEngine(BaseService):
                 self.pending_responses[request_id]["llm_response"] = assistant_content
 
                 # Final done=True marker chunk
+                self.logger.info(f"🏁 [STREAMING] About to publish final done=True chunk for request_id={request_id}")
                 final_chunk = StreamingResponseProto(
                     request_id=request_id,
                     content="",
@@ -1048,8 +1056,9 @@ class ConversationEngine(BaseService):
                     AICOTopics.CONVERSATION_STREAM,
                     final_chunk,
                     correlation_id=request_id,
-                    attributes={"user_uuid": user_context.user_id, "tenant_id": tenant_id},
+                    attributes=attributes,
                 )
+                self.logger.info(f"✅ [STREAMING] Published final done=True chunk for request_id={request_id}")
 
                 self.logger.info(f"📤 [vLLM] Delivering response to user via _finalize_streaming_response")
 

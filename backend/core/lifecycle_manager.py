@@ -1149,6 +1149,9 @@ class BackendLifecycleManager:
         from backend.api.scheduler.router import router as scheduler_router
         from backend.api.emotion.router import router as emotion_router
         from backend.api.ams.router import router as ams_router
+        from backend.api.conversation.router import router as conversation_router
+        from backend.api.interactions.router import router as interactions_router
+        from backend.api.tts.router import router as tts_router
         
         # Mount common routers
         self.app.include_router(health_router, prefix="/api/v1/health", tags=["health"])
@@ -1168,6 +1171,13 @@ class BackendLifecycleManager:
         
         self.app.include_router(users_sessions_router, prefix="/api/v1/users-sessions", tags=["users-sessions"])
         self.logger.debug("Router mounted", extra={"prefix": "/api/v1/users-sessions", "tags": ["users-sessions"]})
+
+        # User-facing chat + interaction endpoints (HTTP)
+        self.app.include_router(conversation_router, prefix="/api/v1/conversation", tags=["conversation"])
+        self.logger.info("✅ Mounted: /api/v1/conversation")
+
+        self.app.include_router(interactions_router, prefix="/api/v1/interactions", tags=["interactions"])
+        self.logger.info("✅ Mounted: /api/v1/interactions")
         
         # NATS-proxy endpoints (gateway → core via NATS)
         self.app.include_router(memory_router_gw, prefix="/api/v1", tags=["memory"])
@@ -1196,6 +1206,9 @@ class BackendLifecycleManager:
         
         self.app.include_router(ams_router, prefix="/api/v1", tags=["ams"])
         self.logger.info("✅ Mounted: /api/v1/ams")
+        
+        self.app.include_router(tts_router, prefix="/api/v1/tts", tags=["tts"])
+        self.logger.info("✅ Mounted: /api/v1/tts")
         
         self.logger.info(f"🎉 Gateway HTTP router mounting complete: {len(self.app.routes)} total routes")
     

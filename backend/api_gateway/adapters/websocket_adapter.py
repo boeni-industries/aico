@@ -629,7 +629,8 @@ class WebSocketAdapter:
                     
                     # conversation/stream/v1 - broadcast to user
                     if topic == "conversation/stream/v1":
-                        user_uuid = bus_message.metadata.user_uuid
+                        # StreamingResponse protobuf has no metadata field - get user_uuid from NATS attributes
+                        user_uuid = bus_message.metadata.attributes.get("user_uuid") if bus_message.metadata.attributes else None
                         if user_uuid:
                             await self.broadcast_to_user(user_uuid, "conversation.stream", payload)
                             self.logger.debug(f"Forwarded conversation stream to user {user_uuid[:8]}")

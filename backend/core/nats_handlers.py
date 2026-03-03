@@ -6,6 +6,7 @@ Handles gateway→core requests via NATS request/reply pattern.
 
 import json
 import os
+from datetime import UTC, timezone
 from typing import Any, Dict
 from aico.core.logging import get_logger
 from google.protobuf.struct_pb2 import Struct
@@ -152,7 +153,7 @@ class CoreNATSHandlers:
             
             # Convert to response format matching EmotionStateResponse schema
             return {
-                "timestamp": current_state.timestamp.isoformat() + "Z",
+                "timestamp": current_state.timestamp.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
                 "primary": current_state.subjective_feeling.value,
                 "confidence": current_state.intensity,
                 "valence": current_state.mood_valence,
@@ -193,7 +194,17 @@ class CoreNATSHandlers:
                 
                 # Check data age
                 try:
-                    last_timestamp = datetime.fromisoformat(history[-1]["timestamp"].replace('Z', '+00:00'))
+                    # Robust timestamp parsing to handle malformed variants
+                    ts_str = history[-1]["timestamp"]
+                    # Handle double +00:00 suffix and other malformed variants
+                    if "+00:00+00:00" in ts_str:
+                        ts_str = ts_str.replace("+00:00+00:00", "+00:00")
+                    if ts_str.endswith("+00:00Z"):
+                        ts_str = ts_str[:-1]
+                    if ts_str.endswith("Z"):
+                        ts_str = ts_str.replace("Z", "+00:00")
+                    
+                    last_timestamp = datetime.fromisoformat(ts_str)
                     age_hours = (datetime.now(UTC) - last_timestamp).total_seconds() / 3600
                     metadata["oldest_record_age_hours"] = age_hours
                     metadata["newest_record_timestamp"] = history[-1]["timestamp"]
@@ -1893,6 +1904,21 @@ class CoreNATSHandlers:
             cb=make_handler(self.handle_memory_album_request, "memory.album.reply")
         )
         self.logger.info(f"✅ Subscribed to memory.album (sid={sid7g})")
+        
+        # Emotion endpoints
+        self.logger.info("Subscribing to emotion.state.current...")
+        sid_emotion_current = await message_bus_client._nats.subscribe(
+            "emotion.state.current",
+            cb=make_handler(self.handle_emotion_current_request, "emotion.state.current.reply")
+        )
+        self.logger.info(f"✅ Subscribed to emotion.state.current (sid={sid_emotion_current})")
+        
+        self.logger.info("Subscribing to emotion.state.history...")
+        sid_emotion_history = await message_bus_client._nats.subscribe(
+            "emotion.state.history",
+            cb=make_handler(self.handle_emotion_history_request, "emotion.state.history.reply")
+        )
+        self.logger.info(f"✅ Subscribed to emotion.state.history (sid={sid_emotion_history})")
         
         self.logger.info("Subscribing to agency.state...")
         sid7h = await message_bus_client._nats.subscribe(

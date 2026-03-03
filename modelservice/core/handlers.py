@@ -1471,7 +1471,7 @@ class ModelserviceHandlers:
             self.logger.info("✅ TTS request completed")
             
         except Exception as e:
-            self.logger.error(f"TTS request failed: {e}", error=e)
+            self.logger.error(f"TTS request failed: {e}", exc_info=True)
             yield TtsStreamChunk(
                 audio_data=b"",
                 sample_rate=0,

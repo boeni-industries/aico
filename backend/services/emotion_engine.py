@@ -987,10 +987,25 @@ class EmotionEngine(BaseService):
         # Filter by time window
         from datetime import datetime, timedelta, UTC
         cutoff_time = datetime.now(UTC) - timedelta(hours=hours)
+
+        def _parse_ts(ts: str) -> datetime:
+            # Accept common variants:
+            # - 2026-...Z
+            # - 2026-...+00:00
+            # - 2026-...+00:00Z (malformed but seen in responses)
+            # - 2026-...+00:00+00:00 (double-appended offset)
+            s = (ts or "").strip()
+            if s.endswith("+00:00Z"):
+                s = s[:-1]
+            if s.endswith("Z"):
+                s = s[:-1] + "+00:00"
+            if "+00:00+00:00" in s:
+                s = s.replace("+00:00+00:00", "+00:00")
+            return datetime.fromisoformat(s)
         
         filtered_history = [
             state for state in self.state_history
-            if datetime.fromisoformat(state["timestamp"].replace('Z', '+00:00')) > cutoff_time
+            if _parse_ts(state.get("timestamp", "")) > cutoff_time
         ]
         
         return filtered_history[-limit:]

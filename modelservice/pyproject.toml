@@ -20,6 +20,7 @@ dependencies = [
     "coqui-tts",
     "piper-tts>=1.2.0",
     "kokoro-onnx>=0.4.9",
+    "fast-langdetect>=0.2.0",
     "soundfile>=0.12.1",
 ]
 

@@ -34,7 +34,7 @@
 - [x] Enforce hard Gateway/Core split (no monolith path; gateway must not start core domain services in-process).
 - [x] **Implement gateway idempotency enforcement (✅ Implemented: `IdempotencyMiddleware` enforces `Idempotency-Key` on config/remediation/scheduler/admin mutations; persists request hash + response in `aico_core.idempotency_requests` table; returns cached responses for duplicate requests; tested with 5 rapid requests showing 3x faster cached responses)**
 - [x] **Make conversation write-path Postgres-authoritative (✅ Implemented: `conversations` + `conversation_messages` tables are source of truth; `_persist_user_message()` writes user input before processing; `_persist_assistant_message()` writes AI response before NATS publish; processing aborts if persistence fails; NATS used only for transport/notification; HTTP catch-up reads from Postgres; idempotency via unique constraint on `(tenant_id, user_id, request_id, message_type)`)**
-- [ ] Unify WebSocket architecture (single gateway WS termination; remove/merge duplicate WS stacks to avoid inconsistent auth/authz/catch-up).
+- [x] **Unify WebSocket architecture (✅ COMPLETE: Consolidated to single API Gateway WebSocket adapter at `ws://gateway:8772/ws`; removed duplicate endpoints `/api/v1/conversation/ws` and `/api/v1/scheduler/ws/events`; JWT authentication at handshake; user-scoped routing via `user_uuid` in NATS message metadata; topic-based subscriptions `conversation.responses`, `conversation.stream`, `interaction.notifications`; Flutter frontend updated; HTTP catch-up via `/messages/catchup` endpoint)**
 - [ ] Tenant-scope NATS subjects (move from attributes-only to subject namespace `aico.<tenant_id>.…`; ensure publish/subscribe enforcement follows scoping).
 - [ ] Enforce streaming durability policy (stream chunks ephemeral; ensure JetStream streams/outbox subjects cannot accidentally persist chunk traffic).
 - [x] **Prove ZMQ removal repo-wide (✅ COMPLETE: Zero ZMQ code usage.
@@ -54,7 +54,7 @@
 
 ### Low
 - [ ] Remove remaining legacy/no-op/deprecated endpoints and startup stubs (e.g. deprecated conversation endpoints; no-op broker startup paths).
-- [ ] Refine conversation WS subscription scoping (use tenant/user subjects instead of global topic + in-handler filtering).
+- [x] **Refine conversation WS subscription scoping (✅ COMPLETE: Gateway adapter routes messages to authenticated users based on `user_uuid` in NATS metadata; no global topic filtering needed; each user receives only their own messages)**
 
 ## Make backend stateless (completed)
 
