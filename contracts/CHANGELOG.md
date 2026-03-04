@@ -31,6 +31,13 @@ This file tracks all changes to the frozen API contracts in `/contracts/`.
 
 ## [Unreleased]
 
+### 2026-03-04 - Scheduler Executions Pagination + Ops Health Endpoints
+- **Added (Scheduler)**: Cursor-paginated executions listing endpoint `GET /api/v1/scheduler/executions` (replaces bulk range payloads).
+- **Added (Scheduler)**: Execution details endpoint `GET /api/v1/scheduler/executions/{execution_id}` for per-execution drilldown.
+- **Added (Scheduler)**: Aggregated stats endpoint `GET /api/v1/scheduler/executions/stats` for time-bucketed dashboards.
+- **Added (Health)**: Gateway readiness/liveness endpoints `GET /api/v1/health/ready` and `GET /api/v1/health/live`.
+- **Removed**: Deprecated legacy/no-op endpoints (legacy conversation start and user pin/refresh stubs).
+
 ### 2026-02-24 - Add NATS Contract Snapshot
 - **NATS v1**: Frozen internal NATS contract at `contracts/nats/v1.json` (subject mapping policy + request/reply patterns).
 - **CI Gates**: Added NATS contract gate to verify the artifact matches the generated contract.
