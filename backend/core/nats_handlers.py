@@ -100,28 +100,42 @@ class CoreNATSHandlers:
         """Handle scheduler tasks list request from gateway"""
         try:
             enabled_only = request_data.get("enabled_only", False)
-            
-            # Get scheduler service
-            scheduler = self.container.get_service("task_scheduler")
-            if scheduler is None:
-                return {
-                    "error": "SCHEDULER_NOT_AVAILABLE",
-                    "message": "Task scheduler not available"
-                }
-            
-            # Return task info matching TaskConfigResponse schema
-            tasks = []
-            for task_id, task_class in scheduler.task_registry.tasks.items():
-                tasks.append({
-                    "task_id": task_id,
-                    "task_class": task_class.__name__ if hasattr(task_class, '__name__') else str(task_class),
-                    "schedule": "* * * * *",
-                    "config": {},
-                    "enabled": True,
-                    "created_at": "2024-01-01T00:00:00Z",
-                    "updated_at": "2024-01-01T00:00:00Z"
-                })
-            
+
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                filters: Dict[str, Any] = {"enabled": True} if enabled_only else {}
+                task_models = await scheduler_service.list_tasks(filters=filters)
+
+            tasks: list[dict] = []
+            for task in task_models:
+                config_value = getattr(task, "config", None)
+                if isinstance(config_value, str):
+                    try:
+                        config_value = json.loads(config_value)
+                    except Exception:
+                        # Keep original string if it is not valid JSON
+                        config_value = config_value
+
+                created_at = getattr(task, "created_at", None)
+                updated_at = getattr(task, "updated_at", None)
+
+                tasks.append(
+                    {
+                        "task_id": task.task_id,
+                        "task_class": task.task_class,
+                        "schedule": task.schedule,
+                        "config": config_value,
+                        "enabled": bool(task.enabled),
+                        "created_at": created_at.isoformat() if hasattr(created_at, "isoformat") else created_at,
+                        "updated_at": updated_at.isoformat() if hasattr(updated_at, "isoformat") else updated_at,
+                    }
+                )
+
             return {"tasks": tasks, "total_count": len(tasks)}
             
         except Exception as e:

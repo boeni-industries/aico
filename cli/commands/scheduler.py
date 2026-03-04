@@ -40,6 +40,14 @@ from cli.utils.pg_connection import get_pg_connection
 
 console = Console()
 
+
+def _dt_to_iso(value: Any) -> Any:
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return value
+
 def _describe_cron(cron_expr: str) -> str:
     """Generate natural, human-readable description of cron expression.
     
@@ -203,8 +211,8 @@ def list_tasks(
                         "task_class": task['task_class'],
                         "schedule": task['schedule'],
                         "enabled": bool(task['enabled']),
-                        "created_at": task['created_at'],
-                        "updated_at": task['updated_at']
+                        "created_at": _dt_to_iso(task['created_at']),
+                        "updated_at": _dt_to_iso(task['updated_at']),
                     })
                 console.print(json.dumps(task_list, indent=2))
             else:
@@ -275,8 +283,8 @@ def show_task(
                     "schedule": task['schedule'],
                     "config": json.loads(task['config']) if task['config'] else {},
                     "enabled": bool(task['enabled']),
-                    "created_at": task['created_at'],
-                    "updated_at": task['updated_at']
+                    "created_at": _dt_to_iso(task['created_at']),
+                    "updated_at": _dt_to_iso(task['updated_at']),
                 }
                 console.print(json.dumps(task_data, indent=2))
             else:
@@ -658,8 +666,8 @@ def _show_single_execution(execution_id: str, format_output: str):
                 "execution_id": execution['execution_id'],
                 "task_id": execution['task_id'],
                 "status": execution['status'],
-                "started_at": execution['started_at'],
-                "completed_at": execution['completed_at'],
+                "started_at": _dt_to_iso(execution['started_at']),
+                "completed_at": _dt_to_iso(execution['completed_at']),
                 "result": json.loads(execution['result']) if execution['result'] else None,
                 "error_message": execution['error_message'],
                 "duration_seconds": execution['duration_seconds']
@@ -777,8 +785,8 @@ def _display_history_table(executions: List, title: str, format_output: str):
                 "execution_id": exec_data['execution_id'],
                 "task_id": exec_data['task_id'],
                 "status": exec_data['status'],
-                "started_at": exec_data['started_at'],
-                "completed_at": exec_data['completed_at'],
+                "started_at": _dt_to_iso(exec_data['started_at']),
+                "completed_at": _dt_to_iso(exec_data['completed_at']),
                 "result": json.loads(exec_data['result']) if exec_data['result'] else None,
                 "error_message": exec_data['error_message'],
                 "duration_seconds": exec_data['duration_seconds']
