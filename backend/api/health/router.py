@@ -196,3 +196,39 @@ async def detailed_health():
     )
 
 
+@router.get("/ready", response_model=ReadinessResponse)
+async def readiness_check() -> ReadinessResponse:
+    current_time = datetime.now(UTC)
+
+    components: Dict[str, bool] = {
+        "api": True,
+    }
+    missing: List[str] = []
+
+    try:
+        client = MessageBusClient("backend_readiness_probe")
+        await client.connect()
+        await client.disconnect()
+        components["message_bus"] = True
+    except Exception:
+        components["message_bus"] = False
+        missing.append("message_bus")
+
+    ready = all(components.values())
+    return ReadinessResponse(
+        ready=ready,
+        components=components,
+        missing_dependencies=missing or None,
+    )
+
+
+@router.get("/live", response_model=LivenessResponse)
+async def liveness_check() -> LivenessResponse:
+    uptime = time.time() - start_time
+    return LivenessResponse(
+        alive=True,
+        uptime=uptime,
+        last_heartbeat=datetime.now(UTC).isoformat(),
+    )
+
+

@@ -5794,6 +5794,33 @@
         "title": "LessonResponse",
         "type": "object"
       },
+      "LivenessResponse": {
+        "description": "Response schema for liveness check",
+        "properties": {
+          "alive": {
+            "description": "Whether system is alive and responding",
+            "title": "Alive",
+            "type": "boolean"
+          },
+          "last_heartbeat": {
+            "description": "Last heartbeat timestamp",
+            "title": "Last Heartbeat",
+            "type": "string"
+          },
+          "uptime": {
+            "description": "System uptime in seconds",
+            "title": "Uptime",
+            "type": "number"
+          }
+        },
+        "required": [
+          "alive",
+          "uptime",
+          "last_heartbeat"
+        ],
+        "title": "LivenessResponse",
+        "type": "object"
+      },
       "Location": {
         "properties": {
           "end_col": {
@@ -7924,6 +7951,45 @@
           "success"
         ],
         "title": "QueryResult",
+        "type": "object"
+      },
+      "ReadinessResponse": {
+        "description": "Response schema for readiness check",
+        "properties": {
+          "components": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "description": "Component readiness status",
+            "title": "Components",
+            "type": "object"
+          },
+          "missing_dependencies": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Missing dependencies if not ready",
+            "title": "Missing Dependencies"
+          },
+          "ready": {
+            "description": "Whether system is ready to serve requests",
+            "title": "Ready",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ready",
+          "components"
+        ],
+        "title": "ReadinessResponse",
         "type": "object"
       },
       "RecentFeedbackResponse": {
@@ -18664,6 +18730,48 @@
           }
         },
         "summary": "Detailed Health",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/health/live": {
+      "get": {
+        "operationId": "liveness_check_api_v1_health_live_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LivenessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Liveness Check",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/health/ready": {
+      "get": {
+        "operationId": "readiness_check_api_v1_health_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Readiness Check",
         "tags": [
           "health"
         ]

@@ -467,6 +467,9 @@ class CoreNATSHandlers:
             if not start_time or not end_time:
                 return {"error": "VALIDATION_ERROR", "message": "start_time and end_time are required"}
 
+            limit = int(request_data.get("limit", 500))
+            limit = max(1, min(limit, 2000))
+
             from datetime import datetime
 
             start_dt = datetime.fromisoformat(str(start_time).replace("Z", "+00:00"))
@@ -481,7 +484,13 @@ class CoreNATSHandlers:
                 scheduler_service = SchedulerService(uow)
                 all_executions = await scheduler_service.get_recent_executions(limit=10000)
 
-            executions = [e for e in all_executions if getattr(e, "started_at", None) and start_dt <= e.started_at <= end_dt]
+            executions = [
+                e
+                for e in all_executions
+                if getattr(e, "started_at", None) and start_dt <= e.started_at <= end_dt
+            ]
+
+            executions = executions[:limit]
 
             executions_response = []
             for exec_data in executions:
@@ -492,7 +501,6 @@ class CoreNATSHandlers:
                         "status": exec_data.status,
                         "started_at": exec_data.started_at.isoformat() if getattr(exec_data, "started_at", None) else None,
                         "completed_at": exec_data.completed_at.isoformat() if getattr(exec_data, "completed_at", None) else None,
-                        "result": exec_data.result,
                         "error_message": exec_data.error_message,
                         "duration_seconds": exec_data.duration_seconds,
                     }
@@ -503,6 +511,7 @@ class CoreNATSHandlers:
                 "total_count": len(executions_response),
                 "start_time": start_time,
                 "end_time": end_time,
+                "limit": limit,
             }
         except Exception as e:
             self.logger.error(f"Failed to get executions in range: {e}", exc_info=True)
@@ -2308,12 +2317,41 @@ class CoreNATSHandlers:
                     
                     # Send JSON response as plain bytes (simplest approach)
                     response_bytes = json.dumps(response_data).encode('utf-8')
+
+                    # NATS default max payload is typically 1MiB. Keep a safety buffer.
+                    if len(response_bytes) > 900_000:
+                        response_data = {
+                            "error": "RESPONSE_TOO_LARGE",
+                            "message": "Response payload exceeded NATS max payload; reduce requested range/limit.",
+                            "subject": getattr(msg, "subject", None),
+                            "response_type": response_type,
+                            "size_bytes": len(response_bytes),
+                        }
+                        response_bytes = json.dumps(response_data).encode("utf-8")
                     
                     # Send reply using NATS built-in reply mechanism
-                    await message_bus_client._nats.publish(
-                        msg.reply,
-                        response_bytes
-                    )
+                    try:
+                        await message_bus_client._nats.publish(
+                            msg.reply,
+                            response_bytes,
+                        )
+                    except Exception as e:
+                        # Publishing can fail for oversized payloads (MaxPayloadError) or transient transport issues.
+                        self.logger.error(f"Error in {response_type} handler: {e}", exc_info=True)
+                        if getattr(msg, "reply", None):
+                            error_payload = {
+                                "error": "NATS_PUBLISH_FAILED",
+                                "message": str(e),
+                                "subject": getattr(msg, "subject", None),
+                                "response_type": response_type,
+                            }
+                            try:
+                                await message_bus_client._nats.publish(
+                                    msg.reply,
+                                    json.dumps(error_payload).encode("utf-8"),
+                                )
+                            except Exception:
+                                pass
                     
                 except Exception as e:
                     self.logger.error(f"Error in {response_type} handler: {e}", exc_info=True)
