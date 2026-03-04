@@ -31,8 +31,11 @@ from backend.api.conversation.schemas import (
     MessageSendRequest, MessageResponse,
     ConversationListResponse, MessageHistoryResponse,
     UnifiedMessageRequest, UnifiedMessageResponse,
-    HealthResponse
+    HealthResponse,
+    ConversationDetail, ConversationListItem,
+    ConversationUpdateRequest, CatchupMessage
 )
+from backend.api.pagination import PaginatedResponse
 from backend.api.conversation.exceptions import (
     ConversationNotFoundException, InvalidConversationException,
     MessageProcessingException, WebSocketAuthenticationException, MessageBusConnectionException,
@@ -127,7 +130,7 @@ async def send_message_with_auto_thread(
         conv_message.message.text = request.message
         conv_message.message.type = conv_message.message.MessageType.USER_INPUT
         conv_message.message.conversation_id = conversation_id
-        conv_message.message.turn_number = 1  # TODO: Track actual turn numbers
+        # turn_number assigned automatically by repository
         
         # Publish to conversation input topic (ConversationEngine will handle)
         await bus_client.publish(
@@ -608,3 +611,242 @@ async def start_conversation_legacy(
     """Legacy start endpoint - redirects to unified messages endpoint"""
     logger.warning("Using deprecated /start endpoint - use /messages instead")
     return await send_message_with_auto_thread(request, current_user, bus_client)
+
+
+# ============================================================================
+# Conversation Lifecycle Endpoints
+# ============================================================================
+
+@router.get(
+    "/conversations",
+    response_model=PaginatedResponse[ConversationListItem],
+    responses=error_responses(401, 403, 500),
+)
+async def list_conversations(
+    limit: int = Query(50, ge=1, le=100, description="Number of conversations to return"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
+    status: Optional[str] = Query(None, description="Filter by status (active, archived, deleted)"),
+    current_user = Depends(get_current_user),
+    uow: UnitOfWork = Depends(get_uow),
+):
+    """
+    List conversations for the authenticated user.
+    
+    Returns paginated list of conversations with metadata.
+    Supports filtering by status and pagination via limit/offset.
+    
+    Standard pagination contract:
+    - Query params: limit (1-100), offset (>=0)
+    - Response: {items: [...], total: N, limit: N, offset: N}
+    """
+    try:
+        user_id = current_user['user_uuid']
+        tenant_id = current_user["tenant_id"]
+        
+        # Query conversations from repository
+        conversations = await uow.conversations.list_by_user(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            limit=limit,
+            offset=offset,
+            status=status,
+        )
+        
+        # Get total count for pagination
+        total = await uow.conversations.count_by_user(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            status=status,
+        )
+        
+        # Get message counts for each conversation
+        items = []
+        for conv in conversations:
+            message_count = await uow.conversation_messages.count_by_conversation(
+                tenant_id=tenant_id,
+                conversation_id=conv.conversation_id,
+            )
+            items.append(
+                ConversationListItem(
+                    conversation_id=conv.conversation_id,
+                    title=conv.title,
+                    status=conv.status,
+                    created_at=conv.created_at,
+                    updated_at=conv.updated_at,
+                    message_count=message_count,
+                )
+            )
+        
+        return PaginatedResponse[ConversationListItem](
+            items=items,
+            total=total,
+            limit=limit,
+            offset=offset,
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to list conversations: {e}")
+        raise_api_error(
+            status_code=500,
+            error_code="conversation_list_failed",
+            message="Failed to retrieve conversations",
+            details={"error": str(e)}
+        )
+
+
+@router.get(
+    "/conversations/{conversation_id}",
+    response_model=ConversationDetail,
+    responses=error_responses(401, 403, 404, 500),
+)
+async def get_conversation(
+    conversation_id: str,
+    current_user = Depends(get_current_user),
+    uow: UnitOfWork = Depends(get_uow),
+):
+    """
+    Get detailed information about a specific conversation.
+    
+    Returns full conversation metadata including title, status, and timestamps.
+    """
+    try:
+        user_id = current_user['user_uuid']
+        tenant_id = current_user["tenant_id"]
+        
+        # Retrieve conversation
+        conversation = await uow.conversations.get_by_key(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+        )
+        
+        if not conversation:
+            raise_api_error(
+                status_code=404,
+                error_code="conversation_not_found",
+                message=f"Conversation {conversation_id} not found",
+            )
+        
+        # Verify user owns this conversation
+        if conversation.user_id != user_id:
+            raise_api_error(
+                status_code=403,
+                error_code="conversation_access_denied",
+                message="You do not have access to this conversation",
+            )
+        
+        return ConversationDetail(
+            tenant_id=conversation.tenant_id,
+            conversation_id=conversation.conversation_id,
+            user_id=conversation.user_id,
+            agent_id=conversation.agent_id,
+            title=conversation.title,
+            status=conversation.status,
+            created_at=conversation.created_at,
+            updated_at=conversation.updated_at,
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get conversation {conversation_id}: {e}")
+        raise_api_error(
+            status_code=500,
+            error_code="conversation_get_failed",
+            message="Failed to retrieve conversation",
+            details={"error": str(e)}
+        )
+
+
+@router.patch(
+    "/conversations/{conversation_id}",
+    response_model=ConversationDetail,
+    responses=error_responses(400, 401, 403, 404, 500),
+)
+async def update_conversation(
+    conversation_id: str,
+    request: ConversationUpdateRequest,
+    current_user = Depends(get_current_user),
+    uow: UnitOfWork = Depends(get_uow),
+):
+    """
+    Update conversation metadata (title, status).
+    
+    Allows updating conversation title and status transitions:
+    - active → archived (hide from active list)
+    - active → deleted (soft delete)
+    - archived → active (restore)
+    """
+    try:
+        user_id = current_user['user_uuid']
+        tenant_id = current_user["tenant_id"]
+        
+        # Retrieve existing conversation
+        conversation = await uow.conversations.get_by_key(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+        )
+        
+        if not conversation:
+            raise_api_error(
+                status_code=404,
+                error_code="conversation_not_found",
+                message=f"Conversation {conversation_id} not found",
+            )
+        
+        # Verify user owns this conversation
+        if conversation.user_id != user_id:
+            raise_api_error(
+                status_code=403,
+                error_code="conversation_access_denied",
+                message="You do not have access to this conversation",
+            )
+        
+        # Validate at least one field is being updated
+        if request.title is None and request.status is None:
+            raise_api_error(
+                status_code=400,
+                error_code="no_updates_provided",
+                message="At least one field (title or status) must be provided",
+            )
+        
+        # Update conversation
+        updated = await uow.conversations.touch(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            user_id=user_id,
+            title=request.title if request.title is not None else conversation.title,
+            status=request.status if request.status is not None else conversation.status,
+        )
+        
+        await uow.commit()
+        
+        logger.info(
+            f"Updated conversation {conversation_id}",
+            extra={
+                "conversation_id": conversation_id,
+                "user_id": user_id,
+                "updates": {"title": request.title, "status": request.status}
+            }
+        )
+        
+        return ConversationDetail(
+            tenant_id=updated.tenant_id,
+            conversation_id=updated.conversation_id,
+            user_id=updated.user_id,
+            agent_id=updated.agent_id,
+            title=updated.title,
+            status=updated.status,
+            created_at=updated.created_at,
+            updated_at=updated.updated_at,
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update conversation {conversation_id}: {e}")
+        raise_api_error(
+            status_code=500,
+            error_code="conversation_update_failed",
+            message="Failed to update conversation",
+            details={"error": str(e)}
+        )

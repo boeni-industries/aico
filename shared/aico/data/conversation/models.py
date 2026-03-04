@@ -35,6 +35,7 @@ class ConversationMessage(BaseModel):
     metadata_json: Optional[dict[str, Any]] = None
     correlation_id: Optional[str] = None
     request_id: str
+    turn_number: int
 
     created_at: Optional[datetime] = None
 

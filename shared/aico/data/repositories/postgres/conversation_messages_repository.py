@@ -20,7 +20,36 @@ class PostgresConversationMessagesRepository(Repository[ConversationMessage]):
     def __init__(self, session: AsyncSession):
         self.session = session
 
+    async def get_next_turn_number(self, *, tenant_id: str, conversation_id: str) -> int:
+        """Atomically get the next turn number for a conversation.
+        
+        Uses SELECT FOR UPDATE to ensure no race conditions when multiple
+        messages are created concurrently.
+        """
+        # Get current max turn_number with row lock
+        stmt = (
+            select(func.coalesce(func.max(conversation_messages.c.turn_number), 0))
+            .where(
+                and_(
+                    conversation_messages.c.tenant_id == tenant_id,
+                    conversation_messages.c.conversation_id == conversation_id,
+                )
+            )
+            .with_for_update()
+        )
+        result = await self.session.execute(stmt)
+        max_turn = result.scalar() or 0
+        return max_turn + 1
+
     async def create(self, entity: ConversationMessage) -> ConversationMessage:
+        """Create a message with automatic turn number assignment if not provided."""
+        # If turn_number not set, get next turn number atomically
+        if not hasattr(entity, 'turn_number') or entity.turn_number is None or entity.turn_number == 0:
+            entity.turn_number = await self.get_next_turn_number(
+                tenant_id=entity.tenant_id,
+                conversation_id=entity.conversation_id,
+            )
+        
         stmt = conversation_messages.insert().values(
             message_id=entity.message_id,
             tenant_id=entity.tenant_id,
@@ -34,6 +63,7 @@ class PostgresConversationMessagesRepository(Repository[ConversationMessage]):
             metadata_json=entity.metadata_json,
             correlation_id=entity.correlation_id,
             request_id=entity.request_id,
+            turn_number=entity.turn_number,
             created_at=entity.created_at or datetime.now(UTC),
         )
         await self.session.execute(stmt)
@@ -116,7 +146,7 @@ class PostgresConversationMessagesRepository(Repository[ConversationMessage]):
             if conditions:
                 stmt = stmt.where(and_(*conditions))
 
-        stmt = stmt.order_by(conversation_messages.c.created_at.desc()).limit(limit).offset(offset)
+        stmt = stmt.order_by(conversation_messages.c.turn_number.desc()).limit(limit).offset(offset)
         result = await self.session.execute(stmt)
         return [ConversationMessage(**dict(row._mapping)) for row in result.fetchall()]
 
@@ -157,6 +187,65 @@ class PostgresConversationMessagesRepository(Repository[ConversationMessage]):
         if since is not None:
             stmt = stmt.where(conversation_messages.c.created_at > since)
 
-        stmt = stmt.order_by(conversation_messages.c.created_at.asc()).limit(limit)
+        stmt = stmt.order_by(conversation_messages.c.turn_number.asc()).limit(limit)
+        result = await self.session.execute(stmt)
+        return [ConversationMessage(**dict(row._mapping)) for row in result.fetchall()]
+
+    async def count_by_conversation(
+        self,
+        *,
+        tenant_id: str,
+        conversation_id: str,
+    ) -> int:
+        """Count messages in a specific conversation."""
+        stmt = (
+            select(func.count())
+            .select_from(conversation_messages)
+            .where(
+                and_(
+                    conversation_messages.c.tenant_id == tenant_id,
+                    conversation_messages.c.conversation_id == conversation_id,
+                )
+            )
+        )
+        
+        result = await self.session.execute(stmt)
+        return result.scalar() or 0
+
+    async def list_after_turn(
+        self,
+        *,
+        tenant_id: str,
+        conversation_id: str,
+        after_turn: int,
+        limit: int = 100,
+    ) -> List[ConversationMessage]:
+        """Get messages after a specific turn number for catch-up/replay.
+        
+        Uses turn_number for deterministic ordering, avoiding timestamp-based
+        race conditions. Critical for reliable message replay and catch-up.
+        
+        Args:
+            tenant_id: Tenant ID
+            conversation_id: Conversation ID
+            after_turn: Get messages with turn_number > this value
+            limit: Maximum number of messages to return
+            
+        Returns:
+            List of messages ordered by turn_number ASC
+        """
+        stmt = (
+            select(conversation_messages)
+            .where(
+                and_(
+                    conversation_messages.c.tenant_id == tenant_id,
+                    conversation_messages.c.conversation_id == conversation_id,
+                    conversation_messages.c.turn_number > after_turn,
+                )
+            )
+            .order_by(conversation_messages.c.turn_number.asc())
+            .limit(limit)
+        )
+        
         result = await self.session.execute(stmt)
         return [ConversationMessage(**dict(row._mapping)) for row in result.fetchall()]

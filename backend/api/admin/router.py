@@ -611,8 +611,10 @@ async def admin_user_audit_log(
         )
 
     return admin_schemas.AuditListResponse(
-        entries=entries,
-        pagination=admin_schemas.Pagination(limit=limit, offset=offset, total_count=total_count),
+        items=entries,
+        total=total_count,
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -919,8 +921,10 @@ async def failed_auth_attempts(
         )
 
     return admin_schemas.FailedAuthAttemptsResponse(
-        attempts=attempts,
-        pagination=admin_schemas.Pagination(limit=limit, offset=offset, total_count=total_count),
+        items=attempts,
+        total=total_count,
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -990,8 +994,10 @@ async def audit_list(
         )
 
     return admin_schemas.AuditListResponse(
-        entries=entries,
-        pagination=admin_schemas.Pagination(limit=limit, offset=offset, total_count=total_count),
+        items=entries,
+        total=total_count,
+        limit=limit,
+        offset=offset,
     )
 
 

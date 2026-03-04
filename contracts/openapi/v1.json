@@ -2,6 +2,7 @@
   "components": {
     "schemas": {
       "APIErrorResponse": {
+        "description": "Standardized error response schema for all non-2xx responses.",
         "properties": {
           "details": {
             "anyOf": [
@@ -342,6 +343,71 @@
         ],
         "title": "AutonomyLevel",
         "type": "string"
+      },
+      "CatchupMessage": {
+        "description": "Message in catch-up response with turn number for ordering",
+        "properties": {
+          "actor_type": {
+            "description": "Actor type (user/assistant/system)",
+            "title": "Actor Type",
+            "type": "string"
+          },
+          "content": {
+            "description": "Message content",
+            "title": "Content",
+            "type": "string"
+          },
+          "conversation_id": {
+            "description": "Conversation identifier",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "description": "Message timestamp",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "message_id": {
+            "description": "Message identifier",
+            "title": "Message Id",
+            "type": "string"
+          },
+          "message_type": {
+            "description": "Message type",
+            "title": "Message Type",
+            "type": "string"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Message metadata",
+            "title": "Metadata"
+          },
+          "turn_number": {
+            "description": "Turn number for deterministic ordering",
+            "title": "Turn Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "message_id",
+          "conversation_id",
+          "actor_type",
+          "message_type",
+          "content",
+          "turn_number",
+          "created_at"
+        ],
+        "title": "CatchupMessage",
+        "type": "object"
       },
       "CentralityMetrics": {
         "description": "Node centrality and importance metrics.",
@@ -741,6 +807,168 @@
           "granted_at"
         ],
         "title": "ConsentResponse",
+        "type": "object"
+      },
+      "ConversationDetail": {
+        "description": "Detailed conversation information",
+        "properties": {
+          "agent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Agent ID",
+            "title": "Agent Id"
+          },
+          "conversation_id": {
+            "description": "Conversation ID",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "description": "Creation timestamp",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "status": {
+            "description": "Conversation status (active, archived, deleted)",
+            "title": "Status",
+            "type": "string"
+          },
+          "tenant_id": {
+            "description": "Tenant ID",
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Conversation title",
+            "title": "Title"
+          },
+          "updated_at": {
+            "description": "Last update timestamp",
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "user_id": {
+            "description": "User ID",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "conversation_id",
+          "user_id",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ConversationDetail",
+        "type": "object"
+      },
+      "ConversationListItem": {
+        "description": "Summary item for conversation list",
+        "properties": {
+          "conversation_id": {
+            "description": "Conversation ID",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "description": "Creation timestamp",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "message_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Number of messages",
+            "title": "Message Count"
+          },
+          "status": {
+            "description": "Conversation status",
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Conversation title",
+            "title": "Title"
+          },
+          "updated_at": {
+            "description": "Last update timestamp",
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ConversationListItem",
+        "type": "object"
+      },
+      "ConversationUpdateRequest": {
+        "description": "Request to update conversation metadata",
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "New status (active, archived, deleted)",
+            "title": "Status"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "New conversation title",
+            "title": "Title"
+          }
+        },
+        "title": "ConversationUpdateRequest",
         "type": "object"
       },
       "CreateUserRequest": {
@@ -3171,6 +3399,76 @@
           "is_current"
         ],
         "title": "NodeVersion",
+        "type": "object"
+      },
+      "PaginatedResponse_CatchupMessage_": {
+        "properties": {
+          "items": {
+            "description": "Array of items for current page",
+            "items": {
+              "$ref": "#/components/schemas/CatchupMessage"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "description": "Page size limit used",
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "description": "Pagination offset used",
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Total count of items matching query",
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "PaginatedResponse[CatchupMessage]",
+        "type": "object"
+      },
+      "PaginatedResponse_ConversationListItem_": {
+        "properties": {
+          "items": {
+            "description": "Array of items for current page",
+            "items": {
+              "$ref": "#/components/schemas/ConversationListItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "description": "Page size limit used",
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "description": "Pagination offset used",
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Total count of items matching query",
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "PaginatedResponse[ConversationListItem]",
         "type": "object"
       },
       "PlanExecutionSummary": {
@@ -7108,6 +7406,462 @@
         "summary": "List Tools",
         "tags": [
           "agency"
+        ]
+      }
+    },
+    "/api/v1/conversation/conversations": {
+      "get": {
+        "description": "List conversations for the authenticated user.\n\nReturns paginated list of conversations with metadata.\nSupports filtering by status and pagination via limit/offset.\n\nStandard pagination contract:\n- Query params: limit (1-100), offset (>=0)\n- Response: {items: [...], total: N, limit: N, offset: N}",
+        "operationId": "list_conversations_api_v1_conversation_conversations_get",
+        "parameters": [
+          {
+            "description": "Number of conversations to return",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "Number of conversations to return",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Pagination offset",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Pagination offset",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Filter by status (active, archived, deleted)",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by status (active, archived, deleted)",
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_ConversationListItem_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Conversations",
+        "tags": [
+          "conversation"
+        ]
+      }
+    },
+    "/api/v1/conversation/conversations/{conversation_id}": {
+      "get": {
+        "description": "Get detailed information about a specific conversation.\n\nReturns full conversation metadata including title, status, and timestamps.",
+        "operationId": "get_conversation_api_v1_conversation_conversations__conversation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Conversation",
+        "tags": [
+          "conversation"
+        ]
+      },
+      "patch": {
+        "description": "Update conversation metadata (title, status).\n\nAllows updating conversation title and status transitions:\n- active → archived (hide from active list)\n- active → deleted (soft delete)\n- archived → active (restore)",
+        "operationId": "update_conversation_api_v1_conversation_conversations__conversation_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Conversation",
+        "tags": [
+          "conversation"
+        ]
+      }
+    },
+    "/api/v1/conversation/conversations/{conversation_id}/messages/catchup": {
+      "get": {
+        "description": "Get messages after a specific turn number for catch-up/replay.\n\nUses turn_number for deterministic ordering, avoiding timestamp-based\nrace conditions. Essential for reliable message synchronization when\nclients reconnect or need to replay conversation history.\n\n**Ordering Guarantee**: Messages are always returned in turn_number ASC order,\nensuring deterministic replay regardless of timestamp collisions.\n\n**Use Cases**:\n- Client reconnection after network interruption\n- Loading conversation history in chunks\n- Synchronizing multiple clients viewing same conversation\n- Debugging message ordering issues\n\n**Example**:\n```\nGET /conversations/{id}/messages/catchup?after_turn=5&limit=50\n\nReturns messages with turn_number > 5, ordered by turn_number ASC\n```",
+        "operationId": "catchup_messages_api_v1_conversation_conversations__conversation_id__messages_catchup_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Get messages after this turn number",
+            "in": "query",
+            "name": "after_turn",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Get messages after this turn number",
+              "minimum": 0,
+              "title": "After Turn",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Maximum messages to return",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "description": "Maximum messages to return",
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_CatchupMessage_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Catchup Messages",
+        "tags": [
+          "conversation",
+          "conversation-catchup"
         ]
       }
     },

@@ -3,6 +3,7 @@
 Global exception handlers for FastAPI application.
 
 Ensures all exceptions are properly logged at appropriate levels with full context.
+Uses standardized APIErrorResponse format for all non-2xx responses.
 """
 
 import time
@@ -13,6 +14,7 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from aico.core.logging import get_logger
+from backend.api.errors import APIErrorResponse
 
 logger = get_logger("backend.core.exception_handlers")
 

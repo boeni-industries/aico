@@ -173,3 +173,53 @@ class PostgresConversationsRepository(Repository[Conversation]):
 
         result = await self.session.execute(stmt)
         return result.scalar() or 0
+
+    async def list_by_user(
+        self,
+        *,
+        tenant_id: str,
+        user_id: str,
+        limit: int = 50,
+        offset: int = 0,
+        status: Optional[str] = None,
+    ) -> List[Conversation]:
+        """List conversations for a specific user with optional status filter."""
+        conditions = [
+            conversations.c.tenant_id == tenant_id,
+            conversations.c.user_id == user_id,
+        ]
+        
+        if status is not None:
+            conditions.append(conversations.c.status == status)
+        
+        stmt = (
+            select(conversations)
+            .where(and_(*conditions))
+            .order_by(conversations.c.updated_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        
+        result = await self.session.execute(stmt)
+        return [Conversation(**dict(row._mapping)) for row in result.fetchall()]
+
+    async def count_by_user(
+        self,
+        *,
+        tenant_id: str,
+        user_id: str,
+        status: Optional[str] = None,
+    ) -> int:
+        """Count conversations for a specific user with optional status filter."""
+        conditions = [
+            conversations.c.tenant_id == tenant_id,
+            conversations.c.user_id == user_id,
+        ]
+        
+        if status is not None:
+            conditions.append(conversations.c.status == status)
+        
+        stmt = select(func.count()).select_from(conversations).where(and_(*conditions))
+        
+        result = await self.session.execute(stmt)
+        return result.scalar() or 0

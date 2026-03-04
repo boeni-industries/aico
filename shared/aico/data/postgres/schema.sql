@@ -872,13 +872,18 @@ CREATE TABLE IF NOT EXISTS conversation_messages (
                 metadata_json JSONB,
                 correlation_id TEXT,
                 request_id TEXT NOT NULL,
+                turn_number INTEGER NOT NULL,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                CONSTRAINT uq_conversation_messages_request UNIQUE (tenant_id, user_id, request_id, message_type)
+                CONSTRAINT uq_conversation_messages_request UNIQUE (tenant_id, user_id, request_id, message_type),
+                CONSTRAINT uq_conversation_messages_turn UNIQUE (tenant_id, conversation_id, turn_number)
             );
 
 
 CREATE INDEX IF NOT EXISTS idx_conversation_messages_conversation_time
     ON conversation_messages (tenant_id, conversation_id, created_at ASC);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_messages_conversation_turn
+    ON conversation_messages (tenant_id, conversation_id, turn_number ASC);
 
 CREATE INDEX IF NOT EXISTS idx_conversation_messages_user_time
     ON conversation_messages (tenant_id, user_id, created_at DESC);

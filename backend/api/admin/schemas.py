@@ -220,11 +220,8 @@ class ConfigValidationResponse(BaseModel):
 # USERS & SECURITY (ADMIN) SCHEMAS
 # ============================================================================
 
-
-class Pagination(BaseModel):
-    limit: int = Field(..., description="Page size")
-    offset: int = Field(..., description="Offset")
-    total_count: int = Field(..., description="Total matching entries")
+# Import standardized pagination
+from backend.api.pagination import PaginatedResponse
 
 
 class AdminUserResponse(BaseModel):
@@ -311,9 +308,9 @@ class AuditEntry(BaseModel):
     ip_address: Optional[str] = Field(None, description="Client IP")
 
 
-class AuditListResponse(BaseModel):
-    entries: List[AuditEntry] = Field(..., description="Audit entries")
-    pagination: Pagination = Field(..., description="Pagination metadata")
+# Use PaginatedResponse[AuditEntry] instead of custom AuditListResponse
+# Type alias for clarity
+AuditListResponse = PaginatedResponse[AuditEntry]
 
 
 class AuditDetailResponse(BaseModel):
@@ -371,17 +368,14 @@ class AuthStatsResponse(BaseModel):
 
 
 class FailedAuthAttempt(BaseModel):
-    timestamp: str = Field(..., description="Timestamp")
-    user_uuid: Optional[str] = Field(None, description="User UUID")
-    user_name: Optional[str] = Field(None, description="User display name")
-    ip_address: Optional[str] = Field(None, description="IP address")
-    device_type: Optional[str] = Field(None, description="Device type")
+    timestamp: str = Field(..., description="Timestamp (ISO 8601)")
+    ip_address: str = Field(..., description="IP address")
+    username: Optional[str] = Field(None, description="Username attempted")
     reason: Optional[str] = Field(None, description="Failure reason")
 
 
-class FailedAuthAttemptsResponse(BaseModel):
-    attempts: List[FailedAuthAttempt] = Field(..., description="Failed auth attempts")
-    pagination: Pagination = Field(..., description="Pagination metadata")
+# Use PaginatedResponse[FailedAuthAttempt] instead of custom response
+FailedAuthAttemptsResponse = PaginatedResponse[FailedAuthAttempt]
 
 
 class AuditExportRequest(BaseModel):

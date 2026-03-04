@@ -424,7 +424,7 @@ class ConversationEngine(BaseService):
             ai_message.conversation_id = conversation_id
             ai_message.type = Message.MessageType.SYSTEM_RESPONSE
             ai_message.text = error
-            ai_message.turn_number = 1
+            # turn_number assigned automatically by repository
 
             conv_message = ConversationMessage()
             conv_message.message_id = rid
@@ -1219,7 +1219,7 @@ class ConversationEngine(BaseService):
             ai_message.conversation_id = conversation_id
             ai_message.type = Message.MessageType.SYSTEM_RESPONSE
             ai_message.text = final_content
-            ai_message.turn_number = 1  # Simple turn tracking
+            # turn_number assigned automatically by repository
             
             # NOTE: Thinking is already delivered via streaming chunks with content_type="thinking"
             # No need to store it in the final message - frontend handles it during streaming

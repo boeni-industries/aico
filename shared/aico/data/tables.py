@@ -1285,8 +1285,10 @@ conversation_messages = Table(
     Column('metadata_json', JSONB),
     Column('correlation_id', String),
     Column('request_id', String, nullable=False),
+    Column('turn_number', Integer, nullable=False),
     Column('created_at', TIMESTAMP(timezone=True), nullable=False),
     Index('idx_conversation_messages_conversation_time', 'tenant_id', 'conversation_id', 'created_at'),
+    Index('idx_conversation_messages_conversation_turn', 'tenant_id', 'conversation_id', 'turn_number'),
     Index('idx_conversation_messages_user_time', 'tenant_id', 'user_id', 'created_at'),
     Index(
         'idx_conversation_messages_correlation',
@@ -1295,6 +1297,7 @@ conversation_messages = Table(
         postgresql_where=text('correlation_id IS NOT NULL'),
     ),
     UniqueConstraint('tenant_id', 'user_id', 'request_id', 'message_type', name='uq_conversation_messages_request'),
+    UniqueConstraint('tenant_id', 'conversation_id', 'turn_number', name='uq_conversation_messages_turn'),
 )
 
 interaction_requests = Table(
