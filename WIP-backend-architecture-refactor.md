@@ -53,7 +53,7 @@
 - [ ] Strengthen catch-up cursor semantics (add stable ordering/tiebreak; avoid timestamp-only edge cases).
 
 ### Low
-- [ ] Remove remaining legacy/no-op/deprecated endpoints and startup stubs (e.g. deprecated conversation endpoints; no-op broker startup paths).
+- [x] Remove remaining legacy/no-op/deprecated endpoints and startup stubs (e.g. deprecated conversation endpoints; no-op broker startup paths).
 - [x] **Refine conversation WS subscription scoping (✅ COMPLETE: Gateway adapter routes messages to authenticated users based on `user_uuid` in NATS metadata; no global topic filtering needed; each user receives only their own messages)**
 
 ## Make backend stateless (completed)
