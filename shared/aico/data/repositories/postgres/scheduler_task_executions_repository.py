@@ -4,10 +4,10 @@ SchedulerTaskExecutionsRepository - PostgreSQL implementation
 Handles CRUD operations for scheduler task executions.
 """
 
-from typing import Optional, List
+from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime, UTC
 import json
-from sqlalchemy import select, update, delete, and_, func
+from sqlalchemy import select, update, delete, and_, func, or_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aico.data.scheduler.models import TaskExecution
@@ -58,6 +58,31 @@ class PostgresSchedulerTaskExecutionsRepository(Repository[TaskExecution]):
         if not row:
             return None
         
+        return TaskExecution(
+            id=row.id,
+            task_id=row.task_id,
+            execution_id=row.execution_id,
+            run_key=getattr(row, "run_key", None),
+            status=row.status,
+            started_at=row.started_at,
+            completed_at=row.completed_at,
+            result=row.result,
+            error_message=row.error_message,
+            duration_seconds=row.duration_seconds,
+            acknowledged=row.acknowledged,
+        )
+
+    async def get_by_execution_id(self, execution_id: str) -> Optional[TaskExecution]:
+        """Get task execution by execution_id (stable external identifier)."""
+        stmt = select(scheduler_task_executions).where(
+            scheduler_task_executions.c.execution_id == execution_id
+        )
+        result = await self.session.execute(stmt)
+        row = result.fetchone()
+
+        if not row:
+            return None
+
         return TaskExecution(
             id=row.id,
             task_id=row.task_id,
@@ -168,6 +193,114 @@ class PostgresSchedulerTaskExecutionsRepository(Repository[TaskExecution]):
                 acknowledged=row.acknowledged,
             )
             for row in result.fetchall()
+        ]
+
+    async def list_in_range_cursor(
+        self,
+        *,
+        start_dt: datetime,
+        end_dt: datetime,
+        limit: int,
+        cursor_started_at: datetime | None = None,
+        cursor_execution_id: str | None = None,
+        task_id: str | None = None,
+        status: str | None = None,
+        include_acknowledged: bool = True,
+    ) -> List[TaskExecution]:
+        """List executions in a time range using cursor pagination.
+
+        Ordering is stable: started_at DESC, execution_id DESC.
+        Cursor semantics: return items strictly before (cursor_started_at, cursor_execution_id).
+        """
+
+        stmt = select(scheduler_task_executions)
+
+        conditions = [
+            scheduler_task_executions.c.started_at >= start_dt,
+            scheduler_task_executions.c.started_at <= end_dt,
+        ]
+
+        if task_id:
+            conditions.append(scheduler_task_executions.c.task_id == task_id)
+        if status:
+            conditions.append(scheduler_task_executions.c.status == status)
+        if not include_acknowledged:
+            conditions.append(scheduler_task_executions.c.acknowledged.is_(False))
+
+        if cursor_started_at and cursor_execution_id:
+            conditions.append(
+                or_(
+                    scheduler_task_executions.c.started_at < cursor_started_at,
+                    and_(
+                        scheduler_task_executions.c.started_at == cursor_started_at,
+                        scheduler_task_executions.c.execution_id < cursor_execution_id,
+                    ),
+                )
+            )
+
+        stmt = (
+            stmt.where(and_(*conditions))
+            .order_by(desc(scheduler_task_executions.c.started_at), desc(scheduler_task_executions.c.execution_id))
+            .limit(limit)
+        )
+
+        result = await self.session.execute(stmt)
+        rows = result.fetchall()
+
+        return [
+            TaskExecution(
+                id=row.id,
+                task_id=row.task_id,
+                execution_id=row.execution_id,
+                run_key=getattr(row, "run_key", None),
+                status=row.status,
+                started_at=row.started_at,
+                completed_at=row.completed_at,
+                result=row.result,
+                error_message=row.error_message,
+                duration_seconds=row.duration_seconds,
+                acknowledged=row.acknowledged,
+            )
+            for row in rows
+        ]
+
+    async def stats_in_range(
+        self,
+        *,
+        start_dt: datetime,
+        end_dt: datetime,
+        bucket: Literal["hour", "day"] = "hour",
+        task_id: str | None = None,
+    ) -> List[Dict[str, Any]]:
+        """Aggregate execution counts grouped into time buckets and status."""
+
+        bucket_expr = func.date_trunc(bucket, scheduler_task_executions.c.started_at).label("bucket_start")
+        stmt = select(
+            bucket_expr,
+            scheduler_task_executions.c.status.label("status"),
+            func.count().label("count"),
+        ).where(
+            and_(
+                scheduler_task_executions.c.started_at >= start_dt,
+                scheduler_task_executions.c.started_at <= end_dt,
+            )
+        )
+
+        if task_id:
+            stmt = stmt.where(scheduler_task_executions.c.task_id == task_id)
+
+        stmt = stmt.group_by(bucket_expr, scheduler_task_executions.c.status).order_by(bucket_expr.asc())
+
+        result = await self.session.execute(stmt)
+        rows = result.fetchall()
+
+        return [
+            {
+                "bucket_start": row.bucket_start,
+                "status": row.status,
+                "count": int(row.count or 0),
+            }
+            for row in rows
         ]
     
     async def count(self, filters: Optional[dict] = None) -> int:

@@ -24,7 +24,10 @@ from .schemas import (
     SchedulerStatusResponse,
     TaskUpdateRequest,
     ApiResponse,
-    ValidationErrorResponse
+    ValidationErrorResponse,
+    ExecutionListResponse,
+    ExecutionDetailResponse,
+    ExecutionStatsResponse,
 )
 from .dependencies import (
     get_cron_parser,
@@ -372,6 +375,72 @@ async def get_executions_in_range(
         raise SchedulerNotAvailableError()
 
 
+@router.get("/executions", response_model=ExecutionListResponse)
+@handle_scheduler_exceptions
+async def list_executions(
+    start_time: str,
+    end_time: str,
+    limit: int = 200,
+    cursor_started_at: Optional[str] = None,
+    cursor_execution_id: Optional[str] = None,
+    task_id: Optional[str] = None,
+    status: Optional[str] = None,
+    include_acknowledged: bool = True,
+    _auth = Depends(require_admin_access),
+) -> ExecutionListResponse:
+    """List executions in a time range with cursor pagination."""
+    try:
+        if limit < 1 or limit > 500:
+            raise TaskValidationError("limit must be between 1 and 500")
+
+        nats_client = get_gateway_nats_client()
+        resp = await nats_client.request_scheduler_executions_list(
+            start_time=start_time,
+            end_time=end_time,
+            limit=limit,
+            cursor_started_at=cursor_started_at,
+            cursor_execution_id=cursor_execution_id,
+            task_id=task_id,
+            status=status,
+            include_acknowledged=include_acknowledged,
+        )
+        if resp.get("error"):
+            raise SchedulerNotAvailableError()
+
+        return ExecutionListResponse(**resp)
+    except TaskValidationError:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to list executions: {e}")
+        raise SchedulerNotAvailableError()
+
+
+@router.get("/executions/stats", response_model=ExecutionStatsResponse)
+@handle_scheduler_exceptions
+async def execution_stats(
+    start_time: str,
+    end_time: str,
+    bucket: str = "hour",
+    task_id: Optional[str] = None,
+    _auth = Depends(require_admin_access),
+) -> ExecutionStatsResponse:
+    """Get execution stats aggregated into time buckets."""
+    try:
+        nats_client = get_gateway_nats_client()
+        resp = await nats_client.request_scheduler_executions_stats(
+            start_time=start_time,
+            end_time=end_time,
+            bucket=bucket,
+            task_id=task_id,
+        )
+        if resp.get("error"):
+            raise SchedulerNotAvailableError()
+        return ExecutionStatsResponse(**resp)
+    except Exception as e:
+        logger.error(f"Failed to get execution stats: {e}")
+        raise SchedulerNotAvailableError()
+
+
 @router.get("/expected-runs-today", response_model=dict)
 @handle_scheduler_exceptions
 async def get_expected_runs_today(
@@ -465,6 +534,32 @@ async def get_unacknowledged_failures(
         
     except Exception as e:
         logger.error(f"Failed to get unacknowledged failures: {e}")
+        raise SchedulerNotAvailableError()
+
+
+@router.get("/executions/{execution_id}", response_model=ExecutionDetailResponse)
+@handle_scheduler_exceptions
+async def get_execution_details(
+    execution_id: str,
+    _auth = Depends(require_admin_access),
+) -> ExecutionDetailResponse:
+    """Get a single execution by execution_id."""
+    try:
+        nats_client = get_gateway_nats_client()
+        resp = await nats_client.request_scheduler_execution_get(execution_id)
+        if resp.get("error"):
+            if resp.get("error") == "EXECUTION_NOT_FOUND":
+                raise_api_error(
+                    status_code=404,
+                    error_code="SCHEDULER_EXECUTION_NOT_FOUND",
+                    message=str(resp.get("message") or f"Execution {execution_id} not found"),
+                )
+            raise SchedulerNotAvailableError()
+        return ExecutionDetailResponse(**resp)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get execution {execution_id}: {e}")
         raise SchedulerNotAvailableError()
 
 

@@ -395,6 +395,54 @@ class GatewayNATSClient:
         payload = json.dumps({"start_time": start_time, "end_time": end_time}).encode("utf-8")
         return await self._nats_request_with_trace("scheduler.executions.range", payload)
 
+    async def request_scheduler_executions_list(
+        self,
+        *,
+        start_time: str,
+        end_time: str,
+        limit: int = 200,
+        cursor_started_at: str | None = None,
+        cursor_execution_id: str | None = None,
+        task_id: str | None = None,
+        status: str | None = None,
+        include_acknowledged: bool = True,
+    ) -> Dict[str, Any]:
+        payload = json.dumps(
+            {
+                "start_time": start_time,
+                "end_time": end_time,
+                "limit": int(limit),
+                "cursor_started_at": cursor_started_at,
+                "cursor_execution_id": cursor_execution_id,
+                "task_id": task_id,
+                "status": status,
+                "include_acknowledged": bool(include_acknowledged),
+            }
+        ).encode("utf-8")
+        return await self._nats_request_with_trace("scheduler.executions.list", payload)
+
+    async def request_scheduler_execution_get(self, execution_id: str) -> Dict[str, Any]:
+        payload = json.dumps({"execution_id": execution_id}).encode("utf-8")
+        return await self._nats_request_with_trace("scheduler.executions.get", payload)
+
+    async def request_scheduler_executions_stats(
+        self,
+        *,
+        start_time: str,
+        end_time: str,
+        bucket: str = "hour",
+        task_id: str | None = None,
+    ) -> Dict[str, Any]:
+        payload = json.dumps(
+            {
+                "start_time": start_time,
+                "end_time": end_time,
+                "bucket": bucket,
+                "task_id": task_id,
+            }
+        ).encode("utf-8")
+        return await self._nats_request_with_trace("scheduler.executions.stats", payload)
+
     async def request_scheduler_unacknowledged_failures(self, task_id: str | None = None, limit: int = 100) -> Dict[str, Any]:
         payload = json.dumps({"task_id": task_id, "limit": int(limit)}).encode("utf-8")
         return await self._nats_request_with_trace("scheduler.executions.unacknowledged_failures", payload)

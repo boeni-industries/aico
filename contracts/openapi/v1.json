@@ -1656,6 +1656,209 @@
         "title": "EventsListResponse",
         "type": "object"
       },
+      "ExecutionDetailResponse": {
+        "description": "Detailed execution payload used for per-execution drilldown.",
+        "properties": {
+          "acknowledged": {
+            "default": false,
+            "title": "Acknowledged",
+            "type": "boolean"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "execution_id": {
+            "title": "Execution Id",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "started_at": {
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "execution_id",
+          "status",
+          "started_at",
+          "completed_at",
+          "error_message",
+          "duration_seconds"
+        ],
+        "title": "ExecutionDetailResponse",
+        "type": "object"
+      },
+      "ExecutionListResponse": {
+        "description": "Cursor-paginated response for listing executions in a time range.",
+        "properties": {
+          "end_time": {
+            "title": "End Time",
+            "type": "string"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExecutionSummaryResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "next_cursor_execution_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor Execution Id"
+          },
+          "next_cursor_started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor Started At"
+          },
+          "start_time": {
+            "title": "Start Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "has_more",
+          "limit",
+          "start_time",
+          "end_time"
+        ],
+        "title": "ExecutionListResponse",
+        "type": "object"
+      },
+      "ExecutionStatsBucket": {
+        "properties": {
+          "bucket_start": {
+            "title": "Bucket Start",
+            "type": "string"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bucket_start",
+          "status",
+          "count"
+        ],
+        "title": "ExecutionStatsBucket",
+        "type": "object"
+      },
+      "ExecutionStatsResponse": {
+        "properties": {
+          "bucket": {
+            "title": "Bucket",
+            "type": "string"
+          },
+          "end_time": {
+            "title": "End Time",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExecutionStatsBucket"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "start_time": {
+            "title": "Start Time",
+            "type": "string"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          }
+        },
+        "required": [
+          "items",
+          "bucket",
+          "start_time",
+          "end_time"
+        ],
+        "title": "ExecutionStatsResponse",
+        "type": "object"
+      },
       "ExecutionStatusAPI": {
         "description": "Execution status for plan executions.",
         "enum": [
@@ -1668,6 +1871,76 @@
         ],
         "title": "ExecutionStatusAPI",
         "type": "string"
+      },
+      "ExecutionSummaryResponse": {
+        "description": "Summary model for executions list endpoints (no heavy result payload).",
+        "properties": {
+          "acknowledged": {
+            "default": false,
+            "title": "Acknowledged",
+            "type": "boolean"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "execution_id": {
+            "title": "Execution Id",
+            "type": "string"
+          },
+          "started_at": {
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "execution_id",
+          "status",
+          "started_at",
+          "completed_at",
+          "error_message",
+          "duration_seconds"
+        ],
+        "title": "ExecutionSummaryResponse",
+        "type": "object"
       },
       "GQLQueryRequest": {
         "description": "Request schema for GQL/Cypher query execution.",
@@ -10376,6 +10649,147 @@
         ]
       }
     },
+    "/api/v1/scheduler/executions": {
+      "get": {
+        "description": "List executions in a time range with cursor pagination.",
+        "operationId": "list_executions_api_v1_scheduler_executions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start_time",
+            "required": true,
+            "schema": {
+              "title": "Start Time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_time",
+            "required": true,
+            "schema": {
+              "title": "End Time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor_started_at",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor Started At"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor_execution_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor Execution Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "task_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Task Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_acknowledged",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Include Acknowledged",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Executions",
+        "tags": [
+          "scheduler"
+        ]
+      }
+    },
     "/api/v1/scheduler/executions/acknowledge-all": {
       "post": {
         "description": "Mark all failed executions as acknowledged.\n\nQuery Parameters:\n    task_id: Optional task ID to limit acknowledgement to specific task",
@@ -10490,6 +10904,89 @@
         ]
       }
     },
+    "/api/v1/scheduler/executions/stats": {
+      "get": {
+        "description": "Get execution stats aggregated into time buckets.",
+        "operationId": "execution_stats_api_v1_scheduler_executions_stats_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start_time",
+            "required": true,
+            "schema": {
+              "title": "Start Time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_time",
+            "required": true,
+            "schema": {
+              "title": "End Time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bucket",
+            "required": false,
+            "schema": {
+              "default": "hour",
+              "title": "Bucket",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "task_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionStatsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Execution Stats",
+        "tags": [
+          "scheduler"
+        ]
+      }
+    },
     "/api/v1/scheduler/executions/unacknowledged-failures": {
       "get": {
         "description": "Get unacknowledged failed executions.\n\nQuery Parameters:\n    task_id: Optional task ID to filter by\n    limit: Maximum number of results (default: 100)",
@@ -10552,6 +11049,54 @@
           }
         ],
         "summary": "Get Unacknowledged Failures",
+        "tags": [
+          "scheduler"
+        ]
+      }
+    },
+    "/api/v1/scheduler/executions/{execution_id}": {
+      "get": {
+        "description": "Get a single execution by execution_id.",
+        "operationId": "get_execution_details_api_v1_scheduler_executions__execution_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "execution_id",
+            "required": true,
+            "schema": {
+              "title": "Execution Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Execution Details",
         "tags": [
           "scheduler"
         ]

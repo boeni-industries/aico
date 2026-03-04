@@ -517,6 +517,175 @@ class CoreNATSHandlers:
             self.logger.error(f"Failed to get executions in range: {e}", exc_info=True)
             return {"error": "SCHEDULER_ERROR", "message": str(e)}
 
+    async def handle_scheduler_executions_list_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """List executions in a time range with cursor pagination."""
+        try:
+            start_time = request_data.get("start_time")
+            end_time = request_data.get("end_time")
+            if not start_time or not end_time:
+                return {"error": "VALIDATION_ERROR", "message": "start_time and end_time are required"}
+
+            limit = int(request_data.get("limit", 200))
+            limit = max(1, min(limit, 500))
+
+            cursor_started_at_raw = request_data.get("cursor_started_at")
+            cursor_execution_id = request_data.get("cursor_execution_id")
+
+            task_id = request_data.get("task_id")
+            status = request_data.get("status")
+            include_acknowledged = bool(request_data.get("include_acknowledged", True))
+
+            from datetime import datetime
+
+            start_dt = datetime.fromisoformat(str(start_time).replace("Z", "+00:00"))
+            end_dt = datetime.fromisoformat(str(end_time).replace("Z", "+00:00"))
+
+            cursor_started_at = None
+            if cursor_started_at_raw:
+                cursor_started_at = datetime.fromisoformat(str(cursor_started_at_raw).replace("Z", "+00:00"))
+
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                executions = await scheduler_service.list_executions_in_range_cursor(
+                    start_dt=start_dt,
+                    end_dt=end_dt,
+                    limit=limit,
+                    cursor_started_at=cursor_started_at,
+                    cursor_execution_id=cursor_execution_id,
+                    task_id=task_id,
+                    status=status,
+                    include_acknowledged=include_acknowledged,
+                )
+
+            items = []
+            for exec_data in executions:
+                items.append(
+                    {
+                        "task_id": exec_data.task_id,
+                        "execution_id": exec_data.execution_id,
+                        "status": exec_data.status,
+                        "started_at": exec_data.started_at.isoformat() if getattr(exec_data, "started_at", None) else None,
+                        "completed_at": exec_data.completed_at.isoformat() if getattr(exec_data, "completed_at", None) else None,
+                        "error_message": exec_data.error_message,
+                        "duration_seconds": exec_data.duration_seconds,
+                        "acknowledged": bool(getattr(exec_data, "acknowledged", False)),
+                    }
+                )
+
+            next_cursor_started_at = None
+            next_cursor_execution_id = None
+            if items:
+                last = items[-1]
+                next_cursor_started_at = last.get("started_at")
+                next_cursor_execution_id = last.get("execution_id")
+
+            return {
+                "items": items,
+                "next_cursor_started_at": next_cursor_started_at,
+                "next_cursor_execution_id": next_cursor_execution_id,
+                "has_more": bool(len(items) == limit),
+                "limit": limit,
+                "start_time": start_time,
+                "end_time": end_time,
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to list executions: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_execution_get_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Get a single execution by execution_id."""
+        try:
+            execution_id = request_data.get("execution_id")
+            if not execution_id:
+                return {"error": "VALIDATION_ERROR", "message": "execution_id is required"}
+
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                execution = await scheduler_service.get_execution_by_execution_id(str(execution_id))
+
+            if not execution:
+                return {"error": "EXECUTION_NOT_FOUND", "message": f"Execution not found: {execution_id}"}
+
+            return {
+                "task_id": execution.task_id,
+                "execution_id": execution.execution_id,
+                "status": execution.status,
+                "started_at": execution.started_at.isoformat() if getattr(execution, "started_at", None) else None,
+                "completed_at": execution.completed_at.isoformat() if getattr(execution, "completed_at", None) else None,
+                "result": execution.result,
+                "error_message": execution.error_message,
+                "duration_seconds": execution.duration_seconds,
+                "acknowledged": bool(getattr(execution, "acknowledged", False)),
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to get execution: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_executions_stats_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Get execution stats buckets in a time range."""
+        try:
+            start_time = request_data.get("start_time")
+            end_time = request_data.get("end_time")
+            if not start_time or not end_time:
+                return {"error": "VALIDATION_ERROR", "message": "start_time and end_time are required"}
+
+            bucket = str(request_data.get("bucket") or "hour")
+            if bucket not in {"hour", "day"}:
+                return {"error": "VALIDATION_ERROR", "message": "bucket must be 'hour' or 'day'"}
+
+            task_id = request_data.get("task_id")
+
+            from datetime import datetime
+
+            start_dt = datetime.fromisoformat(str(start_time).replace("Z", "+00:00"))
+            end_dt = datetime.fromisoformat(str(end_time).replace("Z", "+00:00"))
+
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                rows = await scheduler_service.get_execution_stats_in_range(
+                    start_dt=start_dt,
+                    end_dt=end_dt,
+                    bucket=bucket,
+                    task_id=task_id,
+                )
+
+            items = []
+            for row in rows:
+                bucket_start = row.get("bucket_start")
+                items.append(
+                    {
+                        "bucket_start": bucket_start.isoformat() if hasattr(bucket_start, "isoformat") else bucket_start,
+                        "status": row.get("status"),
+                        "count": int(row.get("count") or 0),
+                    }
+                )
+
+            return {
+                "items": items,
+                "bucket": bucket,
+                "start_time": start_time,
+                "end_time": end_time,
+                "task_id": task_id,
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to get execution stats: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
     async def handle_scheduler_unacknowledged_failures_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Get unacknowledged failed executions."""
         try:
@@ -2452,6 +2621,27 @@ class CoreNATSHandlers:
         )
         self.logger.info(f"✅ Subscribed to scheduler.executions.range (sid={sid2i})")
 
+        self.logger.info("Subscribing to scheduler.executions.list...")
+        sid2i_list = await message_bus_client._nats.subscribe(
+            "scheduler.executions.list",
+            cb=make_handler(self.handle_scheduler_executions_list_request, "scheduler.executions.list.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.executions.list (sid={sid2i_list})")
+
+        self.logger.info("Subscribing to scheduler.executions.get...")
+        sid2i_get = await message_bus_client._nats.subscribe(
+            "scheduler.executions.get",
+            cb=make_handler(self.handle_scheduler_execution_get_request, "scheduler.executions.get.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.executions.get (sid={sid2i_get})")
+
+        self.logger.info("Subscribing to scheduler.executions.stats...")
+        sid2i_stats = await message_bus_client._nats.subscribe(
+            "scheduler.executions.stats",
+            cb=make_handler(self.handle_scheduler_executions_stats_request, "scheduler.executions.stats.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.executions.stats (sid={sid2i_stats})")
+
         self.logger.info("Subscribing to scheduler.executions.unacknowledged_failures...")
         sid2j = await message_bus_client._nats.subscribe(
             "scheduler.executions.unacknowledged_failures",
@@ -2652,6 +2842,175 @@ class CoreNATSHandlers:
         self.logger.info("Subscribing to agency.skill.invoke...")
         await message_bus_client._nats.subscribe("agency.skill.invoke", cb=make_handler(self.handle_agency_skill_invoke_request, "agency.skill.invoke.reply"))
         
+        self.logger.info("Subscribing to agency.connectivity.scan...")
+        await message_bus_client._nats.subscribe("agency.connectivity.scan", cb=make_handler(self.handle_agency_connectivity_scan_request, "agency.connectivity.scan.reply"))
+        
+        self.logger.info("Subscribing to agency.tools.list...")
+        await message_bus_client._nats.subscribe("agency.tools.list", cb=make_handler(self.handle_agency_tools_list_request, "agency.tools.list.reply"))
+        
+        self.logger.info("Subscribing to agency.tool.info...")
+        await message_bus_client._nats.subscribe("agency.tool.info", cb=make_handler(self.handle_agency_tool_info_request, "agency.tool.info.reply"))
+        
+        self.logger.info("Subscribing to agency.tool.invoke...")
+        await message_bus_client._nats.subscribe("agency.tool.invoke", cb=make_handler(self.handle_agency_tool_invoke_request, "agency.tool.invoke.reply"))
+        
+        self.logger.info("Subscribing to agency.reflection.runs...")
+        await message_bus_client._nats.subscribe("agency.reflection.runs", cb=make_handler(self.handle_agency_reflection_runs_request, "agency.reflection.runs.reply"))
+        
+        self.logger.info("Subscribing to agency.reflection.lessons...")
+        await message_bus_client._nats.subscribe("agency.reflection.lessons", cb=make_handler(self.handle_agency_reflection_lessons_request, "agency.reflection.lessons.reply"))
+        
+        self.logger.info("Subscribing to agency.reflection.self_model...")
+        await message_bus_client._nats.subscribe("agency.reflection.self_model", cb=make_handler(self.handle_agency_reflection_self_model_request, "agency.reflection.self_model.reply"))
+        
+        self.logger.info("Subscribing to agency.skill.performance...")
+        await message_bus_client._nats.subscribe("agency.skill.performance", cb=make_handler(self.handle_agency_skill_performance_request, "agency.skill.performance.reply"))
+        
+        self.logger.info("Subscribing to agency.reflection.summary...")
+        await message_bus_client._nats.subscribe("agency.reflection.summary", cb=make_handler(self.handle_agency_reflection_summary_request, "agency.reflection.summary.reply"))
+        
+        self.logger.info("✅ Subscribed to all 26 agency endpoints")
+        
+        self.logger.info("Subscribing to operations.databases...")
+        sid8 = await message_bus_client._nats.subscribe(
+            "operations.databases",
+            cb=make_handler(self.handle_operations_databases_request, "operations.databases.reply")
+        )
+        self.logger.info(f"✅ Subscribed to operations.databases (sid={sid8})")
+
+        self.logger.info("Subscribing to operations.databases.postgresql.schema...")
+        sid8b = await message_bus_client._nats.subscribe(
+            "operations.databases.postgresql.schema",
+            cb=make_handler(
+                self.handle_operations_postgresql_schema_request,
+                "operations.databases.postgresql.schema.reply",
+            )
+        )
+        self.logger.info(f"✅ Subscribed to operations.databases.postgresql.schema (sid={sid8b})")
+
+        self.logger.info("Subscribing to operations.databases.postgresql.details...")
+        sid8c = await message_bus_client._nats.subscribe(
+            "operations.databases.postgresql.details",
+            cb=make_handler(
+                self.handle_operations_postgresql_details_request,
+                "operations.databases.postgresql.details.reply",
+            )
+        )
+        self.logger.info(f"✅ Subscribed to operations.databases.postgresql.details (sid={sid8c})")
+        
+        self.logger.info("Subscribing to operations.topology...")
+        sid9 = await message_bus_client._nats.subscribe(
+            "operations.topology",
+            cb=make_handler(self.handle_operations_topology_request, "operations.topology.reply")
+        )
+        self.logger.info(f"✅ Subscribed to operations.topology (sid={sid9})")
+        
+        self.logger.info("Subscribing to operations.backup.create...")
+        sid10a = await message_bus_client._nats.subscribe(
+            "operations.backup.create",
+            cb=make_handler(self.handle_operations_create_backup_request, "operations.backup.create.reply")
+        )
+        self.logger.info(f"✅ Subscribed to operations.backup.create (sid={sid10a})")
+        
+        self.logger.info("Subscribing to operations.backup_sets...")
+        sid10 = await message_bus_client._nats.subscribe(
+            "operations.backup_sets",
+            cb=make_handler(self.handle_operations_backup_sets_request, "operations.backup_sets.reply")
+        )
+        self.logger.info(f"✅ Subscribed to operations.backup_sets (sid={sid10})")
+        
+        self.logger.info("Subscribing to scheduler.expected_runs_today...")
+        sid11 = await message_bus_client._nats.subscribe(
+            "scheduler.expected_runs_today",
+            cb=make_handler(self.handle_scheduler_expected_runs_today_request, "scheduler.expected_runs_today.reply")
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.expected_runs_today (sid={sid11})")
+        
+        self.logger.info("Subscribing to system.metrics.all...")
+        sid12 = await message_bus_client._nats.subscribe(
+            "system.metrics.all",
+            cb=make_handler(self.handle_system_metrics_all_request, "system.metrics.all.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.metrics.all (sid={sid12})")
+        
+        self.logger.info("Subscribing to system.overview...")
+        sid13 = await message_bus_client._nats.subscribe(
+            "system.overview",
+            cb=make_handler(self.handle_system_overview_request, "system.overview.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.overview (sid={sid13})")
+        
+        self.logger.info("Subscribing to system.health...")
+        sid14 = await message_bus_client._nats.subscribe(
+            "system.health",
+            cb=make_handler(self.handle_system_health_request, "system.health.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health (sid={sid14})")
+        
+        self.logger.info("Subscribing to system.health.services...")
+        sid15 = await message_bus_client._nats.subscribe(
+            "system.health.services",
+            cb=make_handler(self.handle_system_health_services_request, "system.health.services.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health.services (sid={sid15})")
+        
+        self.logger.info("Subscribing to system.health.issues...")
+        sid16 = await message_bus_client._nats.subscribe(
+            "system.health.issues",
+            cb=make_handler(self.handle_system_health_issues_request, "system.health.issues.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health.issues (sid={sid16})")
+        
+        self.logger.info("Subscribing to system.remediate.available...")
+        sid17 = await message_bus_client._nats.subscribe(
+            "system.remediate.available",
+            cb=make_handler(self.handle_remediate_available_request, "system.remediate.available.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.remediate.available (sid={sid17})")
+        
+        self.logger.info("Subscribing to system.remediate.history...")
+        sid18 = await message_bus_client._nats.subscribe(
+            "system.remediate.history",
+            cb=make_handler(self.handle_remediate_history_request, "system.remediate.history.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.remediate.history (sid={sid18})")
+
+        self.logger.info("Subscribing to system.remediate.trigger...")
+        sid18b = await message_bus_client._nats.subscribe(
+            "system.remediate.trigger",
+            cb=make_handler(self.handle_remediate_trigger_request, "system.remediate.trigger.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.remediate.trigger (sid={sid18b})")
+        
+        self.logger.info("Subscribing to system.health.check.connectivity...")
+        sid19 = await message_bus_client._nats.subscribe(
+            "system.health.check.connectivity",
+            cb=make_handler(self.handle_health_check_connectivity_request, "system.health.check.connectivity.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health.check.connectivity (sid={sid19})")
+        
+        self.logger.info("Subscribing to system.health.check.resources...")
+        sid20 = await message_bus_client._nats.subscribe(
+            "system.health.check.resources",
+            cb=make_handler(self.handle_health_check_resources_request, "system.health.check.resources.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health.check.resources (sid={sid20})")
+        
+        self.logger.info("Subscribing to system.health.check.models...")
+        sid21 = await message_bus_client._nats.subscribe(
+            "system.health.check.models",
+            cb=make_handler(self.handle_health_check_models_request, "system.health.check.models.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health.check.models (sid={sid21})")
+        
+        self.logger.info("Subscribing to system.health.check.ai_behaviour...")
+        sid22 = await message_bus_client._nats.subscribe(
+            "system.health.check.ai_behaviour",
+            cb=make_handler(self.handle_health_check_ai_behaviour_request, "system.health.check.ai_behaviour.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health.check.ai_behaviour (sid={sid22})")
+        
+        self.logger.info("Core NATS request handlers registered (scheduler, emotion, memory, kg, operations, system, health checks)")
         self.logger.info("Subscribing to agency.connectivity.scan...")
         await message_bus_client._nats.subscribe("agency.connectivity.scan", cb=make_handler(self.handle_agency_connectivity_scan_request, "agency.connectivity.scan.reply"))
         

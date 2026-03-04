@@ -189,6 +189,74 @@ class SchedulerService:
             logger.error(f"[SCHEDULER_SERVICE] Failed to get recent executions: {e}")
             raise
 
+    async def get_execution_by_execution_id(self, execution_id: str) -> Optional[Any]:
+        """Get a single execution by its stable execution_id."""
+        try:
+            repo = self.uow.scheduler_task_executions
+            get_by_execution_id = getattr(repo, "get_by_execution_id", None)
+            if get_by_execution_id is None:
+                raise RuntimeError("scheduler_task_executions repository missing get_by_execution_id")
+            return await get_by_execution_id(execution_id)
+        except Exception as e:
+            logger.error(f"[SCHEDULER_SERVICE] Failed to get execution: {e}", extra={"execution_id": execution_id})
+            raise
+
+    async def list_executions_in_range_cursor(
+        self,
+        *,
+        start_dt: datetime,
+        end_dt: datetime,
+        limit: int,
+        cursor_started_at: datetime | None = None,
+        cursor_execution_id: str | None = None,
+        task_id: str | None = None,
+        status: str | None = None,
+        include_acknowledged: bool = True,
+    ) -> List[Any]:
+        """List executions in a time range with cursor pagination."""
+        try:
+            repo = self.uow.scheduler_task_executions
+            list_in_range_cursor = getattr(repo, "list_in_range_cursor", None)
+            if list_in_range_cursor is None:
+                raise RuntimeError("scheduler_task_executions repository missing list_in_range_cursor")
+            return await list_in_range_cursor(
+                start_dt=start_dt,
+                end_dt=end_dt,
+                limit=limit,
+                cursor_started_at=cursor_started_at,
+                cursor_execution_id=cursor_execution_id,
+                task_id=task_id,
+                status=status,
+                include_acknowledged=include_acknowledged,
+            )
+        except Exception as e:
+            logger.error(f"[SCHEDULER_SERVICE] Failed to list executions: {e}")
+            raise
+
+    async def get_execution_stats_in_range(
+        self,
+        *,
+        start_dt: datetime,
+        end_dt: datetime,
+        bucket: str = "hour",
+        task_id: str | None = None,
+    ) -> List[Dict[str, Any]]:
+        """Get execution stats buckets in time range."""
+        try:
+            repo = self.uow.scheduler_task_executions
+            stats_in_range = getattr(repo, "stats_in_range", None)
+            if stats_in_range is None:
+                raise RuntimeError("scheduler_task_executions repository missing stats_in_range")
+            return await stats_in_range(
+                start_dt=start_dt,
+                end_dt=end_dt,
+                bucket=bucket,
+                task_id=task_id,
+            )
+        except Exception as e:
+            logger.error(f"[SCHEDULER_SERVICE] Failed to get execution stats: {e}")
+            raise
+
     async def update_execution(self, execution_data: Dict[str, Any]) -> Dict[str, Any]:
         """Update an execution record."""
         try:

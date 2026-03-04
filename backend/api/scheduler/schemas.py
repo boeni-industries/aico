@@ -66,6 +66,51 @@ class TaskExecutionResponse(BaseModel):
     duration_seconds: Optional[float]
 
 
+class ExecutionSummaryResponse(BaseModel):
+    """Summary model for executions list endpoints (no heavy result payload)."""
+
+    task_id: str
+    execution_id: str
+    status: str
+    started_at: str
+    completed_at: Optional[str]
+    error_message: Optional[str]
+    duration_seconds: Optional[float]
+    acknowledged: bool = False
+
+
+class ExecutionDetailResponse(ExecutionSummaryResponse):
+    """Detailed execution payload used for per-execution drilldown."""
+
+    result: Optional[Any] = None
+
+
+class ExecutionListResponse(BaseModel):
+    """Cursor-paginated response for listing executions in a time range."""
+
+    items: List[ExecutionSummaryResponse]
+    next_cursor_started_at: Optional[str] = None
+    next_cursor_execution_id: Optional[str] = None
+    has_more: bool
+    limit: int
+    start_time: str
+    end_time: str
+
+
+class ExecutionStatsBucket(BaseModel):
+    bucket_start: str
+    status: str
+    count: int
+
+
+class ExecutionStatsResponse(BaseModel):
+    items: List[ExecutionStatsBucket]
+    bucket: str
+    start_time: str
+    end_time: str
+    task_id: Optional[str] = None
+
+
 class TaskStatusResponse(BaseModel):
     """Response model for task status"""
     task_id: str
