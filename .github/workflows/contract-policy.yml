@@ -16,8 +16,22 @@ jobs:
       - name: Check if contracts changed
         id: contracts_changed
         run: |
-          if git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -q '^contracts/'; then
+          BEFORE_SHA="${{ github.event.before }}"
+          AFTER_SHA="${{ github.sha }}"
+
+          # Determine which contract files changed, excluding the contract changelog itself and
+          # excluding contract tooling/config-only files.
+          CHANGED_CONTRACT_FILES=$(git diff --name-only "$BEFORE_SHA" "$AFTER_SHA" \
+            | grep '^contracts/' \
+            | grep -v '^contracts/CHANGELOG.md$' \
+            | grep -v '^contracts/.*/buf\.ya?ml$' \
+            || true)
+
+          if [ -n "$CHANGED_CONTRACT_FILES" ]; then
             echo "changed=true" >> $GITHUB_OUTPUT
+            echo "changed_files<<EOF" >> $GITHUB_OUTPUT
+            echo "$CHANGED_CONTRACT_FILES" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
           else
             echo "changed=false" >> $GITHUB_OUTPUT
           fi
@@ -34,7 +48,7 @@ jobs:
             echo "Policy: Any change to /contracts/** requires an entry in contracts/CHANGELOG.md"
             echo ""
             echo "Changed contract files:"
-            git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^contracts/'
+            echo "${{ steps.contracts_changed.outputs.changed_files }}"
             echo ""
             echo "Please add an entry to contracts/CHANGELOG.md explaining:"
             echo "  - What changed (new endpoints, fields, etc.)"
