@@ -27,6 +27,25 @@ services:
       com.aico.managed-by: "aico-cli"
       com.aico.deployment.type: "local-dev"
 
+  valkey:
+    image: valkey/valkey:8.0.1
+    container_name: aico-valkey
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - aico-valkeydata:/data
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "valkey"
+      com.aico.service.type: "cache"
+      com.aico.service.role: "rate-limiting-store"
+      org.opencontainers.image.title: "AICO Valkey"
+      org.opencontainers.image.description: "Valkey (Redis-compatible) store for gateway rate limiting"
+      org.opencontainers.image.vendor: "AICO"
+      com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev"
+
   gateway:
     build:
       context: ..
@@ -40,6 +59,7 @@ services:
       AICO_CACHE_DIR: /var/cache/aico
       AICO_RUNTIME_DIR: /run/aico
       AICO_NATS_URL: nats://nats:4222
+      AICO_VALKEY_URL: redis://valkey:6379/0
       AICO_INSTRUMENTATION_ENABLED: "true"
       AICO_INSTRUMENTATION_MODE: "dev"
       AICO_LOKI_URL: http://loki:3100
@@ -63,6 +83,7 @@ services:
     depends_on:
       - postgres
       - nats
+      - valkey
     labels:
       com.aico.project: "aico"
       com.aico.component: "gateway"
@@ -89,6 +110,7 @@ services:
       AICO_CACHE_DIR: /var/cache/aico
       AICO_RUNTIME_DIR: /run/aico
       AICO_NATS_URL: nats://nats:4222
+      AICO_VALKEY_URL: redis://valkey:6379/0
       AICO_INSTRUMENTATION_ENABLED: "true"
       AICO_INSTRUMENTATION_MODE: "dev"
       AICO_LOKI_URL: http://loki:3100
@@ -106,6 +128,7 @@ services:
     depends_on:
       - postgres
       - nats
+      - valkey
     labels:
       com.aico.project: "aico"
       com.aico.component: "core"
@@ -395,6 +418,9 @@ volumes:
   aico-natsdata:
     external: true
     name: aico-natsdata
+
+  aico-valkeydata:
+    name: aico-valkeydata
   aico-lokidata:
     external: true
     name: aico-lokidata

@@ -227,6 +227,16 @@ class EncryptionMiddleware:
             self.logger.debug(f"Available channels: {list(self.channels.keys())}")
             self.logger.debug(f"Client ID: {client_id}")
             self.logger.debug(f"Channel found: {channel is not None}")
+
+            allowlist_prefixes = (
+                "/api/v1/health",
+                "/api/v1/system/health",
+                "/api/v1/system/remediate",
+                "/api/v1/system/metrics",
+            )
+            if path.startswith(allowlist_prefixes):
+                await self.app(scope, receive, send)
+                return
             
             if not channel or not channel.is_session_valid():
                 if self.require_encryption:
@@ -618,6 +628,14 @@ class EncryptionMiddleware:
                                 }
                             )
                             await response(scope, receive, send)
+                            return
+                        except HTTPException as e:
+                            if e.status_code >= 500:
+                                self.logger.error(f"Downstream HTTPException: {e.status_code}: {e.detail}", exc_info=True)
+                            else:
+                                self.logger.warning(f"Downstream HTTPException: {e.status_code}: {e.detail}")
+                            response = JSONResponse(status_code=e.status_code, content={"detail": e.detail})
+                            await response(scope, receive, encrypt_send)
                             return
                         except Exception as e:
                             self.logger.error(f"Unexpected decryption error: {e}", exc_info=True)

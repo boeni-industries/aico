@@ -565,6 +565,7 @@ class ConfigurationManager:
             "AICO_ENVIRONMENT": "system.environment",
             "AICO_API_HOST": "api_gateway.host",
             "AICO_REST_HOST": "api_gateway.rest.host",
+            "AICO_VALKEY_URL": "api_gateway.rate_limiting.valkey_url",
             "AICO_NATS_URL": "message_bus.nats_url",
             "AICO_INSTRUMENTATION_ENABLED": "instrumentation.enabled",
             "AICO_INSTRUMENTATION_MODE": "instrumentation.mode",

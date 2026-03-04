@@ -42,7 +42,7 @@ async def get_system_overview(_auth: dict = Depends(get_current_user)):
 
 
 @router.get("/health")
-async def get_system_health(_auth: dict = Depends(get_current_user)):
+async def get_system_health():
     """Get system health (gateway→core NATS proxy)"""
     try:
         from backend.api_gateway.core.nats_client import get_gateway_nats_client
@@ -53,7 +53,7 @@ async def get_system_health(_auth: dict = Depends(get_current_user)):
 
 
 @router.get("/health/services")
-async def get_health_services(_auth: dict = Depends(get_current_user)):
+async def get_health_services():
     """Get health services (gateway→core NATS proxy)"""
     try:
         from backend.api_gateway.core.nats_client import get_gateway_nats_client
@@ -64,7 +64,7 @@ async def get_health_services(_auth: dict = Depends(get_current_user)):
 
 
 @router.get("/health/issues")
-async def get_health_issues(_auth: dict = Depends(get_current_user)):
+async def get_health_issues():
     """Get system health issues (gateway→core NATS proxy)"""
     try:
         from backend.api_gateway.core.nats_client import get_gateway_nats_client
@@ -75,7 +75,7 @@ async def get_health_issues(_auth: dict = Depends(get_current_user)):
 
 
 @router.get("/remediate/available")
-async def get_available_remediations(_auth: dict = Depends(get_current_user)):
+async def get_available_remediations():
     """Get available remediation actions (gateway→core NATS proxy)"""
     try:
         from backend.api_gateway.core.nats_client import get_gateway_nats_client
@@ -87,7 +87,6 @@ async def get_available_remediations(_auth: dict = Depends(get_current_user)):
 
 @router.get("/remediate/history")
 async def get_remediation_history(
-    _auth: dict = Depends(get_current_user),
     limit: int = 20
 ):
     """Get remediation history (gateway→core NATS proxy)"""

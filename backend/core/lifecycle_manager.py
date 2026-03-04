@@ -1021,6 +1021,16 @@ class BackendLifecycleManager:
         from backend.api_gateway.middleware.idempotency import IdempotencyMiddleware
         self.app.add_middleware(IdempotencyMiddleware)
 
+        # 2c. Rate limiting middleware (Valkey-backed; fail-open)
+        from starlette.middleware.base import BaseHTTPMiddleware
+        from backend.api_gateway.middleware.rate_limiter import ValkeyFixedWindowRateLimiterMiddleware
+
+        rate_limiter = ValkeyFixedWindowRateLimiterMiddleware(self.config, self.app)
+        self.app.add_middleware(
+            BaseHTTPMiddleware,
+            dispatch=rate_limiter.dispatch,
+        )
+
         # 3. Correlation context middleware (request-scoped IDs for structured logging)
         from fastapi import Request
 
@@ -1055,7 +1065,12 @@ class BackendLifecycleManager:
             response = await call_next(request)
 
             if request.url.path.startswith("/api/v1/") and response.status_code >= 400:
-                self.logger.warning(f"Response: {request.method} {request.url.path} -> {response.status_code}")
+                if response.status_code == 429:
+                    self.logger.warning(
+                        f"rate_limiter.rate_limited Response: {request.method} {request.url.path} -> {response.status_code}"
+                    )
+                else:
+                    self.logger.warning(f"Response: {request.method} {request.url.path} -> {response.status_code}")
 
             return response
         

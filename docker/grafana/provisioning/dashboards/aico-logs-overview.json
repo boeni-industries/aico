@@ -71,7 +71,7 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
+        "w": 5,
         "x": 0,
         "y": 6
       },
@@ -100,7 +100,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({service=~\"$service\", level=~\"$level\"} |~ \"$search\" [$__range]))",
+          "expr": "sum(count_over_time({service=~\"$service\", level=~\"$level\"} |~ \"$search\" [$__range])) or vector(0)",
           "queryType": "instant",
           "refId": "A"
         }
@@ -142,8 +142,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 6,
+        "w": 5,
+        "x": 10,
         "y": 6
       },
       "id": 3,
@@ -171,7 +171,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({service=~\"$service\", level=\"ERROR\"} |~ \"$search\" [$__range]))",
+          "expr": "sum(count_over_time({service=~\"$service\", level=\"ERROR\"} |~ \"$search\" [$__range])) or vector(0)",
           "queryType": "instant",
           "refId": "A"
         }
@@ -213,8 +213,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 12,
+        "w": 5,
+        "x": 5,
         "y": 6
       },
       "id": 4,
@@ -242,7 +242,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({service=~\"$service\", level=\"CRITICAL\"} |~ \"$search\" [$__range]))",
+          "expr": "sum(count_over_time({service=~\"$service\", level=\"CRITICAL\"} |~ \"$search\" [$__range])) or vector(0)",
           "queryType": "instant",
           "refId": "A"
         }
@@ -276,8 +276,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 18,
+        "w": 5,
+        "x": 15,
         "y": 6
       },
       "id": 5,
@@ -305,12 +305,75 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({service=~\"$service\", level=\"WARNING\"} |~ \"$search\" [$__range]))",
+          "expr": "sum(count_over_time({service=~\"$service\", level=\"WARNING\"} |~ \"$search\" [$__range])) or vector(0)",
           "queryType": "instant",
           "refId": "A"
         }
       ],
       "title": "⚠️ Warning Count",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 6
+      },
+      "id": 15,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.4.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({service=~\"$service\"} |= \"rate_limiter.rate_limited\" [$__range])) or vector(0)",
+          "queryType": "instant",
+          "refId": "A"
+        }
+      ],
+      "title": "🚦 Rate Limiting Hits",
       "type": "stat"
     },
     {
@@ -799,6 +862,106 @@
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
+            "fillOpacity": 30,
+            "gradientMode": "opacity",
+            "hideFrom": {
+              "tooltip": false,
+              "viz": false,
+              "legend": false
+            },
+            "insertNulls": true,
+            "lineInterpolation": "smooth",
+            "lineWidth": 3,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 34
+      },
+      "id": 14,
+      "interval": "1m",
+      "intervalFactor": 1,
+      "options": {
+        "legend": {
+          "calcs": [
+            "sum",
+            "max",
+            "last"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({service=~\"$service\"} |= \"rate_limiter.rate_limited\" [1m])) or vector(0)",
+          "legendFormat": "rate_limited",
+          "interval": "1m",
+          "intervalMs": 60000,
+          "maxDataPoints": 60,
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "🚦 Rate Limit Hits (HTTP 429)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
             "fillOpacity": 40,
             "gradientMode": "opacity",
             "hideFrom": {
@@ -842,8 +1005,8 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 24,
-        "x": 0,
+        "w": 12,
+        "x": 12,
         "y": 34
       },
       "id": 11,
