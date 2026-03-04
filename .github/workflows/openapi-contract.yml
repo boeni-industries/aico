@@ -17,10 +17,13 @@ jobs:
           python-version: "3.13"
 
       - name: Sync dependencies
-        run: uv sync --extra backend
+        working-directory: backend
+        run: uv sync --frozen
 
       - name: Verify OpenAPI artifact is up to date
-        run: uv run python scripts/generate_openapi_public.py --check
+        working-directory: backend
+        run: uv run python ../scripts/generate_openapi_public.py --check
 
       - name: Verify internal OpenAPI artifact is up to date
-        run: uv run python scripts/generate_openapi_internal.py --check
+        working-directory: backend
+        run: uv run python ../scripts/generate_openapi_internal.py --check
