@@ -22,4 +22,4 @@ jobs:
 
       - name: Verify NATS contract artifact is up to date
         working-directory: backend
-        run: uv run python ../scripts/generate_nats_contract.py --check
+        run: uv run python ../scripts/generate_nats_contract.py --check --output ../contracts/nats/v1.json
