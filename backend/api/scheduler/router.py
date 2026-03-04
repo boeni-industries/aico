@@ -11,9 +11,7 @@ import json
 import time
 
 from aico.core.logging import get_logger
-from aico.data.uow import UnitOfWork
-from aico.services.scheduler_service import SchedulerService
-from backend.core.postgres_dependencies import get_uow
+from backend.api_gateway.core.nats_client import get_gateway_nats_client
 from .schemas import (
     TaskConfigRequest,
     TaskConfigResponse,
@@ -29,13 +27,12 @@ from .schemas import (
     ValidationErrorResponse
 )
 from .dependencies import (
-    get_task_scheduler,
     get_cron_parser,
     validate_cron_expression,
     validate_task_id,
     require_admin_access,
     validate_task_config,
-    validate_task_class_name
+    validate_task_class_name,
 )
 from .exceptions import (
     TaskNotFoundError,
@@ -109,26 +106,19 @@ async def list_tasks(
 @router.get("/tasks/{task_id}", response_model=TaskConfigResponse)
 @handle_scheduler_exceptions
 async def get_task(
-    uow: Annotated[UnitOfWork, Depends(get_uow)],
     task_id: str = Depends(validate_task_id),
     _auth = Depends(require_admin_access)
 ) -> TaskConfigResponse:
     """Get a specific task configuration"""
     try:
-        scheduler_service = SchedulerService(uow)
-        task = await scheduler_service.get_task(task_id)
-        if not task:
-            raise TaskNotFoundError(task_id)
-        
-        return TaskConfigResponse(
-            task_id=task.task_id,
-            task_class=task.task_class,
-            schedule=task.schedule,
-            config=json.loads(task.config) if isinstance(task.config, str) else task.config,
-            enabled=task.enabled,
-            created_at=task.created_at.isoformat() if hasattr(task.created_at, 'isoformat') else task.created_at,
-            updated_at=task.updated_at.isoformat() if hasattr(task.updated_at, 'isoformat') else task.updated_at
-        )
+        nats_client = get_gateway_nats_client()
+        task = await nats_client.request_scheduler_task(task_id)
+        if task.get("error"):
+            if task.get("error") == "TASK_NOT_FOUND":
+                raise TaskNotFoundError(task_id)
+            raise SchedulerNotAvailableError()
+
+        return TaskConfigResponse(**task)
     except TaskNotFoundError:
         raise
     except Exception as e:
@@ -140,19 +130,12 @@ async def get_task(
 @handle_scheduler_exceptions
 async def create_task(
     task_request: TaskConfigRequest,
-    uow: Annotated[UnitOfWork, Depends(get_uow)],
     cron_parser = Depends(get_cron_parser),
     _auth = Depends(require_admin_access)
 ) -> TaskConfigResponse:
     """Create a new scheduled task"""
     try:
-        scheduler_service = SchedulerService(uow)
-        
-        # Validate task doesn't already exist
-        existing_task = await scheduler_service.get_task(task_request.task_id)
-        if existing_task:
-            raise TaskAlreadyExistsError(task_request.task_id)
-        
+        # Validate cron expression
         # Validate cron expression
         if not cron_parser.validate(task_request.schedule):
             raise InvalidCronExpressionError(task_request.schedule)
@@ -164,29 +147,15 @@ async def create_task(
         if task_request.config:
             validate_task_config(task_request.config)
         
-        # Create task
-        task_data = {
-            "task_id": task_request.task_id,
-            "task_class": task_request.task_class,
-            "schedule": task_request.schedule,
-            "config": task_request.config or {},
-            "enabled": task_request.enabled,
-            "created_at": datetime.now(UTC),
-            "updated_at": datetime.now(UTC)
-        }
-        created_task = await scheduler_service.create_task(task_data)
-        
-        logger.info(f"Created task: {task_request.task_id}")
-        
-        return TaskConfigResponse(
-            task_id=created_task.task_id,
-            task_class=created_task.task_class,
-            schedule=created_task.schedule,
-            config=json.loads(created_task.config) if isinstance(created_task.config, str) else created_task.config,
-            enabled=created_task.enabled,
-            created_at=created_task.created_at.isoformat() if hasattr(created_task.created_at, 'isoformat') else created_task.created_at,
-            updated_at=created_task.updated_at.isoformat() if hasattr(created_task.updated_at, 'isoformat') else created_task.updated_at
-        )
+        nats_client = get_gateway_nats_client()
+        created = await nats_client.request_scheduler_task_create(task_request.model_dump())
+        if created.get("error"):
+            if created.get("error") == "TASK_ALREADY_EXISTS":
+                raise TaskAlreadyExistsError(task_request.task_id)
+            raise SchedulerNotAvailableError()
+
+        logger.info(f"Created task via NATS: {task_request.task_id}")
+        return TaskConfigResponse(**created)
     except (TaskAlreadyExistsError, InvalidCronExpressionError, TaskClassNotFoundError, TaskValidationError):
         raise
     except Exception as e:
@@ -198,20 +167,12 @@ async def create_task(
 @handle_scheduler_exceptions
 async def update_task(
     task_update: TaskUpdateRequest,
-    uow: Annotated[UnitOfWork, Depends(get_uow)],
     cron_parser = Depends(get_cron_parser),
     task_id: str = Depends(validate_task_id),
     _auth = Depends(require_admin_access)
 ) -> TaskConfigResponse:
     """Update an existing task configuration"""
     try:
-        scheduler_service = SchedulerService(uow)
-        
-        # Check task exists
-        existing_task = await scheduler_service.get_task(task_id)
-        if not existing_task:
-            raise TaskNotFoundError(task_id)
-        
         # Validate cron expression if provided
         if task_update.schedule and not cron_parser.validate(task_update.schedule):
             raise InvalidCronExpressionError(task_update.schedule)
@@ -220,29 +181,15 @@ async def update_task(
         if task_update.config:
             validate_task_config(task_update.config)
         
-        # Update task with new values
-        task_data = {
-            "task_id": task_id,
-            "task_class": existing_task.task_class,
-            "schedule": task_update.schedule or existing_task.schedule,
-            "config": task_update.config if task_update.config is not None else existing_task.config,
-            "enabled": task_update.enabled if task_update.enabled is not None else existing_task.enabled,
-            "created_at": existing_task.created_at,
-            "updated_at": datetime.now(UTC)
-        }
-        updated_task = await scheduler_service.update_task(task_data)
-        
-        logger.info(f"Updated task: {task_id}")
-        
-        return TaskConfigResponse(
-            task_id=updated_task.task_id,
-            task_class=updated_task.task_class,
-            schedule=updated_task.schedule,
-            config=json.loads(updated_task.config) if isinstance(updated_task.config, str) else updated_task.config,
-            enabled=updated_task.enabled,
-            created_at=updated_task.created_at.isoformat() if hasattr(updated_task.created_at, 'isoformat') else updated_task.created_at,
-            updated_at=updated_task.updated_at.isoformat() if hasattr(updated_task.updated_at, 'isoformat') else updated_task.updated_at
-        )
+        nats_client = get_gateway_nats_client()
+        updated = await nats_client.request_scheduler_task_update(task_id, task_update.model_dump(exclude_unset=True))
+        if updated.get("error"):
+            if updated.get("error") == "TASK_NOT_FOUND":
+                raise TaskNotFoundError(task_id)
+            raise SchedulerNotAvailableError()
+
+        logger.info(f"Updated task via NATS: {task_id}")
+        return TaskConfigResponse(**updated)
         
     except (TaskNotFoundError, InvalidCronExpressionError, TaskValidationError):
         raise
@@ -254,23 +201,20 @@ async def update_task(
 @router.delete("/tasks/{task_id}", response_model=ApiResponse)
 @handle_scheduler_exceptions
 async def delete_task(
-    uow: Annotated[UnitOfWork, Depends(get_uow)],
     task_id: str = Depends(validate_task_id),
     _auth = Depends(require_admin_access)
 ) -> ApiResponse:
     """Delete a scheduled task"""
     try:
-        scheduler_service = SchedulerService(uow)
-        deleted = await scheduler_service.delete_task(task_id)
-        if not deleted:
-            raise TaskNotFoundError(task_id)
-        
-        logger.info(f"Deleted task: {task_id}")
-        
-        return ApiResponse(
-            success=True,
-            message=f"Task {task_id} deleted successfully"
-        )
+        nats_client = get_gateway_nats_client()
+        resp = await nats_client.request_scheduler_task_delete(task_id)
+        if resp.get("error"):
+            if resp.get("error") == "TASK_NOT_FOUND":
+                raise TaskNotFoundError(task_id)
+            raise SchedulerNotAvailableError()
+
+        logger.info(f"Deleted task via NATS: {task_id}")
+        return ApiResponse(success=True, message=f"Task {task_id} deleted successfully")
         
     except TaskNotFoundError:
         raise
@@ -282,30 +226,19 @@ async def delete_task(
 @router.post("/tasks/{task_id}/enable", response_model=ApiResponse)
 @handle_scheduler_exceptions
 async def enable_task(
-    uow: Annotated[UnitOfWork, Depends(get_uow)],
     task_id: str = Depends(validate_task_id),
-    scheduler = Depends(get_task_scheduler),
     _auth = Depends(require_admin_access)
 ) -> ApiResponse:
     """Enable a scheduled task"""
     try:
-        scheduler_service = SchedulerService(uow)
-        updated = await scheduler_service.enable_task(task_id)
-        if not updated:
-            raise TaskNotFoundError(task_id)
-        
-        # Recalculate next run time for this task immediately
-        task = await scheduler_service.get_task(task_id)
-        if task and task.schedule:
-            next_run = scheduler.cron_parser.next_run_time(task.schedule, datetime.now(UTC))
-            if next_run:
-                scheduler.next_run_times[task_id] = next_run
-                logger.info(f"Enabled task: {task_id}, next run: {next_run}")
-        
-        return ApiResponse(
-            success=True,
-            message=f"Task {task_id} enabled successfully"
-        )
+        nats_client = get_gateway_nats_client()
+        resp = await nats_client.request_scheduler_task_enable(task_id)
+        if resp.get("error"):
+            if resp.get("error") == "TASK_NOT_FOUND":
+                raise TaskNotFoundError(task_id)
+            raise SchedulerNotAvailableError()
+
+        return ApiResponse(success=True, message=f"Task {task_id} enabled successfully")
         
     except TaskNotFoundError:
         raise
@@ -317,27 +250,19 @@ async def enable_task(
 @router.post("/tasks/{task_id}/disable", response_model=ApiResponse)
 @handle_scheduler_exceptions
 async def disable_task(
-    uow: Annotated[UnitOfWork, Depends(get_uow)],
     task_id: str = Depends(validate_task_id),
-    scheduler = Depends(get_task_scheduler),
     _auth = Depends(require_admin_access)
 ) -> ApiResponse:
     """Disable a scheduled task"""
     try:
-        scheduler_service = SchedulerService(uow)
-        updated = await scheduler_service.disable_task(task_id)
-        if not updated:
-            raise TaskNotFoundError(task_id)
-        
-        # Remove from next_run_times to prevent execution
-        if task_id in scheduler.next_run_times:
-            del scheduler.next_run_times[task_id]
-            logger.info(f"Disabled task: {task_id}, removed from schedule")
-        
-        return ApiResponse(
-            success=True,
-            message=f"Task {task_id} disabled successfully"
-        )
+        nats_client = get_gateway_nats_client()
+        resp = await nats_client.request_scheduler_task_disable(task_id)
+        if resp.get("error"):
+            if resp.get("error") == "TASK_NOT_FOUND":
+                raise TaskNotFoundError(task_id)
+            raise SchedulerNotAvailableError()
+
+        return ApiResponse(success=True, message=f"Task {task_id} disabled successfully")
         
     except TaskNotFoundError:
         raise
@@ -350,20 +275,21 @@ async def disable_task(
 @handle_scheduler_exceptions
 async def trigger_task(
     task_id: str = Depends(validate_task_id),
-    scheduler = Depends(get_task_scheduler),
     _auth = Depends(require_admin_access)
 ) -> TaskTriggerResponse:
     """Manually trigger a task execution"""
     try:
-        result = await scheduler.trigger_task(task_id)
-        
-        logger.info(f"Triggered task: {task_id}")
-        
+        nats_client = get_gateway_nats_client()
+        result = await nats_client.request_scheduler_task_trigger(task_id)
+        if result.get("error"):
+            raise TaskExecutionError(task_id, result.get("message", "Unknown error"))
+
+        logger.info(f"Triggered task via NATS: {task_id}")
         return TaskTriggerResponse(
-            success=result.success,
-            message=result.message,
-            execution_id=None,  # TODO: Add execution ID to TaskResult
-            data=result.data
+            success=bool(result.get("success")),
+            message=str(result.get("message") or ""),
+            execution_id=result.get("execution_id"),
+            data=result.get("data"),
         )
         
     except Exception as e:
@@ -374,50 +300,19 @@ async def trigger_task(
 @router.get("/tasks/{task_id}/status", response_model=TaskStatusResponse)
 @handle_scheduler_exceptions
 async def get_task_status(
-    uow: Annotated[UnitOfWork, Depends(get_uow)],
     task_id: str = Depends(validate_task_id),
-    scheduler = Depends(get_task_scheduler),
     _auth = Depends(require_admin_access)
 ) -> TaskStatusResponse:
     """Get current status of a task"""
     try:
-        scheduler_service = SchedulerService(uow)
-        
-        # Get task configuration
-        task = await scheduler_service.get_task(task_id)
-        if not task:
-            raise TaskNotFoundError(task_id)
-        
-        # Get latest execution
-        history = await scheduler_service.get_task_executions(task_id, limit=1)
-        last_execution = None
-        if history:
-            exec_data = history[0]
-            last_execution = TaskExecutionResponse(
-                execution_id=exec_data.execution_id,
-                status=exec_data.status,
-                started_at=exec_data.started_at,
-                completed_at=exec_data.completed_at,
-                result=exec_data.result,
-                error_message=exec_data.error_message,
-                duration_seconds=exec_data.duration_seconds
-            )
-        
-        # Get next run time
-        next_run_time = None
-        if task.enabled and task_id in scheduler.next_run_times:
-            next_run_time = scheduler.next_run_times[task_id].isoformat()
-        
-        # Check if currently running
-        is_running = task_id in scheduler.task_executor.running_tasks
-        
-        return TaskStatusResponse(
-            task_id=task_id,
-            enabled=task.enabled,
-            last_execution=last_execution,
-            next_run_time=next_run_time,
-            is_running=is_running
-        )
+        nats_client = get_gateway_nats_client()
+        resp = await nats_client.request_scheduler_task_status(task_id)
+        if resp.get("error"):
+            if resp.get("error") == "TASK_NOT_FOUND":
+                raise TaskNotFoundError(task_id)
+            raise SchedulerNotAvailableError()
+
+        return TaskStatusResponse(**resp)
         
     except TaskNotFoundError:
         raise
@@ -429,45 +324,24 @@ async def get_task_status(
 @router.get("/tasks/{task_id}/history", response_model=TaskExecutionHistoryResponse)
 @handle_scheduler_exceptions
 async def get_task_history(
-    uow: Annotated[UnitOfWork, Depends(get_uow)],
     limit: int = 50,
     task_id: str = Depends(validate_task_id),
     _auth = Depends(require_admin_access)
 ) -> TaskExecutionHistoryResponse:
     """Get execution history for a task"""
     try:
-        scheduler_service = SchedulerService(uow)
-        
         # Validate limit
         if limit < 1 or limit > 1000:
             raise TaskValidationError("Limit must be between 1 and 1000")
-        
-        # Check task exists
-        task = await scheduler_service.get_task(task_id)
-        if not task:
-            raise TaskNotFoundError(task_id)
-        
-        # Get execution history
-        history = await scheduler_service.get_task_executions(task_id, limit=limit)
-        
-        executions = [
-            TaskExecutionResponse(
-                execution_id=exec_data.execution_id,
-                status=exec_data.status,
-                started_at=exec_data.started_at,
-                completed_at=exec_data.completed_at,
-                result=exec_data.result,
-                error_message=exec_data.error_message,
-                duration_seconds=exec_data.duration_seconds
-            )
-            for exec_data in history
-        ]
-        
-        return TaskExecutionHistoryResponse(
-            task_id=task_id,
-            executions=executions,
-            total_count=len(executions)
-        )
+
+        nats_client = get_gateway_nats_client()
+        resp = await nats_client.request_scheduler_task_history(task_id, limit=limit)
+        if resp.get("error"):
+            if resp.get("error") == "TASK_NOT_FOUND":
+                raise TaskNotFoundError(task_id)
+            raise SchedulerNotAvailableError()
+
+        return TaskExecutionHistoryResponse(**resp)
         
     except (TaskNotFoundError, TaskValidationError):
         raise
@@ -481,43 +355,15 @@ async def get_task_history(
 async def get_executions_in_range(
     start_time: str,
     end_time: str,
-    uow: Annotated[UnitOfWork, Depends(get_uow)],
     _auth = Depends(require_admin_access)
 ) -> dict:
     """Get all task executions within a time range"""
     try:
-        # Validate datetime strings
-        try:
-            start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
-            end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
-        except ValueError as e:
-            raise TaskValidationError(f"Invalid datetime format: {e}")
-        
-        scheduler_service = SchedulerService(uow)
-        # Get all executions and filter by time range
-        all_executions = await scheduler_service.get_recent_executions(limit=10000)
-        executions = [e for e in all_executions if e.started_at and start_dt <= e.started_at <= end_dt]
-        
-        executions_response = [
-            {
-                'task_id': exec_data.task_id,
-                'execution_id': exec_data.execution_id,
-                'status': exec_data.status,
-                'started_at': exec_data.started_at.isoformat() if exec_data.started_at else None,
-                'completed_at': exec_data.completed_at.isoformat() if exec_data.completed_at else None,
-                'result': exec_data.result,
-                'error_message': exec_data.error_message,
-                'duration_seconds': exec_data.duration_seconds
-            }
-            for exec_data in executions
-        ]
-        
-        return {
-            'executions': executions_response,
-            'total_count': len(executions_response),
-            'start_time': start_time,
-            'end_time': end_time
-        }
+        nats_client = get_gateway_nats_client()
+        resp = await nats_client.request_scheduler_executions_range(start_time, end_time)
+        if resp.get("error"):
+            raise SchedulerNotAvailableError()
+        return resp
         
     except TaskValidationError:
         raise
@@ -548,27 +394,21 @@ async def get_expected_runs_today(
 @handle_scheduler_exceptions
 async def acknowledge_execution(
     execution_id: str,
-    uow: Annotated[UnitOfWork, Depends(get_uow)],
     _auth = Depends(require_admin_access)
 ) -> ApiResponse:
     """Mark a single failed execution as acknowledged (hide from UI)."""
     try:
-        scheduler_service = SchedulerService(uow)
-        success = await scheduler_service.acknowledge_execution(execution_id)
-        
-        if not success:
+        nats_client = get_gateway_nats_client()
+        resp = await nats_client.request_scheduler_acknowledge_execution(execution_id)
+        if resp.get("error"):
             raise_api_error(
                 status_code=404,
                 error_code="SCHEDULER_EXECUTION_NOT_FOUND",
                 message=f"Execution {execution_id} not found",
             )
-        
-        logger.info(f"Acknowledged execution: {execution_id}")
-        
-        return ApiResponse(
-            success=True,
-            message=f"Execution {execution_id} acknowledged successfully"
-        )
+
+        logger.info(f"Acknowledged execution via NATS: {execution_id}")
+        return ApiResponse(success=True, message=f"Execution {execution_id} acknowledged successfully")
         
     except HTTPException:
         raise
@@ -580,7 +420,6 @@ async def acknowledge_execution(
 @router.post("/executions/acknowledge-all", response_model=ApiResponse)
 @handle_scheduler_exceptions
 async def acknowledge_all_failed(
-    uow: Annotated[UnitOfWork, Depends(get_uow)],
     task_id: Optional[str] = None,
     _auth = Depends(require_admin_access)
 ) -> ApiResponse:
@@ -590,20 +429,14 @@ async def acknowledge_all_failed(
         task_id: Optional task ID to limit acknowledgement to specific task
     """
     try:
-        scheduler_service = SchedulerService(uow)
-        count = await scheduler_service.acknowledge_all_failed(task_id=task_id)
-        
-        if task_id:
-            message = f"Acknowledged {count} failed executions for task {task_id}"
-        else:
-            message = f"Acknowledged {count} failed executions across all tasks"
-        
+        nats_client = get_gateway_nats_client()
+        resp = await nats_client.request_scheduler_acknowledge_all_failed(task_id=task_id)
+        if resp.get("error"):
+            raise SchedulerNotAvailableError()
+
+        message = resp.get("message") or "Acknowledged failed executions"
         logger.info(message)
-        
-        return ApiResponse(
-            success=True,
-            message=message
-        )
+        return ApiResponse(success=True, message=message)
         
     except Exception as e:
         logger.error(f"Failed to acknowledge all failed executions: {e}")
@@ -613,7 +446,6 @@ async def acknowledge_all_failed(
 @router.get("/executions/unacknowledged-failures", response_model=dict)
 @handle_scheduler_exceptions
 async def get_unacknowledged_failures(
-    uow: Annotated[UnitOfWork, Depends(get_uow)],
     task_id: Optional[str] = None,
     limit: int = 100,
     _auth = Depends(require_admin_access)
@@ -625,27 +457,11 @@ async def get_unacknowledged_failures(
         limit: Maximum number of results (default: 100)
     """
     try:
-        scheduler_service = SchedulerService(uow)
-        executions = await scheduler_service.get_unacknowledged_failures(task_id=task_id, limit=limit)
-        
-        executions_response = [
-            {
-                'execution_id': exec_data.execution_id,
-                'task_id': exec_data.task_id,
-                'status': exec_data.status,
-                'started_at': exec_data.started_at.isoformat() if exec_data.started_at else None,
-                'completed_at': exec_data.completed_at.isoformat() if exec_data.completed_at else None,
-                'error_message': exec_data.error_message,
-                'duration_seconds': exec_data.duration_seconds
-            }
-            for exec_data in executions
-        ]
-        
-        return {
-            'executions': executions_response,
-            'total_count': len(executions_response),
-            'task_id': task_id
-        }
+        nats_client = get_gateway_nats_client()
+        resp = await nats_client.request_scheduler_unacknowledged_failures(task_id=task_id, limit=limit)
+        if resp.get("error"):
+            raise SchedulerNotAvailableError()
+        return resp
         
     except Exception as e:
         logger.error(f"Failed to get unacknowledged failures: {e}")

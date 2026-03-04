@@ -120,12 +120,6 @@ class BackendLifecycleManager:
         # Initialize gateway NATS client for gateway→core communication
         await self._initialize_gateway_nats_client()
 
-        # Legacy broker startup is a no-op in NATS-only mode
-        await self._start_message_broker()
-
-        # Display available routes
-        self._display_routes()
-
         # Start protocol adapters (WebSocket)
         await self._start_protocol_adapters()
 
@@ -1226,46 +1220,9 @@ class BackendLifecycleManager:
         self.logger.info("✅ Mounted: /api/v1/tts")
         
         self.logger.info(f"🎉 Gateway HTTP router mounting complete: {len(self.app.routes)} total routes")
-    
-    def _display_routes(self) -> None:
-        """Display available API route groups"""
-        # Route information available via logs
-        pass
-    
-    async def _start_message_broker(self) -> None:
-        """Start message broker"""
-        # NATS-only: broker is an external dependency
-        # Legacy embedded broker startup is intentionally disabled.
-        self.logger.info("Message broker startup skipped (NATS-only; external bus)")
-    
-    def _notify_log_transport_broker_ready(self) -> None:
-        """Notify log transport that broker is ready"""
-        # Logs now go directly to InfluxDB
-        # Log consumer service removed - no longer needed
-        pass
-    
-    def _notify_log_consumer_broker_ready(self) -> None:
-        """Notify log consumer service that broker is ready and schedule buffer flush after subscription"""
-        # Log consumer service removed - logs now go directly to InfluxDB
-        pass
-    
-    async def _connect_log_consumer_and_flush_buffer(self, log_consumer):
-        """Connect log consumer and flush buffer after subscription is complete"""
-        # Log consumer service removed - logs now go directly to InfluxDB
-        pass
-    
-    def _display_log_consumer_status(self) -> None:
-        """Display log consumer service status"""
-        # Log consumer service removed - logs now go directly to InfluxDB
-        pass
-    
-    async def _debug_log_consumer_initialization(self) -> None:
-        """Debug log consumer initialization issues"""
-        # Log consumer service removed - logs now go directly to InfluxDB
-        pass
 
 
-# Dependency injection functions for FastAPI
+    # Dependency injection functions for FastAPI
     async def _initialize_nats_handlers(self) -> None:
         """Initialize NATS request handlers for gateway→core communication"""
         try:

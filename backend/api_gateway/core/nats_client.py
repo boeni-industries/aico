@@ -354,6 +354,62 @@ class GatewayNATSClient:
     async def request_scheduler_expected_runs_today(self) -> Dict[str, Any]:
         """Request scheduler expected runs today from core via NATS"""
         return await self._nats_request_with_trace("scheduler.expected_runs_today", b"{}")
+
+    async def request_scheduler_task(self, task_id: str) -> Dict[str, Any]:
+        """Request a single scheduler task config from core via NATS"""
+        payload = json.dumps({"task_id": task_id}).encode("utf-8")
+        return await self._nats_request_with_trace("scheduler.task.get", payload)
+
+    async def request_scheduler_task_create(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a scheduler task via core (NATS)."""
+        payload = json.dumps(task_data).encode("utf-8")
+        return await self._nats_request_with_trace("scheduler.task.create", payload)
+
+    async def request_scheduler_task_update(self, task_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
+        """Update a scheduler task via core (NATS)."""
+        payload = json.dumps({"task_id": task_id, **updates}).encode("utf-8")
+        return await self._nats_request_with_trace("scheduler.task.update", payload)
+
+    async def request_scheduler_task_delete(self, task_id: str) -> Dict[str, Any]:
+        """Delete a scheduler task via core (NATS)."""
+        payload = json.dumps({"task_id": task_id}).encode("utf-8")
+        return await self._nats_request_with_trace("scheduler.task.delete", payload)
+
+    async def request_scheduler_task_enable(self, task_id: str) -> Dict[str, Any]:
+        payload = json.dumps({"task_id": task_id}).encode("utf-8")
+        return await self._nats_request_with_trace("scheduler.task.enable", payload)
+
+    async def request_scheduler_task_disable(self, task_id: str) -> Dict[str, Any]:
+        payload = json.dumps({"task_id": task_id}).encode("utf-8")
+        return await self._nats_request_with_trace("scheduler.task.disable", payload)
+
+    async def request_scheduler_task_status(self, task_id: str) -> Dict[str, Any]:
+        payload = json.dumps({"task_id": task_id}).encode("utf-8")
+        return await self._nats_request_with_trace("scheduler.task.status", payload)
+
+    async def request_scheduler_task_history(self, task_id: str, limit: int = 50) -> Dict[str, Any]:
+        payload = json.dumps({"task_id": task_id, "limit": int(limit)}).encode("utf-8")
+        return await self._nats_request_with_trace("scheduler.task.history", payload)
+
+    async def request_scheduler_executions_range(self, start_time: str, end_time: str) -> Dict[str, Any]:
+        payload = json.dumps({"start_time": start_time, "end_time": end_time}).encode("utf-8")
+        return await self._nats_request_with_trace("scheduler.executions.range", payload)
+
+    async def request_scheduler_unacknowledged_failures(self, task_id: str | None = None, limit: int = 100) -> Dict[str, Any]:
+        payload = json.dumps({"task_id": task_id, "limit": int(limit)}).encode("utf-8")
+        return await self._nats_request_with_trace("scheduler.executions.unacknowledged_failures", payload)
+
+    async def request_scheduler_acknowledge_execution(self, execution_id: str) -> Dict[str, Any]:
+        payload = json.dumps({"execution_id": execution_id}).encode("utf-8")
+        return await self._nats_request_with_trace("scheduler.executions.acknowledge", payload)
+
+    async def request_scheduler_acknowledge_all_failed(self, task_id: str | None = None) -> Dict[str, Any]:
+        payload = json.dumps({"task_id": task_id}).encode("utf-8")
+        return await self._nats_request_with_trace("scheduler.executions.acknowledge_all", payload)
+
+    async def request_scheduler_task_trigger(self, task_id: str) -> Dict[str, Any]:
+        payload = json.dumps({"task_id": task_id}).encode("utf-8")
+        return await self._nats_request_with_trace("scheduler.task.trigger", payload)
     
     async def request_system_metrics_all(self) -> Dict[str, Any]:
         """Request all system metrics from core via NATS"""

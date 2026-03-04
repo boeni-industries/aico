@@ -95,6 +95,521 @@ class CoreNATSHandlers:
                 "error": "SCHEDULER_ERROR",
                 "message": str(e)
             }
+
+    async def handle_scheduler_task_get_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Get a specific task configuration."""
+        try:
+            task_id = request_data.get("task_id")
+            if not task_id:
+                return {"error": "TASK_ID_REQUIRED", "message": "task_id is required"}
+
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                task = await scheduler_service.get_task(task_id)
+
+            if not task:
+                return {"error": "TASK_NOT_FOUND", "message": f"Task not found: {task_id}"}
+
+            config_value = getattr(task, "config", None)
+            if isinstance(config_value, str):
+                try:
+                    config_value = json.loads(config_value)
+                except Exception:
+                    pass
+
+            created_at = getattr(task, "created_at", None)
+            updated_at = getattr(task, "updated_at", None)
+
+            return {
+                "task_id": task.task_id,
+                "task_class": task.task_class,
+                "schedule": task.schedule,
+                "config": config_value,
+                "enabled": bool(task.enabled),
+                "created_at": created_at.isoformat() if hasattr(created_at, "isoformat") else created_at,
+                "updated_at": updated_at.isoformat() if hasattr(updated_at, "isoformat") else updated_at,
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to get scheduler task: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_task_create_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a scheduled task."""
+        try:
+            task_id = request_data.get("task_id")
+            task_class = request_data.get("task_class")
+            schedule = request_data.get("schedule")
+            enabled = bool(request_data.get("enabled", True))
+            config = request_data.get("config")
+
+            if not task_id or not task_class or not schedule:
+                return {"error": "VALIDATION_ERROR", "message": "task_id, task_class, and schedule are required"}
+
+            from datetime import datetime, UTC
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                existing = await scheduler_service.get_task(task_id)
+                if existing:
+                    return {"error": "TASK_ALREADY_EXISTS", "message": f"Task already exists: {task_id}"}
+
+                task_data = {
+                    "task_id": task_id,
+                    "task_class": task_class,
+                    "schedule": schedule,
+                    "config": json.dumps(config) if isinstance(config, (dict, list)) else config,
+                    "enabled": enabled,
+                    "created_at": datetime.now(UTC),
+                    "updated_at": datetime.now(UTC),
+                }
+                created = await scheduler_service.create_task(task_data)
+
+            # Best-effort: update runtime next_run cache
+            try:
+                scheduler = self.container.get_service("task_scheduler")
+                if scheduler and enabled and schedule:
+                    next_run = scheduler.cron_parser.next_run_time(schedule)
+                    if next_run:
+                        scheduler.next_run_times[task_id] = next_run
+            except Exception:
+                pass
+
+            config_value = getattr(created, "config", None)
+            if isinstance(config_value, str):
+                try:
+                    config_value = json.loads(config_value)
+                except Exception:
+                    pass
+
+            return {
+                "task_id": created.task_id,
+                "task_class": created.task_class,
+                "schedule": created.schedule,
+                "config": config_value,
+                "enabled": bool(created.enabled),
+                "created_at": getattr(created, "created_at", None).isoformat() if getattr(created, "created_at", None) else None,
+                "updated_at": getattr(created, "updated_at", None).isoformat() if getattr(created, "updated_at", None) else None,
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to create scheduler task: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_task_update_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update a scheduled task."""
+        try:
+            task_id = request_data.get("task_id")
+            if not task_id:
+                return {"error": "TASK_ID_REQUIRED", "message": "task_id is required"}
+
+            new_schedule = request_data.get("schedule")
+            new_config = request_data.get("config")
+            enabled = request_data.get("enabled")
+
+            from datetime import datetime, UTC
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                existing = await scheduler_service.get_task(task_id)
+                if not existing:
+                    return {"error": "TASK_NOT_FOUND", "message": f"Task not found: {task_id}"}
+
+                task_data = {
+                    "task_id": task_id,
+                    "task_class": existing.task_class,
+                    "schedule": new_schedule or existing.schedule,
+                    "config": json.dumps(new_config) if isinstance(new_config, (dict, list)) else (new_config if new_config is not None else existing.config),
+                    "enabled": bool(existing.enabled) if enabled is None else bool(enabled),
+                    "created_at": existing.created_at,
+                    "updated_at": datetime.now(UTC),
+                }
+                updated = await scheduler_service.update_task(task_data)
+
+            # Best-effort: update runtime next_run cache
+            try:
+                scheduler = self.container.get_service("task_scheduler")
+                if scheduler:
+                    if bool(getattr(updated, "enabled", True)) and getattr(updated, "schedule", None):
+                        next_run = scheduler.cron_parser.next_run_time(updated.schedule)
+                        if next_run:
+                            scheduler.next_run_times[task_id] = next_run
+                    else:
+                        scheduler.next_run_times.pop(task_id, None)
+            except Exception:
+                pass
+
+            config_value = getattr(updated, "config", None)
+            if isinstance(config_value, str):
+                try:
+                    config_value = json.loads(config_value)
+                except Exception:
+                    pass
+
+            created_at = getattr(updated, "created_at", None)
+            updated_at = getattr(updated, "updated_at", None)
+
+            return {
+                "task_id": updated.task_id,
+                "task_class": updated.task_class,
+                "schedule": updated.schedule,
+                "config": config_value,
+                "enabled": bool(updated.enabled),
+                "created_at": created_at.isoformat() if hasattr(created_at, "isoformat") else created_at,
+                "updated_at": updated_at.isoformat() if hasattr(updated_at, "isoformat") else updated_at,
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to update scheduler task: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_task_delete_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Delete a scheduled task."""
+        try:
+            task_id = request_data.get("task_id")
+            if not task_id:
+                return {"error": "TASK_ID_REQUIRED", "message": "task_id is required"}
+
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                deleted = await scheduler_service.delete_task(task_id)
+                if not deleted:
+                    return {"error": "TASK_NOT_FOUND", "message": f"Task not found: {task_id}"}
+
+            try:
+                scheduler = self.container.get_service("task_scheduler")
+                if scheduler:
+                    scheduler.next_run_times.pop(task_id, None)
+            except Exception:
+                pass
+
+            return {"success": True, "message": f"Task {task_id} deleted successfully"}
+        except Exception as e:
+            self.logger.error(f"Failed to delete scheduler task: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_task_enable_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Enable a scheduled task."""
+        try:
+            task_id = request_data.get("task_id")
+            if not task_id:
+                return {"error": "TASK_ID_REQUIRED", "message": "task_id is required"}
+
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                ok = await scheduler_service.enable_task(task_id)
+                if not ok:
+                    return {"error": "TASK_NOT_FOUND", "message": f"Task not found: {task_id}"}
+                task = await scheduler_service.get_task(task_id)
+
+            # Best-effort runtime update
+            try:
+                scheduler = self.container.get_service("task_scheduler")
+                if scheduler and task and getattr(task, "schedule", None):
+                    next_run = scheduler.cron_parser.next_run_time(task.schedule)
+                    if next_run:
+                        scheduler.next_run_times[task_id] = next_run
+            except Exception:
+                pass
+
+            return {"success": True, "message": f"Task {task_id} enabled successfully"}
+        except Exception as e:
+            self.logger.error(f"Failed to enable scheduler task: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_task_disable_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Disable a scheduled task."""
+        try:
+            task_id = request_data.get("task_id")
+            if not task_id:
+                return {"error": "TASK_ID_REQUIRED", "message": "task_id is required"}
+
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                ok = await scheduler_service.disable_task(task_id)
+                if not ok:
+                    return {"error": "TASK_NOT_FOUND", "message": f"Task not found: {task_id}"}
+
+            try:
+                scheduler = self.container.get_service("task_scheduler")
+                if scheduler:
+                    scheduler.next_run_times.pop(task_id, None)
+            except Exception:
+                pass
+
+            return {"success": True, "message": f"Task {task_id} disabled successfully"}
+        except Exception as e:
+            self.logger.error(f"Failed to disable scheduler task: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_task_status_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Get task status (enabled, last execution, next_run_time, is_running)."""
+        try:
+            task_id = request_data.get("task_id")
+            if not task_id:
+                return {"error": "TASK_ID_REQUIRED", "message": "task_id is required"}
+
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                task = await scheduler_service.get_task(task_id)
+                if not task:
+                    return {"error": "TASK_NOT_FOUND", "message": f"Task not found: {task_id}"}
+
+                history = await scheduler_service.get_task_executions(task_id, limit=1)
+
+            last_execution = None
+            if history:
+                exec_data = history[0]
+                last_execution = {
+                    "execution_id": exec_data.execution_id,
+                    "status": exec_data.status,
+                    "started_at": exec_data.started_at.isoformat() if getattr(exec_data, "started_at", None) else None,
+                    "completed_at": exec_data.completed_at.isoformat() if getattr(exec_data, "completed_at", None) else None,
+                    "result": exec_data.result,
+                    "error_message": exec_data.error_message,
+                    "duration_seconds": exec_data.duration_seconds,
+                }
+
+            scheduler = self.container.get_service("task_scheduler")
+            next_run_time = None
+            is_running = False
+            if scheduler is not None:
+                if bool(getattr(task, "enabled", False)) and task_id in getattr(scheduler, "next_run_times", {}):
+                    next_run_time = scheduler.next_run_times[task_id].isoformat()
+                is_running = task_id in getattr(scheduler.task_executor, "running_tasks", {})
+
+            return {
+                "task_id": task_id,
+                "enabled": bool(task.enabled),
+                "last_execution": last_execution,
+                "next_run_time": next_run_time,
+                "is_running": bool(is_running),
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to get task status: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_task_history_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Get execution history for a task."""
+        try:
+            task_id = request_data.get("task_id")
+            limit = int(request_data.get("limit", 50))
+            limit = max(1, min(limit, 1000))
+            if not task_id:
+                return {"error": "TASK_ID_REQUIRED", "message": "task_id is required"}
+
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                task = await scheduler_service.get_task(task_id)
+                if not task:
+                    return {"error": "TASK_NOT_FOUND", "message": f"Task not found: {task_id}"}
+                history = await scheduler_service.get_task_executions(task_id, limit=limit)
+
+            executions = []
+            for exec_data in history:
+                executions.append(
+                    {
+                        "execution_id": exec_data.execution_id,
+                        "status": exec_data.status,
+                        "started_at": exec_data.started_at.isoformat() if getattr(exec_data, "started_at", None) else None,
+                        "completed_at": exec_data.completed_at.isoformat() if getattr(exec_data, "completed_at", None) else None,
+                        "result": exec_data.result,
+                        "error_message": exec_data.error_message,
+                        "duration_seconds": exec_data.duration_seconds,
+                    }
+                )
+
+            return {"task_id": task_id, "executions": executions, "total_count": len(executions)}
+        except Exception as e:
+            self.logger.error(f"Failed to get task history: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_executions_range_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Get executions in a given time range (ISO timestamps)."""
+        try:
+            start_time = request_data.get("start_time")
+            end_time = request_data.get("end_time")
+            if not start_time or not end_time:
+                return {"error": "VALIDATION_ERROR", "message": "start_time and end_time are required"}
+
+            from datetime import datetime
+
+            start_dt = datetime.fromisoformat(str(start_time).replace("Z", "+00:00"))
+            end_dt = datetime.fromisoformat(str(end_time).replace("Z", "+00:00"))
+
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                all_executions = await scheduler_service.get_recent_executions(limit=10000)
+
+            executions = [e for e in all_executions if getattr(e, "started_at", None) and start_dt <= e.started_at <= end_dt]
+
+            executions_response = []
+            for exec_data in executions:
+                executions_response.append(
+                    {
+                        "task_id": exec_data.task_id,
+                        "execution_id": exec_data.execution_id,
+                        "status": exec_data.status,
+                        "started_at": exec_data.started_at.isoformat() if getattr(exec_data, "started_at", None) else None,
+                        "completed_at": exec_data.completed_at.isoformat() if getattr(exec_data, "completed_at", None) else None,
+                        "result": exec_data.result,
+                        "error_message": exec_data.error_message,
+                        "duration_seconds": exec_data.duration_seconds,
+                    }
+                )
+
+            return {
+                "executions": executions_response,
+                "total_count": len(executions_response),
+                "start_time": start_time,
+                "end_time": end_time,
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to get executions in range: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_unacknowledged_failures_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Get unacknowledged failed executions."""
+        try:
+            task_id = request_data.get("task_id")
+            limit = int(request_data.get("limit", 100))
+            limit = max(1, min(limit, 10000))
+
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                executions = await scheduler_service.get_unacknowledged_failures(task_id=task_id, limit=limit)
+
+            executions_response = []
+            for exec_data in executions:
+                executions_response.append(
+                    {
+                        "execution_id": exec_data.execution_id,
+                        "task_id": exec_data.task_id,
+                        "status": exec_data.status,
+                        "started_at": exec_data.started_at.isoformat() if getattr(exec_data, "started_at", None) else None,
+                        "completed_at": exec_data.completed_at.isoformat() if getattr(exec_data, "completed_at", None) else None,
+                        "error_message": exec_data.error_message,
+                        "duration_seconds": exec_data.duration_seconds,
+                    }
+                )
+
+            return {"executions": executions_response, "total_count": len(executions_response), "task_id": task_id}
+        except Exception as e:
+            self.logger.error(f"Failed to get unacknowledged failures: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_acknowledge_execution_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Acknowledge a single execution."""
+        try:
+            execution_id = request_data.get("execution_id")
+            if not execution_id:
+                return {"error": "EXECUTION_ID_REQUIRED", "message": "execution_id is required"}
+
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                success = await scheduler_service.acknowledge_execution(execution_id)
+
+            if not success:
+                return {"error": "EXECUTION_NOT_FOUND", "message": f"Execution {execution_id} not found"}
+
+            return {"success": True, "message": f"Execution {execution_id} acknowledged successfully"}
+        except Exception as e:
+            self.logger.error(f"Failed to acknowledge execution: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_acknowledge_all_failed_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Acknowledge all failed executions."""
+        try:
+            task_id = request_data.get("task_id")
+
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                count = await scheduler_service.acknowledge_all_failed(task_id=task_id)
+
+            if task_id:
+                return {"success": True, "message": f"Acknowledged {count} failed executions for task {task_id}"}
+            return {"success": True, "message": f"Acknowledged {count} failed executions across all tasks"}
+        except Exception as e:
+            self.logger.error(f"Failed to acknowledge all failed executions: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_task_trigger_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Trigger a task execution."""
+        try:
+            task_id = request_data.get("task_id")
+            if not task_id:
+                return {"error": "TASK_ID_REQUIRED", "message": "task_id is required"}
+
+            scheduler = self.container.get_service("task_scheduler")
+            if scheduler is None:
+                return {"error": "SCHEDULER_NOT_AVAILABLE", "message": "Task scheduler not available"}
+
+            result = await scheduler.trigger_task(task_id)
+
+            return {
+                "success": bool(getattr(result, "success", False)),
+                "message": getattr(result, "message", ""),
+                "execution_id": None,
+                "data": getattr(result, "data", None),
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to trigger task: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
     
     async def handle_scheduler_tasks_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Handle scheduler tasks list request from gateway"""
@@ -1834,6 +2349,111 @@ class CoreNATSHandlers:
             cb=make_handler(self.handle_scheduler_tasks_request, "scheduler.tasks.reply")
         )
         self.logger.info(f"✅ Subscribed to scheduler.tasks (sid={sid2})")
+
+        # Scheduler management endpoints (gateway proxies via NATS)
+        self.logger.info("Subscribing to scheduler.task.get...")
+        sid2a = await message_bus_client._nats.subscribe(
+            "scheduler.task.get",
+            cb=make_handler(self.handle_scheduler_task_get_request, "scheduler.task.get.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.task.get (sid={sid2a})")
+
+        self.logger.info("Subscribing to scheduler.task.create...")
+        sid2b = await message_bus_client._nats.subscribe(
+            "scheduler.task.create",
+            cb=make_handler(self.handle_scheduler_task_create_request, "scheduler.task.create.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.task.create (sid={sid2b})")
+
+        self.logger.info("Subscribing to scheduler.task.update...")
+        sid2c = await message_bus_client._nats.subscribe(
+            "scheduler.task.update",
+            cb=make_handler(self.handle_scheduler_task_update_request, "scheduler.task.update.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.task.update (sid={sid2c})")
+
+        self.logger.info("Subscribing to scheduler.task.delete...")
+        sid2d = await message_bus_client._nats.subscribe(
+            "scheduler.task.delete",
+            cb=make_handler(self.handle_scheduler_task_delete_request, "scheduler.task.delete.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.task.delete (sid={sid2d})")
+
+        self.logger.info("Subscribing to scheduler.task.enable...")
+        sid2e = await message_bus_client._nats.subscribe(
+            "scheduler.task.enable",
+            cb=make_handler(self.handle_scheduler_task_enable_request, "scheduler.task.enable.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.task.enable (sid={sid2e})")
+
+        self.logger.info("Subscribing to scheduler.task.disable...")
+        sid2f = await message_bus_client._nats.subscribe(
+            "scheduler.task.disable",
+            cb=make_handler(self.handle_scheduler_task_disable_request, "scheduler.task.disable.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.task.disable (sid={sid2f})")
+
+        self.logger.info("Subscribing to scheduler.task.status...")
+        sid2g = await message_bus_client._nats.subscribe(
+            "scheduler.task.status",
+            cb=make_handler(self.handle_scheduler_task_status_request, "scheduler.task.status.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.task.status (sid={sid2g})")
+
+        self.logger.info("Subscribing to scheduler.task.history...")
+        sid2h = await message_bus_client._nats.subscribe(
+            "scheduler.task.history",
+            cb=make_handler(self.handle_scheduler_task_history_request, "scheduler.task.history.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.task.history (sid={sid2h})")
+
+        self.logger.info("Subscribing to scheduler.executions.range...")
+        sid2i = await message_bus_client._nats.subscribe(
+            "scheduler.executions.range",
+            cb=make_handler(self.handle_scheduler_executions_range_request, "scheduler.executions.range.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.executions.range (sid={sid2i})")
+
+        self.logger.info("Subscribing to scheduler.executions.unacknowledged_failures...")
+        sid2j = await message_bus_client._nats.subscribe(
+            "scheduler.executions.unacknowledged_failures",
+            cb=make_handler(
+                self.handle_scheduler_unacknowledged_failures_request,
+                "scheduler.executions.unacknowledged_failures.reply",
+            ),
+        )
+        self.logger.info(
+            f"✅ Subscribed to scheduler.executions.unacknowledged_failures (sid={sid2j})"
+        )
+
+        self.logger.info("Subscribing to scheduler.executions.acknowledge...")
+        sid2k = await message_bus_client._nats.subscribe(
+            "scheduler.executions.acknowledge",
+            cb=make_handler(
+                self.handle_scheduler_acknowledge_execution_request,
+                "scheduler.executions.acknowledge.reply",
+            ),
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.executions.acknowledge (sid={sid2k})")
+
+        self.logger.info("Subscribing to scheduler.executions.acknowledge_all...")
+        sid2l = await message_bus_client._nats.subscribe(
+            "scheduler.executions.acknowledge_all",
+            cb=make_handler(
+                self.handle_scheduler_acknowledge_all_failed_request,
+                "scheduler.executions.acknowledge_all.reply",
+            ),
+        )
+        self.logger.info(
+            f"✅ Subscribed to scheduler.executions.acknowledge_all (sid={sid2l})"
+        )
+
+        self.logger.info("Subscribing to scheduler.task.trigger...")
+        sid2m = await message_bus_client._nats.subscribe(
+            "scheduler.task.trigger",
+            cb=make_handler(self.handle_scheduler_task_trigger_request, "scheduler.task.trigger.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.task.trigger (sid={sid2m})")
         
         self.logger.info("Subscribing to emotion.current...")
         sid3 = await message_bus_client._nats.subscribe(

@@ -12016,63 +12016,6 @@
         "title": "UnifiedMessageRequest",
         "type": "object"
       },
-      "UnifiedMessageResponse": {
-        "description": "Response for unified message endpoint",
-        "properties": {
-          "ai_response": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "AI response to the message",
-            "title": "Ai Response"
-          },
-          "conversation_action": {
-            "title": "Conversation Action",
-            "type": "string"
-          },
-          "conversation_id": {
-            "title": "Conversation Id",
-            "type": "string"
-          },
-          "conversation_reasoning": {
-            "title": "Conversation Reasoning",
-            "type": "string"
-          },
-          "message_id": {
-            "title": "Message Id",
-            "type": "string"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
-          "success": {
-            "title": "Success",
-            "type": "boolean"
-          },
-          "timestamp": {
-            "format": "date-time",
-            "title": "Timestamp",
-            "type": "string"
-          }
-        },
-        "required": [
-          "success",
-          "message_id",
-          "conversation_id",
-          "conversation_action",
-          "conversation_reasoning",
-          "status",
-          "timestamp"
-        ],
-        "title": "UnifiedMessageResponse",
-        "type": "object"
-      },
       "UpdateMemoryRequest": {
         "description": "Request schema for updating memory metadata",
         "properties": {
@@ -18324,64 +18267,6 @@
         ]
       }
     },
-    "/api/v1/conversation/start": {
-      "post": {
-        "deprecated": true,
-        "description": "Legacy start endpoint - redirects to unified messages endpoint",
-        "operationId": "start_conversation_legacy_api_v1_conversation_start_post",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "auth_manager",
-            "required": false,
-            "schema": {
-              "title": "Auth Manager"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UnifiedMessageRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UnifiedMessageResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Start Conversation Legacy",
-        "tags": [
-          "conversation"
-        ]
-      }
-    },
     "/api/v1/conversation/status": {
       "get": {
         "description": "Get my conversation status (user-scoped)\n\nReturns conversation activity and status for the authenticated user.\nSemantic memory provides context without explicit thread management.",
@@ -24570,59 +24455,6 @@
         ]
       }
     },
-    "/api/v1/users/refresh/legacy": {
-      "post": {
-        "deprecated": true,
-        "description": "Refresh JWT token for authenticated user with session rotation",
-        "operationId": "refresh_token_legacy_api_v1_users_refresh_legacy_post",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthenticationResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/APIErrorResponse"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/APIErrorResponse"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/APIErrorResponse"
-                }
-              }
-            },
-            "description": "Internal Server Error"
-          }
-        },
-        "summary": "Refresh Token Legacy",
-        "tags": [
-          "users"
-        ]
-      }
-    },
     "/api/v1/users/stats": {
       "get": {
         "description": "Get user statistics",
@@ -24834,58 +24666,6 @@
           }
         ],
         "summary": "Set User Password",
-        "tags": [
-          "users"
-        ]
-      }
-    },
-    "/api/v1/users/{user_uuid}/pin": {
-      "post": {
-        "deprecated": true,
-        "description": "Deprecated alias for setting the user's password.",
-        "operationId": "set_user_pin_api_v1_users__user_uuid__pin_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "user_uuid",
-            "required": true,
-            "schema": {
-              "title": "User Uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetPasswordRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Set User Pin",
         "tags": [
           "users"
         ]

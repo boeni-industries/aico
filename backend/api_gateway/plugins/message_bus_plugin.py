@@ -69,12 +69,7 @@ class MessageBusPlugin(BasePlugin):
             return {"status": "disabled", "message": "Message bus plugin disabled"}
 
         return {"status": "external", "message": "NATS is external"}
-    
-    def _notify_log_transport_broker_ready(self):
-        """Notify backend's ZMQ log transport that broker is ready to accept connections"""
-        # ZMQ log transport removed - logs now go directly to InfluxDB
-        pass
-    
+
     async def shutdown(self) -> None:
         """Cleanup message bus plugin resources"""
         self.logger.info("Shutting down message bus plugin...")

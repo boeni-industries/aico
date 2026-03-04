@@ -601,18 +601,6 @@ async def health_check():
     )
 
 
-# Legacy endpoint support (deprecated)
-@router.post("/start", response_model=UnifiedMessageResponse, deprecated=True)
-async def start_conversation_legacy(
-    request: UnifiedMessageRequest,
-    current_user = Depends(get_current_user),
-    bus_client = Depends(get_message_bus_client)
-):
-    """Legacy start endpoint - redirects to unified messages endpoint"""
-    logger.warning("Using deprecated /start endpoint - use /messages instead")
-    return await send_message_with_auto_thread(request, current_user, bus_client)
-
-
 # ============================================================================
 # Conversation Lifecycle Endpoints
 # ============================================================================

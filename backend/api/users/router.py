@@ -702,17 +702,6 @@ async def set_user_password(
     await _set_user_password_impl(user_uuid=user_uuid, request=request, admin_user=admin_user)
 
 
-@router.post("/{user_uuid}/pin", status_code=status.HTTP_204_NO_CONTENT, deprecated=True)
-@handle_user_service_exceptions
-async def set_user_pin(
-    user_uuid: str,
-    request: SetPasswordRequest,
-    admin_user = Depends(get_admin_dependency)
-):
-    """Deprecated alias for setting the user's password."""
-    await _set_user_password_impl(user_uuid=user_uuid, request=request, admin_user=admin_user)
-
-
 @router.post("/{user_uuid}/unlock", status_code=status.HTTP_204_NO_CONTENT)
 @handle_user_service_exceptions
 async def unlock_user(
@@ -769,70 +758,6 @@ async def logout_user(request: Request):
         "token_prefix": token[:8] + "..." if len(token) > 8 else token,
         "revocation_success": success
     })
-
-
-@router.post(
-    "/refresh/legacy",
-    response_model=AuthenticationResponse,
-    deprecated=True,
-    responses=error_responses(401, 404, 500),
-)
-async def refresh_token_legacy(
-    request: Request,
-    auth_manager = Depends(get_auth_manager),
-    uow: UnitOfWork = Depends(get_uow),
-):
-    """Refresh JWT token for authenticated user with session rotation"""
-    # Extract current token from Authorization header
-    auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
-        raise_api_error(status_code=401, error_code="AUTH_TOKEN_REQUIRED", message="No valid token provided")
-    
-    token = auth_header.split(" ")[1]
-    
-    if not auth_manager:
-        raise_api_error(status_code=500, error_code="AUTH_MANAGER_NOT_INITIALIZED", message="Authentication manager not initialized")
-    
-    # Use the new refresh_token method from auth_manager
-    new_token = auth_manager.refresh_token(token, device_uuid="web-client")
-    
-    if not new_token:
-        raise_api_error(
-            status_code=401,
-            error_code="AUTH_TOKEN_REFRESH_FAILED",
-            message="Token refresh failed - token may be expired or revoked",
-        )
-    
-    # Extract user information from new token to get user data
-    try:
-        import jwt
-        payload = jwt.decode(
-            new_token, 
-            auth_manager.jwt_secret, 
-            algorithms=["HS256"],
-            options={"verify_aud": False}
-        )
-        user_uuid = payload.get("user_uuid", payload.get("sub"))
-        username = payload.get("username")
-    except Exception as e:
-        raise_api_error(status_code=500, error_code="AUTH_TOKEN_DECODE_FAILED", message="Failed to decode new token")
-    
-    # Get user data for response
-    user = await uow.users.get_by_id(user_uuid)
-    if not user:
-        raise_api_error(status_code=404, error_code="USER_NOT_FOUND", message="User not found")
-    
-    logger.info("Token refreshed with session rotation", extra={
-        "user_uuid": user_uuid,
-        "username": username
-    })
-    
-    return AuthenticationResponse(
-        success=True,
-        user=_user_to_response(user),
-        jwt_token=new_token,
-        last_login=None
-    )
 
 
 @router.get("/stats", response_model=UserStatsResponse)
