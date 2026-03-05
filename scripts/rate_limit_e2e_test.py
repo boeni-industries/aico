@@ -157,6 +157,73 @@ def _run_cli(args: list[str]) -> subprocess.CompletedProcess[str]:
     )
 
 
+def _read_gateway_runtime_yaml(*, gateway_container: str) -> Optional[str]:
+    repo_root = Path(__file__).parent.parent
+    proc = subprocess.run(
+        [
+            "docker",
+            "exec",
+            gateway_container,
+            "sh",
+            "-lc",
+            "cat /var/lib/aico/runtime/runtime.yaml 2>/dev/null || true",
+        ],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if proc.returncode != 0:
+        return None
+    content = (proc.stdout or "").strip("\n")
+    if not content.strip():
+        return ""
+    return content
+
+
+def _write_gateway_runtime_yaml(*, gateway_container: str, content: str) -> bool:
+    repo_root = Path(__file__).parent.parent
+    proc = subprocess.run(
+        [
+            "docker",
+            "exec",
+            gateway_container,
+            "sh",
+            "-lc",
+            "mkdir -p /var/lib/aico/runtime && cat > /var/lib/aico/runtime/runtime.yaml <<'EOF'\n"
+            + content
+            + "\nEOF\n",
+        ],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    return proc.returncode == 0
+
+
+def _delete_gateway_runtime_yaml(*, gateway_container: str) -> bool:
+    repo_root = Path(__file__).parent.parent
+    proc = subprocess.run(
+        [
+            "docker",
+            "exec",
+            gateway_container,
+            "sh",
+            "-lc",
+            "rm -f /var/lib/aico/runtime/runtime.yaml",
+        ],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    return proc.returncode == 0
+
+
 def create_test_user(*, full_name: str, pin: str) -> TestUser:
     proc = _run_cli(["security", "user-create", full_name, "--pin", pin])
     if proc.returncode != 0:
@@ -246,24 +313,7 @@ def set_rate_limit_config(*, valkey_url: str, rpm: int, window_seconds: int) -> 
     try:
         repo_root = Path(__file__).parent.parent
         gateway_container = os.environ.get("AICO_GATEWAY_CONTAINER", "aico-gateway")
-        proc = subprocess.run(
-            [
-                "docker",
-                "exec",
-                gateway_container,
-                "sh",
-                "-lc",
-                "mkdir -p /var/lib/aico/runtime && cat > /var/lib/aico/runtime/runtime.yaml <<'EOF'\n"
-                + runtime_yaml
-                + "EOF\n",
-            ],
-            cwd=repo_root,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
-        if proc.returncode == 0:
+        if _write_gateway_runtime_yaml(gateway_container=gateway_container, content=runtime_yaml):
             return
     except Exception:
         pass
@@ -303,6 +353,9 @@ def main() -> int:
 
     test_user: Optional[TestUser] = None
     tenant_id: Optional[str] = None
+    gateway_container = os.environ.get("AICO_GATEWAY_CONTAINER", "aico-gateway")
+    original_gateway_runtime_yaml: Optional[str] = None
+    wrote_gateway_runtime_yaml = False
 
     try:
         print("[1/5] Creating test user...")
@@ -317,7 +370,9 @@ def main() -> int:
         tenant_member_add(tenant_id=tenant_id, user_id=test_user.uuid, role="owner")
 
         print("[2/5] Applying rate limiting config (runtime-only)...")
+        original_gateway_runtime_yaml = _read_gateway_runtime_yaml(gateway_container=gateway_container)
         set_rate_limit_config(valkey_url=args.valkey_url, rpm=args.rpm, window_seconds=args.window_seconds)
+        wrote_gateway_runtime_yaml = True
 
         print("[3/5] Handshake...")
         client = EncryptedGatewayClient(args.base_url)
@@ -389,6 +444,20 @@ def main() -> int:
         return 0
 
     finally:
+        if wrote_gateway_runtime_yaml:
+            try:
+                if original_gateway_runtime_yaml is None:
+                    pass
+                elif original_gateway_runtime_yaml.strip():
+                    _write_gateway_runtime_yaml(
+                        gateway_container=gateway_container,
+                        content=original_gateway_runtime_yaml,
+                    )
+                else:
+                    _delete_gateway_runtime_yaml(gateway_container=gateway_container)
+            except Exception:
+                pass
+
         if args.cleanup and test_user is not None:
             print("[cleanup] Soft deleting test user...")
             try:
