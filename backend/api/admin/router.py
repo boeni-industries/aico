@@ -597,7 +597,7 @@ async def admin_user_audit_log(
         entries.append(
             admin_schemas.AuditEntry(
                 entry_id=row.message_id,
-                timestamp=row.timestamp,
+                timestamp=row.timestamp.isoformat() if row.timestamp else "",
                 actor_uuid=md.get("actor_uuid"),
                 actor_name=md.get("actor_name"),
                 action=md.get("action", ""),
