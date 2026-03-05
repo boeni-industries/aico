@@ -254,11 +254,15 @@ class TaskRegistry:
                     existing_task = await scheduler_service.get_task(task_id)
                     
                     import json
+                    config_only = default_config.copy() if isinstance(default_config, dict) else {}
+                    if isinstance(config_only, dict):
+                        config_only.pop('enabled', None)
+                        config_only.pop('schedule', None)
                     task_data = {
                         'task_id': task_id,
                         'task_class': task_class.__name__,
                         'schedule': schedule,
-                        'config': json.dumps(default_config) if default_config else None,
+                        'config': json.dumps(config_only) if config_only else None,
                         'enabled': enabled,
                         'created_at': datetime.now(UTC),
                         'updated_at': datetime.now(UTC)

@@ -7,6 +7,7 @@ Provides high-level scheduler operations using the 4 scheduler repositories.
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, UTC
 from typing import Any, Dict, List, Optional
 
@@ -27,12 +28,37 @@ class SchedulerService:
     def __init__(self, uow: UnitOfWork):
         self.uow = uow
 
+    def _sanitize_task_config_json(self, config: Any) -> Any:
+        if not (isinstance(config, str) and config.strip()):
+            return config
+        try:
+            parsed = json.loads(config)
+        except Exception:
+            return config
+
+        if not isinstance(parsed, dict):
+            return config
+
+        if "enabled" not in parsed and "schedule" not in parsed:
+            return config
+
+        parsed.pop("enabled", None)
+        parsed.pop("schedule", None)
+        try:
+            return json.dumps(parsed)
+        except Exception:
+            return config
+
     # ==================== Task Operations ====================
 
     async def create_task(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new scheduled task."""
         try:
             from aico.ai.scheduler.models import SchedulerTask
+
+            if "config" in task_data:
+                task_data = dict(task_data)
+                task_data["config"] = self._sanitize_task_config_json(task_data.get("config"))
             
             task = SchedulerTask(**task_data)
             created = await self.uow.scheduler_tasks.create(task)
@@ -84,6 +110,10 @@ class SchedulerService:
         """Update a task."""
         try:
             from aico.ai.scheduler.models import SchedulerTask
+
+            if "config" in task_data:
+                task_data = dict(task_data)
+                task_data["config"] = self._sanitize_task_config_json(task_data.get("config"))
             
             task = SchedulerTask(**task_data)
             updated = await self.uow.scheduler_tasks.update(task)
@@ -120,7 +150,7 @@ class SchedulerService:
                 "task_id": task.task_id,
                 "task_class": task.task_class,
                 "schedule": task.schedule,
-                "config": task.config,
+                "config": self._sanitize_task_config_json(task.config),
                 "enabled": False,
                 "created_at": task.created_at,
                 "updated_at": datetime.now(UTC),
@@ -142,7 +172,7 @@ class SchedulerService:
                 "task_id": task.task_id,
                 "task_class": task.task_class,
                 "schedule": task.schedule,
-                "config": task.config,
+                "config": self._sanitize_task_config_json(task.config),
                 "enabled": True,
                 "created_at": task.created_at,
                 "updated_at": datetime.now(UTC),
