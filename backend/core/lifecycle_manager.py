@@ -1147,6 +1147,7 @@ class BackendLifecycleManager:
         from backend.api.admin.router import router as admin_router
         from backend.api.logs.router import router as logs_router
         from backend.api.users_sessions.router import router as users_sessions_router
+        from backend.api.handshake.router import router as handshake_router
         
         # Import NATS-proxy routers
         from backend.api.memory.router_gateway import router as memory_router_gw
@@ -1180,6 +1181,9 @@ class BackendLifecycleManager:
         
         self.app.include_router(users_sessions_router, prefix="/api/v1/users-sessions", tags=["users-sessions"])
         self.logger.debug("Router mounted", extra={"prefix": "/api/v1/users-sessions", "tags": ["users-sessions"]})
+
+        self.app.include_router(handshake_router, prefix="/api/v1/handshake", tags=["handshake"])
+        self.logger.info("✅ Mounted: /api/v1/handshake")
 
         # User-facing chat + interaction endpoints (HTTP)
         self.app.include_router(conversation_router, prefix="/api/v1/conversation", tags=["conversation"])

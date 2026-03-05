@@ -9237,6 +9237,26 @@
         ]
       }
     },
+    "/api/v1/handshake": {
+      "post": {
+        "description": "Handle encrypted transport handshake requests",
+        "operationId": "handshake_api_v1_handshake_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Handshake",
+        "tags": [
+          "handshake"
+        ]
+      }
+    },
     "/api/v1/handshake/": {
       "post": {
         "description": "Handle encrypted transport handshake requests",

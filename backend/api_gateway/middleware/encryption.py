@@ -88,7 +88,7 @@ class EncryptionMiddleware:
         return self
     
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        """ASGI middleware entry point"""
+        """Handle incoming request"""
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
@@ -117,21 +117,19 @@ class EncryptionMiddleware:
         # Create request object for processing
         request = Request(scope, receive)
         path = request.url.path
+        normalized_path = path.rstrip("/") or "/"
         client_ip = request.client.host if request.client else "unknown"
+
+        # Always pass CORS preflight requests through to FastAPI so CORSMiddleware
+        # can generate the correct Access-Control-* headers.
+        if scope.get("method", "").upper() == "OPTIONS":
+            await self.app(scope, receive, send)
+            return
         
         # Memory requests handled normally
         
-        # Let CORS preflight requests pass through to the underlying app so that
-        # FastAPI's CORSMiddleware can handle them and return proper headers.
-        # This must run BEFORE we short-circuit /handshake so that the
-        # Special handling for handshake endpoint - pass through to FastAPI
-        if path == "/api/v1/handshake":
-            self.logger.debug("Passing through handshake endpoint")
-            await self.app(scope, receive, send)
-            return
-
         # Handle handshake endpoint directly for non-preflight requests
-        if request.url.path == "/api/v1/handshake":
+        if normalized_path == "/api/v1/handshake":
             response = await self._handle_handshake(request)
             await response(scope, receive, send)
             return

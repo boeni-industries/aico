@@ -21,6 +21,7 @@ key_manager = None
 # Removed initialize_router - using proper FastAPI dependency injection
 
 
+@router.post("")
 @router.post("/")
 async def handshake(request: Request):
     """Handle encrypted transport handshake requests"""
