@@ -1250,6 +1250,43 @@ scheduler_task_executions = Table(
     Index('idx_task_executions_acknowledged', 'status', 'acknowledged'),
 )
 
+scheduler_run_ledger = Table(
+    'scheduler_run_ledger',
+    metadata,
+    Column('id', BigInteger, primary_key=True, autoincrement=True),
+    Column('task_id', String, nullable=False),
+    Column('run_key', String, nullable=False),
+    Column('tenant_id', String),
+    Column('scheduled_for', TIMESTAMP(timezone=True), nullable=False),
+    Column('planned_at', TIMESTAMP(timezone=True)),
+    Column('state', String, nullable=False),
+    Column('enqueued_at', TIMESTAMP(timezone=True)),
+    Column('started_at', TIMESTAMP(timezone=True)),
+    Column('completed_at', TIMESTAMP(timezone=True)),
+    Column('execution_id', String),
+    Column('reason_code', String),
+    Column('reason_detail', Text),
+    Index('idx_scheduler_run_ledger_task_id', 'task_id'),
+    Index('idx_scheduler_run_ledger_scheduled_for', 'scheduled_for'),
+    Index('idx_scheduler_run_ledger_state', 'state'),
+    Index('idx_scheduler_run_ledger_state_scheduled_for', 'state', 'scheduled_for'),
+    Index(
+        'uq_scheduler_run_ledger_idempotency_single_tenant',
+        'task_id',
+        'scheduled_for',
+        unique=True,
+        postgresql_where=text('tenant_id IS NULL'),
+    ),
+    Index(
+        'uq_scheduler_run_ledger_idempotency_multi_tenant',
+        'task_id',
+        'tenant_id',
+        'scheduled_for',
+        unique=True,
+        postgresql_where=text('tenant_id IS NOT NULL'),
+    ),
+)
+
 # ============================================================================
 # Conversation Tables
 # ============================================================================

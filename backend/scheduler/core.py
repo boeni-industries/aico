@@ -844,6 +844,9 @@ class TaskScheduler(BaseService):
         self.scheduler_task: Optional[asyncio.Task] = None
         self.next_run_times: Dict[str, datetime] = {}
 
+        # Deterministic planned-run reconciliation
+        self._last_run_reconcile_at: datetime | None = None
+
         self._bus_client = None
     
     async def initialize(self) -> None:
@@ -1005,6 +1008,12 @@ class TaskScheduler(BaseService):
         not prevent other tasks from running.
         """
         now = datetime.now(timezone.utc)
+
+        # -1. Reconcile planned runs (durable run ledger)
+        try:
+            await self._reconcile_planned_runs(now=now)
+        except Exception as e:
+            self.logger.error(f"Failed to reconcile planned runs: {e}", exc_info=True)
         
         # 0. Monitor for stuck tasks (TaskExecutor owns this, throttles internally)
         try:
@@ -1042,6 +1051,92 @@ class TaskScheduler(BaseService):
         except Exception as e:
             self.logger.error(f"❌ Failed to execute from priority queue: {e}", exc_info=True)
             print(f"❌ Failed to execute from priority queue: {e}")
+
+    async def _reconcile_planned_runs(self, *, now: datetime) -> None:
+        scheduler_config = self.get_config("scheduler", {})
+
+        deterministic_cfg = scheduler_config.get("deterministic")
+        deterministic_cfg = deterministic_cfg if isinstance(deterministic_cfg, dict) else {}
+
+        enabled = bool(deterministic_cfg.get("enabled", True))
+        if not enabled:
+            return
+
+        reconcile_interval_seconds = float(deterministic_cfg.get("reconcile_interval_seconds", 30.0))
+        if self._last_run_reconcile_at is not None:
+            if (now - self._last_run_reconcile_at).total_seconds() < reconcile_interval_seconds:
+                return
+
+        lookahead_seconds = float(deterministic_cfg.get("lookahead_seconds", 6 * 60 * 60))
+        backfill_seconds = float(deterministic_cfg.get("backfill_seconds", 2 * 60 * 60))
+        missed_grace_seconds = float(deterministic_cfg.get("missed_grace_seconds", 10 * 60))
+
+        window_start = now - timedelta(seconds=backfill_seconds)
+        window_end = now + timedelta(seconds=lookahead_seconds)
+        missed_cutoff = now - timedelta(seconds=missed_grace_seconds)
+
+        from aico.data.postgres.connection import get_session_factory
+        from aico.data.uow import UnitOfWork
+        from aico.services.scheduler_service import SchedulerService
+        from aico.data.scheduler.models import SchedulerTaskRun
+
+        session_factory = await get_session_factory()
+        created_count = 0
+        missed_count = 0
+
+        async with UnitOfWork(session_factory) as uow:
+            scheduler_service = SchedulerService(uow)
+            tasks = await scheduler_service.get_active_tasks()
+
+            for task in tasks:
+                task_id = getattr(task, "task_id", None)
+                schedule = getattr(task, "schedule", None)
+                if not task_id or not schedule:
+                    continue
+
+                # Generate deterministic scheduled_for timestamps within window
+                cursor = self.cron_parser.next_run_time(schedule, window_start)
+                while cursor and cursor <= window_end:
+                    run_key = f"{task_id}:{cursor.isoformat()}"
+                    run = SchedulerTaskRun(
+                        task_id=task_id,
+                        run_key=run_key,
+                        tenant_id=None,
+                        scheduled_for=cursor,
+                        planned_at=now,
+                        state="planned",
+                        enqueued_at=None,
+                        started_at=None,
+                        completed_at=None,
+                        execution_id=None,
+                        reason_code=None,
+                        reason_detail=None,
+                    )
+
+                    repo = uow.scheduler_run_ledger
+                    create_if_absent = getattr(repo, "create_if_absent", None)
+                    if create_if_absent is None:
+                        break
+
+                    inserted = await create_if_absent(run)
+                    if inserted:
+                        created_count += 1
+
+                    cursor = self.cron_parser.next_run_time(schedule, cursor + timedelta(minutes=1))
+
+            repo = uow.scheduler_run_ledger
+            mark_missed_before = getattr(repo, "mark_missed_before", None)
+            if mark_missed_before is not None:
+                missed_count = await mark_missed_before(cutoff=missed_cutoff)
+
+            await uow.commit()
+
+        self._last_run_reconcile_at = now
+        if created_count or missed_count:
+            self.logger.debug(
+                "[SCHEDULER] Reconciled planned runs",
+                extra={"created": created_count, "marked_missed": missed_count},
+            )
     
     async def _enqueue_task(self, task_id: str, is_scheduled: bool = True):
         """Enqueue task to priority queue
@@ -1062,6 +1157,52 @@ class TaskScheduler(BaseService):
             
             if not task_model:
                 return
+
+            due_run_at = self.next_run_times.get(task_id)
+            if due_run_at is None:
+                due_run_at = datetime.now(timezone.utc)
+
+            async def _mark_suppressed(reason_code: str, reason_detail: str) -> None:
+                if not is_scheduled:
+                    return
+                try:
+                    session_factory2 = await get_session_factory()
+                    async with UnitOfWork(session_factory2) as uow2:
+                        repo = uow2.scheduler_run_ledger
+                        mark_suppressed = getattr(repo, "mark_suppressed", None)
+                        if mark_suppressed is None:
+                            return
+                        await mark_suppressed(
+                            task_id=task_id,
+                            scheduled_for=due_run_at,
+                            tenant_id=None,
+                            reason_code=reason_code,
+                            reason_detail=reason_detail,
+                        )
+                        await uow2.commit()
+                except Exception:
+                    return
+
+            async def _mark_enqueued(execution_id: str | None = None) -> None:
+                if not is_scheduled:
+                    return
+                try:
+                    session_factory2 = await get_session_factory()
+                    async with UnitOfWork(session_factory2) as uow2:
+                        repo = uow2.scheduler_run_ledger
+                        mark_enqueued = getattr(repo, "mark_enqueued", None)
+                        if mark_enqueued is None:
+                            return
+                        await mark_enqueued(
+                            task_id=task_id,
+                            scheduled_for=due_run_at,
+                            tenant_id=None,
+                            enqueued_at=datetime.now(timezone.utc),
+                            execution_id=execution_id,
+                        )
+                        await uow2.commit()
+                except Exception:
+                    return
             
             task_config = {
                 'task_id': task_model.task_id,
@@ -1073,6 +1214,7 @@ class TaskScheduler(BaseService):
             
             # For scheduled tasks, check if enabled. For triggered tasks, run regardless.
             if is_scheduled and not task_config.get('enabled', True):
+                await _mark_suppressed("DISABLED", "Task disabled")
                 return
             
             task_class = self.task_registry.get_task_class(task_id)
@@ -1080,13 +1222,8 @@ class TaskScheduler(BaseService):
                 if is_scheduled and task_config.get('enabled', True):
                     await self._disable_unknown_task(task_id)
                 self.logger.warning(f"Task class not found for {task_id}")
+                await _mark_suppressed("UNKNOWN_TASK", "Task class not found")
                 return
-
-            # Capture the run timestamp that is due *before* we advance next_run_times.
-            # This value must be stable/deterministic across replicas for distributed idempotency.
-            due_run_at = self.next_run_times.get(task_id)
-            if due_run_at is None:
-                due_run_at = datetime.now(timezone.utc)
 
             # For scheduled tasks, advance next_run immediately to prevent re-enqueueing on every tick
             # This must happen BEFORE the early return checks
@@ -1104,6 +1241,7 @@ class TaskScheduler(BaseService):
             if distributed_enabled and is_scheduled:
                 if self._bus_client is None or getattr(self._bus_client, "_nats", None) is None:
                     self.logger.error("Distributed scheduler enabled but bus client is not available")
+                    await _mark_suppressed("BUS_UNAVAILABLE", "Distributed scheduler enabled but bus client is not available")
                     return
 
                 tenant_id = task_config.get("tenant_id") or task_config.get("scope", {}).get("tenant_id")
@@ -1130,10 +1268,63 @@ class TaskScheduler(BaseService):
                     )
                 )
 
-                await js.publish(
-                    distributed_cfg.get("publish_subject", "scheduler.jobs.run"),
-                    json.dumps(job).encode("utf-8"),
-                )
+                publish_subject = distributed_cfg.get("publish_subject", "scheduler.jobs.run")
+                payload_bytes = json.dumps(job).encode("utf-8")
+                event_id = str(uuid.uuid4())
+
+                # Atomic: mark run enqueued + persist outbox event.
+                # We then attempt inline publish; on success we mark outbox as sent.
+                try:
+                    from aico.data.outbox.models import OutboxEvent
+
+                    tenant_id = task_config.get("tenant_id") or task_config.get("scope", {}).get("tenant_id") or "system"
+                    now_utc = datetime.now(timezone.utc)
+
+                    session_factory3 = await get_session_factory()
+                    async with UnitOfWork(session_factory3) as uow3:
+                        await uow3.outbox_events.enqueue(
+                            OutboxEvent(
+                                event_id=event_id,
+                                tenant_id=str(tenant_id),
+                                subject=publish_subject,
+                                payload_bytes=payload_bytes,
+                                status="pending",
+                                attempts=0,
+                                available_at=now_utc,
+                                created_at=now_utc,
+                                sent_at=None,
+                            )
+                        )
+
+                        # Best-effort mark as enqueued. If missing, reconciliation will backfill.
+                        repo = uow3.scheduler_run_ledger
+                        mark_enqueued = getattr(repo, "mark_enqueued", None)
+                        if mark_enqueued is not None:
+                            await mark_enqueued(
+                                task_id=task_id,
+                                scheduled_for=due_run_at,
+                                tenant_id=None,
+                                enqueued_at=now_utc,
+                                execution_id=None,
+                            )
+
+                        await uow3.commit()
+                except Exception as e:
+                    self.logger.error(f"Failed to persist outbox event for scheduler job: {e}", exc_info=True)
+                    await _mark_suppressed("OUTBOX_PERSIST_FAILED", "Failed to persist scheduler job to outbox")
+                    return
+
+                # Attempt immediate publish (fast path). Outbox publisher will retry on failure.
+                try:
+                    await js.publish(publish_subject, payload_bytes, headers={"Nats-Msg-Id": event_id})
+
+                    session_factory4 = await get_session_factory()
+                    async with UnitOfWork(session_factory4) as uow4:
+                        await uow4.outbox_events.mark_sent(event_id=event_id)
+                        await uow4.commit()
+                except Exception as e:
+                    self.logger.warning(f"Inline scheduler job publish failed; will retry via outbox: {e}")
+
                 return
 
             # Prevent enqueue storms: if already running or already queued, don't enqueue again
@@ -1144,9 +1335,11 @@ class TaskScheduler(BaseService):
                     f"If this persists, the task may be stuck."
                 )
                 print(f"⚠️  Task {task_id} blocked: already running")
+                await _mark_suppressed("ALREADY_RUNNING", "Task already running")
                 return
             if hasattr(self, "priority_queue") and self.priority_queue and self.priority_queue.has_task(task_id):
                 self.logger.debug(f"Task {task_id} already queued - skipping duplicate enqueue")
+                await _mark_suppressed("ALREADY_QUEUED", "Task already queued")
                 return
             
             # Get task instance to access priority and queue
@@ -1170,6 +1363,7 @@ class TaskScheduler(BaseService):
                     f"Enqueued {task_id} to {task_instance.queue.value} queue "
                     f"(priority={task_instance.priority.name})"
                 )
+                await _mark_enqueued()
             else:
                 # LOG LOUDLY: Queue full is a serious issue
                 error_msg = f"❌ CRITICAL: Failed to enqueue {task_id} - queue full!"
@@ -1180,6 +1374,7 @@ class TaskScheduler(BaseService):
                 print(f"Priority: {task_instance.priority.name}")
                 print(f"This task will NOT run until queue space is available!")
                 print(f"{'='*80}\n")
+                await _mark_suppressed("QUEUE_FULL", "Priority queue full")
                 
         except Exception as e:
             self.logger.error(f"Error enqueuing task {task_id}: {e}")

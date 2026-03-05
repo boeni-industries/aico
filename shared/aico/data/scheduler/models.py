@@ -16,6 +16,22 @@ class SchedulerTask(BaseModel):
     updated_at: Optional[datetime] = None
 
 
+class SchedulerTaskRun(BaseModel):
+    id: int | None = None
+    task_id: str
+    run_key: str
+    tenant_id: str | None = None
+    scheduled_for: datetime
+    planned_at: datetime | None = None
+    state: str
+    enqueued_at: datetime | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    execution_id: str | None = None
+    reason_code: str | None = None
+    reason_detail: str | None = None
+
+
 class TaskExecution(BaseModel):
     id: int | None = None
     task_id: str

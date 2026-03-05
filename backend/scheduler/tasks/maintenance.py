@@ -384,6 +384,64 @@ class DatabaseVacuumTask(BaseTask):
             return TaskResult(success=False, error=error_msg)
 
 
+class RunLedgerCleanupTask(BaseTask):
+    """Clean up old scheduler run ledger entries"""
+    
+    task_id = "maintenance.run_ledger_cleanup"
+    default_config = {
+        "enabled": True,
+        "schedule": "15 4 * * *",  # Daily at 4:15 AM (staggered between log cleanup and vacuum)
+        "retention_days": 30,  # Keep last 30 days of run history
+        "states": ["completed", "missed", "suppressed", "started"],  # Only delete finalized runs
+    }
+    
+    async def execute(self, context: TaskContext) -> TaskResult:
+        """Execute run ledger cleanup task"""
+        try:
+            # Read retention settings from scheduler config
+            scheduler_config = context.config_manager.get("scheduler", {})
+            deterministic_cfg = scheduler_config.get("deterministic", {})
+            retention_days = deterministic_cfg.get("retention_days", context.get_config("retention_days", 30))
+            states = context.get_config("states", ["completed", "missed", "suppressed", "started"])
+            
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
+            
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                repo = uow.scheduler_run_ledger
+                delete_before = getattr(repo, "delete_before", None)
+                
+                if delete_before is None:
+                    error_msg = "scheduler_run_ledger repository missing delete_before method"
+                    self.logger.error(error_msg)
+                    return TaskResult(success=False, error=error_msg)
+                
+                deleted_count = await delete_before(cutoff=cutoff_date, states=states)
+                await uow.commit()
+            
+            message = f"Run ledger cleanup completed: deleted {deleted_count} old run(s) before {cutoff_date.isoformat()}"
+            self.logger.info(message, extra={"deleted_count": deleted_count, "retention_days": retention_days})
+            
+            return TaskResult(
+                success=True,
+                message=message,
+                data={
+                    "deleted_count": deleted_count,
+                    "retention_days": retention_days,
+                    "cutoff_date": cutoff_date.isoformat(),
+                    "states_cleaned": states,
+                }
+            )
+            
+        except Exception as e:
+            error_msg = f"Run ledger cleanup failed: {str(e)}"
+            self.logger.error(error_msg, exc_info=True)
+            return TaskResult(success=False, error=error_msg)
+
+
 class AgencyConnectivityScanTask(BaseTask):
     """Run Agency maintenance connectivity full scan via SkillInvoker.
 

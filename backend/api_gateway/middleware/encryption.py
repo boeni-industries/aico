@@ -124,9 +124,9 @@ class EncryptionMiddleware:
         # Let CORS preflight requests pass through to the underlying app so that
         # FastAPI's CORSMiddleware can handle them and return proper headers.
         # This must run BEFORE we short-circuit /handshake so that the
-        # preflight for /api/v1/handshake also gets CORS headers.
-        if request.method == "OPTIONS":
-            self.logger.debug(f"Passing through CORS preflight for path: {path}")
+        # Special handling for handshake endpoint - pass through to FastAPI
+        if path == "/api/v1/handshake":
+            self.logger.debug("Passing through handshake endpoint")
             await self.app(scope, receive, send)
             return
 
@@ -745,6 +745,10 @@ class EncryptionMiddleware:
         
         # Check exact matches for public endpoints
         if path in public_endpoints:
+            return True
+        
+        # Allow scheduler trigger endpoint with JWT authentication (no encryption needed)
+        if path.startswith("/api/v1/scheduler/tasks/") and path.endswith("/trigger"):
             return True
         
         # NEVER skip encryption for admin endpoints - they contain sensitive data

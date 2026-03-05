@@ -81,6 +81,7 @@ class UnitOfWork:
         self._feedback_repository = None
         self._scheduler_tasks_repository = None
         self._scheduler_task_executions_repository = None
+        self._scheduler_run_ledger_repository = None
         self._task_execution_repository = None
         self._workflow_executions_repository = None
         self._workflow_stages_repository = None
@@ -488,6 +489,14 @@ class UnitOfWork:
             from .repositories.postgres.scheduler_task_executions_repository import PostgresSchedulerTaskExecutionsRepository
             self._scheduler_task_executions_repository = PostgresSchedulerTaskExecutionsRepository(self._session)
         return self._scheduler_task_executions_repository
+
+    @property
+    def scheduler_run_ledger(self):
+        """Get SchedulerRunLedgerRepository instance."""
+        if self._scheduler_run_ledger_repository is None:
+            from .repositories.postgres.scheduler_run_ledger_repository import PostgresSchedulerRunLedgerRepository
+            self._scheduler_run_ledger_repository = PostgresSchedulerRunLedgerRepository(self._session)
+        return self._scheduler_run_ledger_repository
     
     @property
     def conversation_initiations(self):

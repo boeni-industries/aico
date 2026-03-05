@@ -184,6 +184,8 @@ def status():
         if DockerClient.is_docker_available() and DockerClient.is_docker_running():
             container_info = DockerClient.get_container_status(DockerClient.AICO_SERVICES.get("gateway", ""))
 
+        process_status: dict = {"metadata": None, "process_info": None, "stale_pid": False}
+
         # Primary status header
         if is_running:
             console.print(f"{chars['globe']} [bold green]API Gateway Status: RUNNING[/bold green]")
@@ -549,7 +551,7 @@ def test_gateway():
             console.print(f"[green]{chars['check']} Enabled protocols: {', '.join(enabled_protocols)}[/green]")
         
         console.print()
-        console.print(f"[green]{chars['party']} API Gateway connectivity test completed![/green]")
+        console.print(f"[green]{chars.get('party', chars['check'])} API Gateway connectivity test completed![/green]")
         
     except Exception as e:
         console.print(f"[red]{chars['cross']} Gateway test failed: {e}[/red]")

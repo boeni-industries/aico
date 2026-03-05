@@ -155,6 +155,91 @@ class SchedulerService:
             logger.error(f"[SCHEDULER_SERVICE] Failed to enable task: {e}", extra={"task_id": task_id})
             raise
 
+    # ==================== Run Ledger Operations ====================
+
+    async def create_run(self, run_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a planned run ledger record."""
+        try:
+            from aico.data.scheduler.models import SchedulerTaskRun
+
+            run = SchedulerTaskRun(**run_data)
+            created = await self.uow.scheduler_run_ledger.create(run)
+            await self.uow.commit()
+
+            logger.debug("[SCHEDULER_SERVICE] Created run", extra={"task_id": created.task_id, "run_key": created.run_key})
+            return created
+        except Exception as e:
+            logger.error(f"[SCHEDULER_SERVICE] Failed to create run: {e}")
+            await self.uow.rollback()
+            raise
+
+    async def get_run(self, run_id: str) -> Optional[Any]:
+        """Retrieve a planned run ledger record by numeric ID."""
+        try:
+            return await self.uow.scheduler_run_ledger.get_by_id(run_id)
+        except Exception as e:
+            logger.error(f"[SCHEDULER_SERVICE] Failed to retrieve run: {e}", extra={"run_id": run_id})
+            raise
+
+    async def list_runs(
+        self,
+        *,
+        filters: Optional[Dict[str, Any]] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List[Any]:
+        """List planned runs with optional filters."""
+        try:
+            return await self.uow.scheduler_run_ledger.list(filters=filters or {}, limit=limit, offset=offset)
+        except Exception as e:
+            logger.error(f"[SCHEDULER_SERVICE] Failed to list runs: {e}")
+            raise
+
+    async def update_run(self, run_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update a planned run ledger record."""
+        try:
+            from aico.data.scheduler.models import SchedulerTaskRun
+
+            run = SchedulerTaskRun(**run_data)
+            updated = await self.uow.scheduler_run_ledger.update(run)
+            await self.uow.commit()
+
+            logger.debug(
+                "[SCHEDULER_SERVICE] Updated run",
+                extra={"task_id": updated.task_id, "run_key": updated.run_key, "state": updated.state},
+            )
+            return updated
+        except Exception as e:
+            logger.error(f"[SCHEDULER_SERVICE] Failed to update run: {e}")
+            await self.uow.rollback()
+            raise
+
+    async def get_run_stats_in_range(
+        self,
+        *,
+        start_dt: datetime,
+        end_dt: datetime,
+        bucket: str = "hour",
+        task_id: str | None = None,
+        tenant_id: str | None = None,
+    ) -> List[Dict[str, Any]]:
+        """Get run-ledger stats buckets in time range."""
+        try:
+            repo = self.uow.scheduler_run_ledger
+            stats_in_range = getattr(repo, "stats_in_range", None)
+            if stats_in_range is None:
+                raise RuntimeError("scheduler_run_ledger repository missing stats_in_range")
+            return await stats_in_range(
+                start_dt=start_dt,
+                end_dt=end_dt,
+                bucket=bucket,
+                task_id=task_id,
+                tenant_id=tenant_id,
+            )
+        except Exception as e:
+            logger.error(f"[SCHEDULER_SERVICE] Failed to get run stats: {e}")
+            raise
+
     # ==================== Execution Operations ====================
 
     async def create_execution(self, execution_data: Dict[str, Any]) -> Dict[str, Any]:

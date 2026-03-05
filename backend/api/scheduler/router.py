@@ -28,6 +28,9 @@ from .schemas import (
     ExecutionListResponse,
     ExecutionDetailResponse,
     ExecutionStatsResponse,
+    RunListResponse,
+    RunDetailResponse,
+    RunStatsResponse,
 )
 from .dependencies import (
     get_cron_parser,
@@ -72,6 +75,99 @@ async def get_scheduler_status(
         return SchedulerStatusResponse(**status_info)
     except Exception as e:
         logger.error(f"Failed to get scheduler status: {e}")
+        raise SchedulerNotAvailableError()
+
+
+@router.get("/runs", response_model=RunListResponse)
+@handle_scheduler_exceptions
+async def list_runs(
+    start_time: str,
+    end_time: str,
+    limit: int = 200,
+    offset: int = 0,
+    task_id: Optional[str] = None,
+    state: Optional[str] = None,
+    tenant_id: Optional[str] = None,
+    _auth = Depends(require_admin_access),
+) -> RunListResponse:
+    """List planned runs (run ledger) in a time range."""
+    try:
+        if limit < 1 or limit > 500:
+            raise TaskValidationError("limit must be between 1 and 500")
+        if offset < 0:
+            raise TaskValidationError("offset must be >= 0")
+
+        nats_client = get_gateway_nats_client()
+        resp = await nats_client.request_scheduler_runs_list(
+            start_time=start_time,
+            end_time=end_time,
+            limit=limit,
+            offset=offset,
+            task_id=task_id,
+            state=state,
+            tenant_id=tenant_id,
+        )
+        if resp.get("error"):
+            raise SchedulerNotAvailableError()
+        return RunListResponse(**resp)
+    except TaskValidationError:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to list runs: {e}")
+        raise SchedulerNotAvailableError()
+
+
+@router.get("/runs/stats", response_model=RunStatsResponse)
+@handle_scheduler_exceptions
+async def run_stats(
+    start_time: str,
+    end_time: str,
+    bucket: str = "hour",
+    task_id: Optional[str] = None,
+    tenant_id: Optional[str] = None,
+    _auth = Depends(require_admin_access),
+) -> RunStatsResponse:
+    """Get run-ledger stats aggregated into time buckets."""
+    try:
+        nats_client = get_gateway_nats_client()
+        resp = await nats_client.request_scheduler_runs_stats(
+            start_time=start_time,
+            end_time=end_time,
+            bucket=bucket,
+            task_id=task_id,
+            tenant_id=tenant_id,
+        )
+        if resp.get("error"):
+            raise SchedulerNotAvailableError()
+        return RunStatsResponse(**resp)
+    except Exception as e:
+        logger.error(f"Failed to get run stats: {e}")
+        raise SchedulerNotAvailableError()
+
+
+@router.get("/runs/{run_id}", response_model=RunDetailResponse)
+@handle_scheduler_exceptions
+async def get_run_details(
+    run_id: str,
+    _auth = Depends(require_admin_access),
+) -> RunDetailResponse:
+    """Get a single planned run (run ledger) by numeric run_id."""
+    try:
+        nats_client = get_gateway_nats_client()
+        resp = await nats_client.request_scheduler_run_get(run_id)
+        if resp.get("error"):
+            if resp.get("error") == "RUN_NOT_FOUND":
+                raise_api_error(
+                    status_code=404,
+                    error_code="SCHEDULER_RUN_NOT_FOUND",
+                    message=str(resp.get("message") or f"Run {run_id} not found"),
+                )
+            raise SchedulerNotAvailableError()
+        return RunDetailResponse(**resp)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get run {run_id}: {e}")
         raise SchedulerNotAvailableError()
 
 

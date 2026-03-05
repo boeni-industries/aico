@@ -65,6 +65,15 @@ class OutboxPublisherService(BaseService):
             )
             await js.ensure_stream(
                 JetStreamStreamSpec(
+                    name="SCHEDULER_JOBS",
+                    subjects=["scheduler.jobs.*"],
+                    retention=RetentionPolicy.LIMITS,
+                    max_age_seconds=60 * 60 * 24 * 7,
+                    duplicate_window_seconds=60 * 60,
+                )
+            )
+            await js.ensure_stream(
+                JetStreamStreamSpec(
                     name="INTERACTION_NOTIFICATIONS",
                     subjects=["interaction.notifications.>"],
                     retention=RetentionPolicy.LIMITS,

@@ -31,6 +31,12 @@ This file tracks all changes to the frozen API contracts in `/contracts/`.
 
 ## [Unreleased]
 
+### 2026-03-05 - Scheduler Run Ledger Endpoints
+- **Added (Scheduler)**: Run-ledger endpoints for deterministic planned-run accounting:
+  - `GET /api/v1/scheduler/runs`
+  - `GET /api/v1/scheduler/runs/{run_id}`
+  - `GET /api/v1/scheduler/runs/stats`
+
 ### 2026-03-04 - Scheduler Executions Pagination + Ops Health Endpoints
 - **Added (Scheduler)**: Cursor-paginated executions listing endpoint `GET /api/v1/scheduler/executions` (replaces bulk range payloads).
 - **Added (Scheduler)**: Execution details endpoint `GET /api/v1/scheduler/executions/{execution_id}` for per-execution drilldown.

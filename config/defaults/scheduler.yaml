@@ -15,3 +15,11 @@ distributed:
   stream_name: "SCHEDULER_JOBS"
   subject_filter: "scheduler.jobs.*"
   publish_subject: "scheduler.jobs.run"
+
+deterministic:
+  enabled: true
+  reconcile_interval_seconds: 30
+  lookahead_seconds: 21600  # 6 hours
+  backfill_seconds: 7200     # 2 hours
+  missed_grace_seconds: 600  # 10 minutes
+  retention_days: 30         # Keep run ledger history for 30 days

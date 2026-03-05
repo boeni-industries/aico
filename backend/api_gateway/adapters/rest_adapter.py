@@ -189,6 +189,43 @@ class RESTAdapter:
                 "uptime": getattr(self, '_uptime', 0)
             }
         
+        # Scheduler task trigger endpoint
+        @self.app.post(f"{prefix}/scheduler/tasks/{{task_id}}/trigger")
+        async def trigger_scheduler_task(task_id: str):
+            """Manually trigger a scheduler task to run immediately"""
+            try:
+                from ..core.nats_client import GatewayNATSClient
+                
+                # Create NATS client and trigger task
+                nats_client = GatewayNATSClient()
+                await nats_client.connect()
+                
+                try:
+                    result = await nats_client.request_scheduler_task_trigger(task_id)
+                    
+                    if result.get("success"):
+                        return {
+                            "success": True,
+                            "message": f"Task '{task_id}' triggered successfully",
+                            "task_id": task_id
+                        }
+                    else:
+                        return {
+                            "success": False,
+                            "message": result.get("error", "Failed to trigger task"),
+                            "task_id": task_id
+                        }
+                finally:
+                    await nats_client.close()
+                    
+            except Exception as e:
+                self.logger.error(f"Error triggering task {task_id}: {e}")
+                return {
+                    "success": False,
+                    "message": f"Error triggering task: {str(e)}",
+                    "task_id": task_id
+                }
+        
     
     def mount_router(self, router: APIRouter, prefix: str = "", tags: Optional[list] = None):
         """Mount a domain router to the FastAPI app"""

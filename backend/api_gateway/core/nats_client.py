@@ -458,6 +458,54 @@ class GatewayNATSClient:
     async def request_scheduler_task_trigger(self, task_id: str) -> Dict[str, Any]:
         payload = json.dumps({"task_id": task_id}).encode("utf-8")
         return await self._nats_request_with_trace("scheduler.task.trigger", payload)
+
+    async def request_scheduler_runs_list(
+        self,
+        *,
+        start_time: str,
+        end_time: str,
+        limit: int = 200,
+        offset: int = 0,
+        task_id: str | None = None,
+        state: str | None = None,
+        tenant_id: str | None = None,
+    ) -> Dict[str, Any]:
+        payload = json.dumps(
+            {
+                "start_time": start_time,
+                "end_time": end_time,
+                "limit": int(limit),
+                "offset": int(offset),
+                "task_id": task_id,
+                "state": state,
+                "tenant_id": tenant_id,
+            }
+        ).encode("utf-8")
+        return await self._nats_request_with_trace("scheduler.runs.list", payload)
+
+    async def request_scheduler_run_get(self, run_id: str) -> Dict[str, Any]:
+        payload = json.dumps({"run_id": run_id}).encode("utf-8")
+        return await self._nats_request_with_trace("scheduler.runs.get", payload)
+
+    async def request_scheduler_runs_stats(
+        self,
+        *,
+        start_time: str,
+        end_time: str,
+        bucket: str = "hour",
+        task_id: str | None = None,
+        tenant_id: str | None = None,
+    ) -> Dict[str, Any]:
+        payload = json.dumps(
+            {
+                "start_time": start_time,
+                "end_time": end_time,
+                "bucket": bucket,
+                "task_id": task_id,
+                "tenant_id": tenant_id,
+            }
+        ).encode("utf-8")
+        return await self._nats_request_with_trace("scheduler.runs.stats", payload)
     
     async def request_system_metrics_all(self) -> Dict[str, Any]:
         """Request all system metrics from core via NATS"""

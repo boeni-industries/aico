@@ -509,7 +509,10 @@ def trigger_task(
 ):
     """Manually trigger a task to run immediately"""
     try:
-        from cli.utils.api_client import get_gateway_client
+        import httpx
+        import uuid
+        from aico.core.config import ConfigurationManager
+        from aico.security.key_manager import AICOKeyManager
         
         with Progress(
             SpinnerColumn(),
@@ -518,9 +521,36 @@ def trigger_task(
         ) as progress:
             progress.add_task(description=f"Triggering task '{task_id}'...", total=None)
             
-            # Trigger task via API (container-native approach)
-            with get_gateway_client() as client:
-                response = client.post(f"/api/v1/scheduler/tasks/{task_id}/trigger")
+            # Get JWT token for authentication
+            config_manager = ConfigurationManager()
+            config_manager.initialize()
+            key_manager = AICOKeyManager(config_manager)
+            jwt_token = key_manager.get_jwt_token("api_gateway")
+            
+            if not jwt_token:
+                console.print("[red]No JWT token found. Authentication required.[/red]")
+                raise typer.Exit(1)
+            
+            # Get gateway configuration
+            gateway_config = config_manager.get("api_gateway", {})
+            rest_config = gateway_config.get("rest", {})
+            host = rest_config.get("host", "127.0.0.1")
+            port = rest_config.get("port", 8771)
+            base_url = f"http://{host}:{port}"
+            
+            # Trigger task via authenticated HTTP request
+            with httpx.Client(timeout=30.0) as client:
+                headers = {
+                    "Authorization": f"Bearer {jwt_token}",
+                    "Idempotency-Key": str(uuid.uuid4()),
+                    "Content-Type": "application/json"
+                }
+                
+                response = client.post(
+                    f"{base_url}/api/v1/scheduler/tasks/{task_id}/trigger",
+                    headers=headers,
+                    json={}
+                )
                 
                 if response.status_code == 200:
                     data = response.json()
@@ -531,20 +561,22 @@ def trigger_task(
                             f"[dim]Tip: To see what happened, run [cyan]aico scheduler history {task_id}[/cyan] after it executes.[/dim]"
                         )
                     else:
-                        console.print(f"[yellow]Task trigger request sent but returned: {data.get('message', 'Unknown status')}[/yellow]")
+                        error_msg = data.get("message", "Failed to trigger task")
+                        console.print(f"[red]{error_msg}[/red]")
+                        raise typer.Exit(1)
+                elif response.status_code == 401:
+                    console.print("[red]Authentication failed. Please check your credentials.[/red]")
+                    raise typer.Exit(1)
                 elif response.status_code == 404:
                     console.print(f"[red]Task not found: {task_id}[/red]")
-                    raise typer.Exit(1)
-                elif response.status_code == 403:
-                    console.print(f"[red]Permission denied. Admin access required to trigger tasks.[/red]")
                     raise typer.Exit(1)
                 else:
                     console.print(f"[red]Failed to trigger task: HTTP {response.status_code}[/red]")
                     try:
                         error_data = response.json()
-                        console.print(f"[red]{error_data.get('detail', 'Unknown error')}[/red]")
+                        console.print(f"[red]{error_data.get('message', 'Unknown error')}[/red]")
                     except Exception:
-                        pass
+                        console.print(f"[red]{response.text}[/red]")
                     raise typer.Exit(1)
 
     except Exception as e:

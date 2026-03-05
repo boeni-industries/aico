@@ -1281,6 +1281,42 @@ CREATE TABLE IF NOT EXISTS "proactive_reminder_clusters" (
 
 CREATE INDEX IF NOT EXISTS idx_reminder_clusters_user ON "proactive_reminder_clusters"(user_id);
 
+CREATE TABLE IF NOT EXISTS "scheduler_run_ledger" (
+                id BIGSERIAL PRIMARY KEY,
+                task_id TEXT NOT NULL,
+                run_key TEXT NOT NULL,
+                tenant_id TEXT,
+                scheduled_for TIMESTAMPTZ NOT NULL,
+                planned_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                state TEXT NOT NULL,
+                enqueued_at TIMESTAMPTZ,
+                started_at TIMESTAMPTZ,
+                completed_at TIMESTAMPTZ,
+                execution_id TEXT,
+                reason_code TEXT,
+                reason_detail TEXT
+            );
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_scheduler_run_ledger_idempotency_single_tenant
+    ON "scheduler_run_ledger" (task_id, scheduled_for)
+    WHERE tenant_id IS NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_scheduler_run_ledger_idempotency_multi_tenant
+    ON "scheduler_run_ledger" (task_id, tenant_id, scheduled_for)
+    WHERE tenant_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_scheduler_run_ledger_task_id
+    ON "scheduler_run_ledger" (task_id);
+
+CREATE INDEX IF NOT EXISTS idx_scheduler_run_ledger_scheduled_for
+    ON "scheduler_run_ledger" (scheduled_for);
+
+CREATE INDEX IF NOT EXISTS idx_scheduler_run_ledger_state
+    ON "scheduler_run_ledger" (state);
+
+CREATE INDEX IF NOT EXISTS idx_scheduler_run_ledger_state_scheduled_for
+    ON "scheduler_run_ledger" (state, scheduled_for);
+
 CREATE TABLE IF NOT EXISTS "scheduler_task_executions" (
                 id BIGSERIAL PRIMARY KEY,
                 task_id TEXT NOT NULL,
@@ -1706,6 +1742,9 @@ DO $$ BEGIN
   EXCEPTION WHEN duplicate_object THEN NULL; END;
   BEGIN
     ALTER TABLE proactive_reminder_clusters ADD CONSTRAINT fk_proactive_reminder_clusters_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE scheduler_run_ledger ADD CONSTRAINT fk_scheduler_run_ledger_task_id_scheduler_tasks FOREIGN KEY (task_id) REFERENCES scheduler_tasks(task_id);
   EXCEPTION WHEN duplicate_object THEN NULL; END;
   BEGIN
     ALTER TABLE scheduler_task_executions ADD CONSTRAINT fk_scheduler_task_executions_task_id_scheduler_tasks FOREIGN KEY (task_id) REFERENCES scheduler_tasks(task_id);
