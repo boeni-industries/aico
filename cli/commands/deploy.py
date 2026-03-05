@@ -2110,7 +2110,16 @@ def deploy_gateway(
 
     _ensure_all_secrets()
 
-    args = ["up", "-d", "--build", "gateway"]
+    # Use --no-cache when nuking to ensure fresh build
+    if nuke:
+        args = ["build", "--no-cache", "gateway"]
+        console.print("🔨 [cyan]Building Gateway (no cache)...[/cyan]")
+        code = _run_compose(args, env=None)
+        if code != 0:
+            raise typer.Exit(code)
+        args = ["up", "-d", "gateway"]
+    else:
+        args = ["up", "-d", "--build", "gateway"]
 
     console.print("🚀 [cyan]Starting Gateway container...[/cyan]")
     code = _run_compose(args, env=None)
@@ -2146,7 +2155,16 @@ def deploy_core(
 
     _ensure_all_secrets()
 
-    args = ["up", "-d", "--build", "core"]
+    # Use --no-cache when nuking to ensure fresh build
+    if nuke:
+        args = ["build", "--no-cache", "core"]
+        console.print("🔨 [cyan]Building Core (no cache)...[/cyan]")
+        code = _run_compose(args, env=None)
+        if code != 0:
+            raise typer.Exit(code)
+        args = ["up", "-d", "core"]
+    else:
+        args = ["up", "-d", "--build", "core"]
 
     console.print("🚀 [cyan]Starting Core container...[/cyan]")
     code = _run_compose(args, env=None)
@@ -2181,7 +2199,16 @@ def deploy_modelservice(
 
     _ensure_all_secrets()
 
-    args = ["up", "-d", "--build", "modelservice"]
+    # Use --no-cache when nuking to ensure fresh build
+    if nuke:
+        args = ["build", "--no-cache", "modelservice"]
+        console.print("🔨 [cyan]Building Modelservice (no cache)...[/cyan]")
+        code = _run_compose(args, env=None)
+        if code != 0:
+            raise typer.Exit(code)
+        args = ["up", "-d", "modelservice"]
+    else:
+        args = ["up", "-d", "--build", "modelservice"]
 
     console.print("🚀 [cyan]Starting Modelservice container...[/cyan]")
     code = _run_compose(args, env=None)

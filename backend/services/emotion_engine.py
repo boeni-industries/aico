@@ -232,10 +232,16 @@ class EmotionEngine(BaseService):
     async def _setup_subscriptions(self) -> None:
         """Set up message bus subscriptions"""
         # Subscribe to conversation user input (trigger for emotion processing)
+        # IMPORTANT: Messages are tenant-scoped as aico.<tenant_id>.<topic>
+        # Core runs multi-tenant, so we must subscribe with a wildcard tenant prefix
+        topic_subject = AICOTopics.CONVERSATION_USER_INPUT.replace("/", ".")
+        wildcard_pattern = f"aico.*.{topic_subject}"
+        self.logger.info(f"🔍 [EMOTION_SUBSCRIPTION] Subscribing to wildcard pattern: {wildcard_pattern}")
         await self.bus_client.subscribe(
-            AICOTopics.CONVERSATION_USER_INPUT,
+            wildcard_pattern,
             self._handle_conversation_turn
         )
+        self.logger.info(f"✅ [EMOTION_SUBSCRIPTION] Successfully subscribed to: {wildcard_pattern}")
         
         # Subscribe to ALL sentiment responses for this engine (wildcard)
         # This avoids per-request subscription overhead and race conditions
@@ -975,40 +981,51 @@ class EmotionEngine(BaseService):
         return None
     
     async def get_state_history(self, limit: int = 100, hours: Optional[int] = None) -> List[Dict[str, Any]]:
-        """Get emotional state history (compact projections)
+        """Get emotional state history from database
         
         Args:
             limit: Maximum number of records to return
             hours: Optional time window in hours (only return states from last N hours)
         """
-        if hours is None:
-            return self.state_history[-limit:]
-        
-        # Filter by time window
         from datetime import datetime, timedelta, UTC
-        cutoff_time = datetime.now(UTC) - timedelta(hours=hours)
-
-        def _parse_ts(ts: str) -> datetime:
-            # Accept common variants:
-            # - 2026-...Z
-            # - 2026-...+00:00
-            # - 2026-...+00:00Z (malformed but seen in responses)
-            # - 2026-...+00:00+00:00 (double-appended offset)
-            s = (ts or "").strip()
-            if s.endswith("+00:00Z"):
-                s = s[:-1]
-            if s.endswith("Z"):
-                s = s[:-1] + "+00:00"
-            if "+00:00+00:00" in s:
-                s = s.replace("+00:00+00:00", "+00:00")
-            return datetime.fromisoformat(s)
+        from aico.data.postgres.connection import get_session_factory
+        from aico.data.uow import UnitOfWork
         
-        filtered_history = [
-            state for state in self.state_history
-            if _parse_ts(state.get("timestamp", "")) > cutoff_time
-        ]
-        
-        return filtered_history[-limit:]
+        try:
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                # Query database for emotion history (get more if we need to filter by time)
+                query_limit = limit * 3 if hours is not None else limit
+                history_rows = await uow.emotion_history.get_recent_for_user(
+                    user_id='system',
+                    limit=query_limit
+                )
+                
+                # Filter by time window if specified
+                if hours is not None:
+                    cutoff_time = datetime.now(UTC) - timedelta(hours=hours)
+                    history_rows = [
+                        row for row in history_rows
+                        if row.timestamp and row.timestamp > cutoff_time
+                    ][:limit]
+                
+                # Convert to compact dict format
+                history = []
+                for row in history_rows:
+                    history.append({
+                        "timestamp": row.created_at.isoformat() if row.created_at else "",
+                        "feeling": row.feeling or "",
+                        "valence": row.valence or 0.0,
+                        "arousal": row.arousal or 0.0,
+                        "intensity": row.intensity or 0.0
+                    })
+                
+                return history
+                
+        except Exception as e:
+            self.logger.error(f"Failed to get emotion history from database: {e}", exc_info=True)
+            # Fallback to in-memory history if database query fails
+            return self.state_history[-limit:] if not hours else []
     
     # ============================================================================
     # STATE PERSISTENCE
