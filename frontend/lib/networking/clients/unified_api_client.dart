@@ -216,9 +216,8 @@ class UnifiedApiClient {
 
   /// Convenience method for GET requests
   Future<T?> get<T>(String endpoint, {Map<String, dynamic>? queryParameters}) async {
-    return _connectionManager.executeWithRetry(() => 
-      _makeEncryptedRequest<T>('GET', endpoint, data: queryParameters)
-    );
+    return _connectionManager.executeWithRetry(() =>
+        request<T>('GET', endpoint, data: queryParameters));
   }
 
   Future<T?> post<T>(String endpoint, {Map<String, dynamic>? data}) async {
@@ -228,21 +227,18 @@ class UnifiedApiClient {
   }
 
   Future<T?> put<T>(String endpoint, {Map<String, dynamic>? data}) async {
-    return _connectionManager.executeWithRetry(() => 
-      _makeEncryptedRequest<T>('PUT', endpoint, data: data)
-    );
+    return _connectionManager.executeWithRetry(() =>
+        request<T>('PUT', endpoint, data: data));
   }
 
   Future<T?> patch<T>(String endpoint, {Map<String, dynamic>? data}) async {
-    return _connectionManager.executeWithRetry(() => 
-      _makeEncryptedRequest<T>('PATCH', endpoint, data: data)
-    );
+    return _connectionManager.executeWithRetry(() =>
+        request<T>('PATCH', endpoint, data: data));
   }
 
   Future<T?> delete<T>(String endpoint) async {
-    return _connectionManager.executeWithRetry(() => 
-      _makeEncryptedRequest<T>('DELETE', endpoint)
-    );
+    return _connectionManager.executeWithRetry(() =>
+        request<T>('DELETE', endpoint));
   }
 
   /// Make streaming request with proper HTTP streaming support

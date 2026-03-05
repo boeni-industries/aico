@@ -621,7 +621,7 @@ class WebSocketAdapter:
                     
                     # conversation/ai/response/v1 - broadcast to user
                     if topic == "conversation/ai/response/v1":
-                        user_uuid = bus_message.metadata.user_uuid
+                        user_uuid = bus_message.metadata.attributes.get("user_uuid") if bus_message.metadata.attributes else None
                         if user_uuid:
                             await self.broadcast_to_user(user_uuid, "conversation.responses", payload)
                             self.logger.debug(f"Forwarded conversation response to user {user_uuid[:8]}")

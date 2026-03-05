@@ -141,8 +141,18 @@ class EncryptionService {
     }
     
     final handshakeResponse = response['handshake_response'];
+    if (handshakeResponse is! Map<String, dynamic>) {
+      throw EncryptionException('Invalid handshake response format');
+    }
+
     if (!handshakeResponse.containsKey('public_key')) {
       throw EncryptionException('Missing server public key in handshake response');
+    }
+
+    // Defensive: session keys must exist for key exchange. In practice, this can be null if
+    // resetSession() was called while a handshake was in-flight.
+    if (_sessionPrivateKey == null) {
+      throw EncryptionException('Handshake failed: session keys not initialized');
     }
     
     // Get server's X25519 public key and perform key exchange

@@ -1,5 +1,5 @@
 enabled: true  # Global kill switch for OpenTelemetry (tracing + metrics)
-mode: "dev"  # dev | test | prod
+mode: "prod"  # dev | test | prod ("prod" is an alias for "production")
 exporters:
   prometheus:
     enabled: false

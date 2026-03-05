@@ -224,8 +224,13 @@ class MessageBusClient:
         return subject
 
     def _pattern_to_subject(self, pattern: str) -> str:
-        # Existing callers use ZMQ-style prefix patterns like "conversation/" or "conversation/*".
-        # For NATS we map those to subjects with wildcards.
+        # If pattern already contains NATS wildcards (* or >) or starts with 'aico.' tenant prefix,
+        # it's a literal NATS subject pattern - pass through unchanged.
+        if pattern.startswith("aico.") or "*" in pattern or ">" in pattern:
+            return pattern
+        
+        # Otherwise, convert ZMQ-style prefix patterns like "conversation/" or "conversation/*"
+        # to NATS subjects with wildcards.
         subject = self._topic_to_subject(pattern)
         if subject in {"*", "**"}:
             return ">"
@@ -250,9 +255,15 @@ class MessageBusClient:
         except Exception:
             return False
     
-    async def request(self, topic: str, payload: ProtobufMessage, 
-                     timeout: float = 5.0,
-                     attributes: Optional[Dict[str, str]] = None) -> ProtobufMessage:
+    async def request(
+        self,
+        topic: str,
+        payload: ProtobufMessage,
+        *,
+        tenant_id: Optional[str] = None,
+        timeout: float = 5.0,
+        attributes: Optional[Dict[str, str]] = None,
+    ) -> ProtobufMessage:
         """Send a request and wait for a reply (NATS request/reply pattern)
         
         Args:
@@ -279,9 +290,15 @@ class MessageBusClient:
                 source=self.client_id,
                 message_type=topic
             )
+
+            # Tenant scope is an explicit parameter (Option A). We still inject it into
+            # envelope metadata for downstream services that need it for processing.
+            if tenant_id:
+                metadata.attributes["tenant_id"] = tenant_id
             
-            # Add optional attributes
             if attributes:
+                if "tenant_id" in attributes:
+                    raise MessageBusError("tenant_id must be passed explicitly, not via attributes")
                 metadata.attributes.update(attributes)
             
             # Create AICO message envelope
@@ -300,8 +317,6 @@ class MessageBusClient:
             # Inject W3C trace context into NATS headers
             trace_headers = _inject_trace_context()
             
-            # Extract tenant_id for subject scoping
-            tenant_id = attributes.get("tenant_id") if attributes else None
             subject = self._topic_to_subject(topic, tenant_id=tenant_id)
             
             try:
@@ -319,10 +334,16 @@ class MessageBusClient:
             except Exception as e:
                 raise MessageBusError(f"Request failed: {e}")
     
-    async def publish(self, topic: str, payload: ProtobufMessage, 
-                     correlation_id: Optional[str] = None, 
-                     reply_to: Optional[str] = None,
-                     attributes: Optional[Dict[str, str]] = None):
+    async def publish(
+        self,
+        topic: str,
+        payload: ProtobufMessage,
+        *,
+        tenant_id: Optional[str] = None,
+        correlation_id: Optional[str] = None,
+        reply_to: Optional[str] = None,
+        attributes: Optional[Dict[str, str]] = None,
+    ):
         """Publish a protobuf message to a topic
         
         Args:
@@ -338,18 +359,27 @@ class MessageBusClient:
         # Track message publication metrics with client context
         with track_message(topic, client_id=self.client_id, direction="publish") as tracker:
             # Create message metadata
+            # Use correlation_id as envelope message_id if provided (ensures envelope ID matches payload ID)
+            envelope_message_id = correlation_id if correlation_id else str(uuid.uuid4())
             metadata = _create_message_metadata(
-                message_id=str(uuid.uuid4()),
+                message_id=envelope_message_id,
                 source=self.client_id,
                 message_type=topic
             )
+
+            # Tenant scope is an explicit parameter (Option A). We still inject it into
+            # envelope metadata for downstream services that need it for processing.
+            if tenant_id:
+                metadata.attributes["tenant_id"] = tenant_id
             
-            # Add optional attributes
+            # Add optional attributes (correlation_id already used as message_id if provided)
             if correlation_id:
                 metadata.attributes["correlation_id"] = correlation_id
             if reply_to:
                 metadata.attributes["reply_to"] = reply_to
             if attributes:
+                if "tenant_id" in attributes:
+                    raise MessageBusError("tenant_id must be passed explicitly, not via attributes")
                 metadata.attributes.update(attributes)
             
             # Create AICO message envelope
@@ -368,8 +398,6 @@ class MessageBusClient:
             # Inject W3C trace context into NATS headers
             trace_headers = _inject_trace_context()
             
-            # Extract tenant_id for subject scoping
-            tenant_id = attributes.get("tenant_id") if attributes else None
             subject = self._topic_to_subject(topic, tenant_id=tenant_id)
             await self._nats.publish(subject, message_data, headers=trace_headers if trace_headers else None)
             
@@ -396,6 +424,7 @@ class MessageBusClient:
         topic: str,
         payload: ProtobufMessage,
         *,
+        tenant_id: Optional[str] = None,
         correlation_id: Optional[str] = None,
         reply_to: Optional[str] = None,
         attributes: Optional[Dict[str, str]] = None,
@@ -414,11 +443,18 @@ class MessageBusClient:
             message_type=topic,
         )
 
+        # Tenant scope is an explicit parameter (Option A). We still inject it into
+        # envelope metadata for downstream services that need it for processing.
+        if tenant_id:
+            metadata.attributes["tenant_id"] = tenant_id
+
         if correlation_id:
             metadata.attributes["correlation_id"] = correlation_id
         if reply_to:
             metadata.attributes["reply_to"] = reply_to
         if attributes:
+            if "tenant_id" in attributes:
+                raise MessageBusError("tenant_id must be passed explicitly, not via attributes")
             metadata.attributes.update(attributes)
 
         from ..proto.aico_core_envelope_pb2 import AicoMessage
@@ -432,8 +468,6 @@ class MessageBusClient:
 
         message_data = message.SerializeToString()
         
-        # Extract tenant_id for subject scoping
-        tenant_id = attributes.get("tenant_id") if attributes else None
         subject = self._topic_to_subject(topic, tenant_id=tenant_id)
 
         # Inject W3C trace context

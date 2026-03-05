@@ -75,7 +75,7 @@ class TelemetryManager:
             self._initialized = False
             return
 
-        self.mode = self.config.get('mode', 'casual')
+        self.mode = self._normalize_mode(self.config.get('mode', 'casual'))
 
         logger.info(
             "Telemetry enabled (mode=%s). exporters=%s",
@@ -193,6 +193,18 @@ class TelemetryManager:
                     traces_endpoint or "<default>",
                 )
                 self._initialize_otlp_exporter(otlp_config)
+
+    def _normalize_mode(self, mode: str) -> str:
+        if not isinstance(mode, str):
+            return "casual"
+
+        normalized = mode.strip().lower()
+        if normalized in {"prod", "production"}:
+            return "production"
+        if normalized in {"dev", "test", "pro", "casual"}:
+            return normalized
+
+        return normalized
     
     def _initialize_prometheus_exporter(self, config: Dict[str, Any]) -> None:
         """Initialize Prometheus metrics exporter"""

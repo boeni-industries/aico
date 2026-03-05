@@ -229,10 +229,17 @@ class ConversationEngine(BaseService):
     async def _setup_subscriptions(self) -> None:
         """Set up message bus subscriptions based on enabled features"""
         # Core conversation input
+        # IMPORTANT: MessageBusClient.publish() tenant-scopes subjects as:
+        #   aico.<tenant_id>.<topic.replace('/', '.')>
+        # Core runs multi-tenant, so it must subscribe with a wildcard tenant prefix.
+        topic_subject = AICOTopics.CONVERSATION_USER_INPUT.replace("/", ".")
+        wildcard_pattern = f"aico.*.{topic_subject}"
+        self.logger.info(f"🔍 [SUBSCRIPTION] Subscribing to wildcard pattern: {wildcard_pattern}")
         await self.bus_client.subscribe(
-            AICOTopics.CONVERSATION_USER_INPUT,
-            self._handle_user_input
+            wildcard_pattern,
+            self._handle_user_input,
         )
+        self.logger.info(f"✅ [SUBSCRIPTION] Successfully subscribed to: {wildcard_pattern}")
         
         # Note: LLM response subscriptions are now dynamic per-request
         # Each request subscribes to its own response topic: modelservice/chat/response/v1/conversation_engine/{request_id}
@@ -262,7 +269,11 @@ class ConversationEngine(BaseService):
     # ============================================================================
     
     async def _handle_user_input(self, message) -> None:
-        """Handle incoming user input message"""
+        """Handle incoming user input message from conversation API"""
+        self.logger.info(
+            f"🔍 [CORE_RECEIVE] ConversationEngine received user input message! "
+            f"message_id={message.metadata.message_id if message.metadata else 'unknown'}"
+        )
         try:
             # The message is an AicoMessage envelope, need to unpack the ConversationMessage
             from aico.proto.aico_conversation_pb2 import ConversationMessage
@@ -270,6 +281,12 @@ class ConversationEngine(BaseService):
             # Unpack the ConversationMessage from the AicoMessage envelope
             conv_message = ConversationMessage()
             message.any_payload.Unpack(conv_message)
+            
+            # DEBUG: Log the received message structure
+            self.logger.info(
+                f"🔍 [DEBUG] Received ConversationMessage: turn_number={conv_message.message.turn_number}, "
+                f"text='{conv_message.message.text[:50]}...', conversation_id={conv_message.message.conversation_id}"
+            )
 
             tenant_id = None
             request_id = None
@@ -299,6 +316,15 @@ class ConversationEngine(BaseService):
 
             # Persist conversation + user message (REQUIRED - Postgres is the source of truth)
             if not tenant_id:
+                self.logger.error(
+                    "[CRITICAL] Missing tenant_id in envelope metadata; cannot persist or process conversation.",
+                    extra={
+                        "request_id": conv_message.message_id,
+                        "conversation_id": conversation_id,
+                        "user_id": user_id,
+                        "envelope_attributes": dict(getattr(message.metadata, "attributes", {}) or {}),
+                    },
+                )
                 await self._publish_persistence_error(
                     request_id=conv_message.message_id,
                     user_id=user_id,
@@ -307,6 +333,15 @@ class ConversationEngine(BaseService):
                 )
                 return
             if not request_id:
+                self.logger.error(
+                    "[CRITICAL] Missing request_id in envelope metadata; cannot correlate persistence/response.",
+                    extra={
+                        "request_id": conv_message.message_id,
+                        "conversation_id": conversation_id,
+                        "user_id": user_id,
+                        "envelope_attributes": dict(getattr(message.metadata, "attributes", {}) or {}),
+                    },
+                )
                 await self._publish_persistence_error(
                     request_id=conv_message.message_id,
                     user_id=user_id,
@@ -402,12 +437,11 @@ class ConversationEngine(BaseService):
                 attributes = {}
                 if user_context:
                     attributes["user_uuid"] = user_context.user_id
-                if tenant_id:
-                    attributes["tenant_id"] = tenant_id
                 
                 await self.bus_client.publish(
                     AICOTopics.CONVERSATION_STREAM,
                     error_chunk,
+                    tenant_id=tenant_id,
                     correlation_id=rid,
                     attributes=attributes if attributes else None,
                 )
@@ -439,11 +473,13 @@ class ConversationEngine(BaseService):
             await self.bus_client.publish(
                 AICOTopics.CONVERSATION_RESPONSE,
                 conv_message,
+                tenant_id=tenant_id,
                 correlation_id=rid,
             )
             await self.bus_client.publish(
                 "conversation/ai/response/v1",
                 conv_message,
+                tenant_id=tenant_id,
                 correlation_id=rid,
             )
         except Exception as e:
@@ -914,8 +950,6 @@ class ConversationEngine(BaseService):
                 pending_data = self.pending_responses.get(request_id, {})
                 tenant_id_for_attrs = pending_data.get("tenant_id")
                 attributes = {"user_uuid": user_context.user_id}
-                if tenant_id_for_attrs:
-                    attributes["tenant_id"] = tenant_id_for_attrs
 
                 def _emit_safe_non_tag_suffix(buf: str, tag: str) -> tuple[str, str]:
                     """Return (emit_text, keep_suffix) keeping at most len(tag)-1 chars to handle split tags."""
@@ -947,6 +981,7 @@ class ConversationEngine(BaseService):
                     await self.bus_client.publish(
                         AICOTopics.CONVERSATION_STREAM,
                         streaming_chunk,
+                        tenant_id=tenant_id_for_attrs,
                         correlation_id=request_id,
                         attributes=attributes,
                     )
@@ -1055,6 +1090,7 @@ class ConversationEngine(BaseService):
                 await self.bus_client.publish(
                     AICOTopics.CONVERSATION_STREAM,
                     final_chunk,
+                    tenant_id=tenant_id_for_attrs,
                     correlation_id=request_id,
                     attributes=attributes,
                 )
@@ -1116,12 +1152,11 @@ class ConversationEngine(BaseService):
             attributes = {}
             if user_context:
                 attributes["user_uuid"] = user_context.user_id
-            if tenant_id:
-                attributes["tenant_id"] = tenant_id
             
             await self.bus_client.publish(
                 AICOTopics.CONVERSATION_STREAM,
                 streaming_response,
+                tenant_id=tenant_id,
                 correlation_id=request_id,
                 attributes=attributes if attributes else None,
             )
@@ -1258,9 +1293,10 @@ class ConversationEngine(BaseService):
                 await self.bus_client.publish_durable(
                     "conversation/ai/response/v1",
                     conv_message,
+                    tenant_id=tenant_id,
                     correlation_id=request_id,
                     audit_subject="audit.events.conversation.final",
-                    attributes={"user_uuid": user_id, "tenant_id": tenant_id},
+                    attributes={"user_uuid": user_id},
                 )
                 self.logger.info(f"✅ [FINALIZE] Published to conversation/ai/response/v1")
             except Exception as publish_error:
@@ -1394,6 +1430,7 @@ class ConversationEngine(BaseService):
                     content=content,
                     correlation_id=request_id,
                     request_id=request_id,
+                    turn_number=0,  # Repository assigns actual sequential turn number
                     created_at=now,
                 )
             )
@@ -1448,6 +1485,7 @@ class ConversationEngine(BaseService):
                     content=content,
                     correlation_id=request_id,
                     request_id=request_id,
+                    turn_number=0,  # Repository assigns actual sequential turn number
                     created_at=now,
                 )
             )

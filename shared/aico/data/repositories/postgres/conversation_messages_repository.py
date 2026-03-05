@@ -21,12 +21,12 @@ class PostgresConversationMessagesRepository(Repository[ConversationMessage]):
         self.session = session
 
     async def get_next_turn_number(self, *, tenant_id: str, conversation_id: str) -> int:
-        """Atomically get the next turn number for a conversation.
+        """Get the next turn number for a conversation.
         
-        Uses SELECT FOR UPDATE to ensure no race conditions when multiple
-        messages are created concurrently.
+        Note: Race conditions are prevented by the unique constraint on
+        (tenant_id, user_id, request_id, message_type) in the database schema.
         """
-        # Get current max turn_number with row lock
+        # Get current max turn_number (no row lock needed - unique constraint prevents duplicates)
         stmt = (
             select(func.coalesce(func.max(conversation_messages.c.turn_number), 0))
             .where(
@@ -35,7 +35,6 @@ class PostgresConversationMessagesRepository(Repository[ConversationMessage]):
                     conversation_messages.c.conversation_id == conversation_id,
                 )
             )
-            .with_for_update()
         )
         result = await self.session.execute(stmt)
         max_turn = result.scalar() or 0

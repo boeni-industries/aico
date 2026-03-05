@@ -61,7 +61,7 @@ services:
       AICO_NATS_URL: nats://nats:4222
       AICO_VALKEY_URL: redis://valkey:6379/0
       AICO_INSTRUMENTATION_ENABLED: "true"
-      AICO_INSTRUMENTATION_MODE: "dev"
+      AICO_INSTRUMENTATION_MODE: "prod"
       AICO_LOKI_URL: http://loki:3100
       AICO_REST_HOST: 0.0.0.0
       AICO_PG_HOST: postgres
@@ -112,7 +112,7 @@ services:
       AICO_NATS_URL: nats://nats:4222
       AICO_VALKEY_URL: redis://valkey:6379/0
       AICO_INSTRUMENTATION_ENABLED: "true"
-      AICO_INSTRUMENTATION_MODE: "dev"
+      AICO_INSTRUMENTATION_MODE: "prod"
       AICO_LOKI_URL: http://loki:3100
       AICO_PG_HOST: postgres
     secrets:

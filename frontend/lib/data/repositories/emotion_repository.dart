@@ -1,3 +1,4 @@
+import 'package:aico_frontend/core/logging/aico_log.dart';
 import 'package:aico_frontend/data/models/emotion_model.dart';
 import 'package:aico_frontend/networking/clients/unified_api_client.dart';
 
@@ -20,7 +21,11 @@ class EmotionRepository {
         return null;
       }
     } catch (e) {
-      // Silently fail - emotion is non-critical
+      AICOLog.warn(
+        'Failed to fetch current emotion',
+        topic: 'emotion_repository/get_current_error',
+        error: e,
+      );
       return null;
     }
   }
@@ -71,6 +76,18 @@ class EmotionRepository {
         return [];
       }
     } catch (e) {
+      AICOLog.warn(
+        'Failed to fetch emotion history',
+        topic: 'emotion_repository/get_history_error',
+        error: e,
+        extra: {
+          'limit': limit,
+          'hours': hours,
+          'days': days,
+          'since': since,
+          'feeling': feeling,
+        },
+      );
       return [];
     }
   }

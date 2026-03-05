@@ -130,20 +130,25 @@ async def send_message_with_auto_thread(
         conv_message.message.text = request.message
         conv_message.message.type = conv_message.message.MessageType.USER_INPUT
         conv_message.message.conversation_id = conversation_id
-        # turn_number assigned automatically by repository
+        conv_message.message.turn_number = 0  # Repository will update with actual turn number during persistence
         
         # Publish to conversation input topic (ConversationEngine will handle)
+        logger.info(
+            f"🔍 [GATEWAY_PUBLISH] Publishing user input to NATS topic={AICOTopics.CONVERSATION_USER_INPUT}, "
+            f"tenant_id={tenant_id}, message_id={message_id}, conversation_id={conversation_id}"
+        )
         await bus_client.publish(
             AICOTopics.CONVERSATION_USER_INPUT,
             conv_message,
+            tenant_id=tenant_id,
             correlation_id=message_id,
             attributes={
-                "tenant_id": tenant_id,
                 "user_id": user_id,
                 "conversation_id": conversation_id,
                 "request_id": request_id,
             },
         )
+        logger.info(f"✅ [GATEWAY_PUBLISH] Successfully published to NATS")
         
         # Wait for ConversationEngine to process and get the AI response synchronously
         import asyncio
@@ -248,16 +253,22 @@ async def send_message_with_auto_thread(
                             streaming_complete.set()
                     
                     # Subscribe to conversation streaming topic
-                    await bus_client.subscribe(AICOTopics.CONVERSATION_STREAM, handle_streaming_chunk)
+                    await bus_client.subscribe(
+                        AICOTopics.CONVERSATION_STREAM,
+                        handle_streaming_chunk,
+                        tenant_id=tenant_id,
+                    )
                     
                     # Process chunks from queue as they arrive - truly event-driven
                     timeout_start = asyncio.get_event_loop().time()
                     logger.info(f"🔍 [API_STREAMING] 🎬 Starting streaming loop for {message_id}")
                     logger.info(f"🔍 [API_STREAMING] streaming_complete.is_set() = {streaming_complete.is_set()}")
                     logger.info(f"🔍 [API_STREAMING] chunk_queue.qsize() = {chunk_queue.qsize()}")
+                    timeout_seconds = float(_get_conversation_timeout_seconds())
                     
                     chunk_count = 0
                     timeout_count = 0
+                    warned_no_chunks = False
                     while not streaming_complete.is_set():
                         try:
                             # Wait for chunk with short timeout to check completion
@@ -290,6 +301,34 @@ async def send_message_with_auto_thread(
                         except asyncio.TimeoutError:
                             # No chunk received, continue waiting
                             timeout_count += 1
+                            elapsed = asyncio.get_event_loop().time() - timeout_start
+
+                            # Loud early warning: if core never emits any chunks, surface it quickly.
+                            if not warned_no_chunks and chunk_count == 0 and elapsed >= 2.0:
+                                warned_no_chunks = True
+                                logger.error(
+                                    "🔍 [API_STREAMING] ❌ No streaming chunks received after 2s. "
+                                    "Likely core conversation engine not receiving input or not publishing CONVERSATION_STREAM.",
+                                    extra={
+                                        "message_id": message_id,
+                                        "conversation_id": conversation_id,
+                                        "tenant_id": tenant_id,
+                                        "topic": str(AICOTopics.CONVERSATION_STREAM),
+                                    },
+                                )
+                            if elapsed >= timeout_seconds:
+                                logger.error(
+                                    f"🔍 [API_STREAMING] ❌ TIMEOUT after {timeout_seconds}s waiting for streaming chunks for request: {message_id}"
+                                )
+                                error_data = {
+                                    "type": "error",
+                                    "error": f"Streaming timeout after {timeout_seconds}s",
+                                    "message_id": message_id,
+                                    "conversation_id": conversation_id,
+                                }
+                                yield json.dumps(error_data) + "\n"
+                                streaming_complete.set()
+                                break
                             if timeout_count % 50 == 0:  # Log every 5 seconds
                                 logger.info(f"🔍 [API_STREAMING] ⏱️ Still waiting for chunks... (timeout #{timeout_count}, elapsed: {asyncio.get_event_loop().time() - timeout_start:.1f}s)")
                     
