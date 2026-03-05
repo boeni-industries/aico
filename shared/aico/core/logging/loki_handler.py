@@ -224,6 +224,52 @@ class LokiLogHandler(logging.Handler):
         if hasattr(record, "conversation_id") and record.conversation_id:
             log_obj["conversation_id"] = record.conversation_id
 
+        try:
+            standard_attrs = {
+                "name",
+                "msg",
+                "args",
+                "levelname",
+                "levelno",
+                "pathname",
+                "filename",
+                "module",
+                "exc_info",
+                "exc_text",
+                "stack_info",
+                "lineno",
+                "funcName",
+                "created",
+                "msecs",
+                "relativeCreated",
+                "thread",
+                "threadName",
+                "processName",
+                "process",
+                "taskName",
+            }
+
+            for key, value in (getattr(record, "__dict__", {}) or {}).items():
+                if not isinstance(key, str):
+                    continue
+                if key in standard_attrs:
+                    continue
+                if key in log_obj:
+                    continue
+                if key.startswith("_"):
+                    continue
+
+                try:
+                    json.dumps({key: value}, ensure_ascii=False)
+                    log_obj[key] = value
+                except Exception:
+                    try:
+                        log_obj[key] = str(value)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
         # Remove None values and JSON-serialize
         log_obj = {k: v for k, v in log_obj.items() if v is not None}
         log_line = json.dumps(log_obj, ensure_ascii=False, separators=(",", ":"))

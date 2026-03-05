@@ -17,7 +17,7 @@
   },
   "editable": true,
   "fiscalYearStartMonth": 0,
-  "graphTooltip": 0,
+  "graphTooltip": 1,
   "id": null,
   "links": [
     {
@@ -27,7 +27,7 @@
       "keepTime": true,
       "tags": [],
       "targetBlank": false,
-      "title": "\ud83d\udcca Overview",
+      "title": "🔎 Logs Overview",
       "type": "link",
       "url": "/d/aico-logs-overview"
     },
@@ -38,9 +38,9 @@
       "keepTime": true,
       "tags": [],
       "targetBlank": false,
-      "title": "\ud83d\udd0e Traces",
+      "title": "🔎 Raw Logs",
       "type": "link",
-      "url": "/d/aico-traces-drilldown"
+      "url": "/d/aico-raw-logs"
     },
     {
       "asDropdown": false,
@@ -49,9 +49,9 @@
       "keepTime": true,
       "tags": [],
       "targetBlank": false,
-      "title": "\ud83d\udd0e Rate Limit Offenders",
+      "title": "🔎 Traces",
       "type": "link",
-      "url": "/d/aico-rate-limit-offenders"
+      "url": "/d/aico-traces-drilldown"
     }
   ],
   "liveNow": false,
@@ -61,23 +61,34 @@
         "type": "loki",
         "uid": "loki"
       },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
       "gridPos": {
         "h": 24,
         "w": 24,
         "x": 0,
         "y": 0
       },
-      "id": 1,
+      "id": 4,
       "options": {
-        "dedupStrategy": "none",
-        "enableLogDetails": true,
-        "prettifyLogMessage": true,
-        "showCommonLabels": false,
-        "showLabels": false,
-        "showTime": true,
-        "sortOrder": "Descending",
-        "wrapLogMessage": true
+        "cellHeight": "sm",
+        "showHeader": true
       },
+      "pluginVersion": "11.4.0",
       "targets": [
         {
           "datasource": {
@@ -85,22 +96,46 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{service=~\"$service\", level=~\"$level\"} |~ \"$search\" | json | line_format \"{{.level}} {{.service}} {{.logger_prefix}} | {{ if .msg }}{{ .msg }}{{ else }}{{ __line__ }}{{ end }}\"",
-          "maxLines": 1000,
-          "queryType": "range",
+          "expr": "topk(200, sum by (tenant_id, tenant_display_name, user_id, user_full_name, method, route_template) (count_over_time({service=~\"$service\"} | json | topic=\"rate_limiter.rate_limited\" | method=~\"$method\" | label_format tenant_id=\"{{.tenant_id}}\", tenant_display_name=\"{{.tenant_display_name}}\", user_id=\"{{.user_id}}\", user_full_name=\"{{.user_full_name}}\", method=\"{{.method}}\", route_template=\"{{.route_template}}\" [$__range])))",
+          "queryType": "instant",
           "refId": "A"
         }
       ],
-      "title": "\ud83d\udd0e Raw Log Stream",
-      "type": "logs"
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "Value": "Rate limited (429)",
+              "Value #A": "Rate limited (429)",
+              "Value #B": "Rate limited (429)",
+              "Value #C": "Rate limited (429)"
+            },
+            "indexByName": {
+              "tenant_id": 0,
+              "tenant_display_name": 1,
+              "user_id": 2,
+              "user_full_name": 3,
+              "method": 4,
+              "route_template": 5,
+              "Rate limited (429)": 6
+            }
+          }
+        }
+      ],
+      "title": "🚦 Top Offenders (tenant / user / route)",
+      "type": "table"
     }
   ],
-  "refresh": "30s",
+  "refresh": "1m",
   "schemaVersion": 39,
   "tags": [
     "logs",
-    "aico",
-    "explore"
+    "rate-limiting",
+    "aico"
   ],
   "templating": {
     "list": [
@@ -126,7 +161,10 @@
         "multi": true,
         "name": "service",
         "options": [],
-        "query": "label_values(service)",
+        "query": {
+          "query": "label_values(service)",
+          "refId": "LokiVariableQueryEditor-VariableQuery"
+        },
         "refresh": 2,
         "regex": "",
         "skipUrlSync": false,
@@ -143,73 +181,27 @@
             "$__all"
           ]
         },
-        "allValue": ".+",
+        "allValue": ".*",
         "hide": 0,
         "includeAll": true,
-        "label": "Level",
+        "label": "Method",
         "multi": true,
-        "name": "level",
-        "options": [
-          {
-            "selected": true,
-            "text": "All",
-            "value": "$__all"
-          },
-          {
-            "selected": false,
-            "text": "INFO",
-            "value": "INFO"
-          },
-          {
-            "selected": false,
-            "text": "WARNING",
-            "value": "WARNING"
-          },
-          {
-            "selected": false,
-            "text": "ERROR",
-            "value": "ERROR"
-          },
-          {
-            "selected": false,
-            "text": "CRITICAL",
-            "value": "CRITICAL"
-          },
-          {
-            "selected": false,
-            "text": "DEBUG",
-            "value": "DEBUG"
-          }
-        ],
-        "query": "INFO,WARNING,ERROR,CRITICAL,DEBUG",
+        "name": "method",
+        "options": [],
+        "query": "GET,POST,PUT,DELETE,PATCH,OPTIONS",
         "queryValue": "",
         "skipUrlSync": false,
         "type": "custom"
-      },
-      {
-        "current": {
-          "selected": false,
-          "text": "",
-          "value": ""
-        },
-        "hide": 0,
-        "label": "Search (regex)",
-        "name": "search",
-        "options": [
-          {
-            "selected": true,
-            "text": "",
-            "value": ""
-          }
-        ],
-        "query": "",
-        "skipUrlSync": false,
-        "type": "textbox"
       }
     ]
   },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
   "timepicker": {
     "refresh_intervals": [
+      "5s",
       "10s",
       "30s",
       "1m",
@@ -217,11 +209,21 @@
       "15m",
       "30m",
       "1h"
+    ],
+    "time_options": [
+      "5m",
+      "15m",
+      "1h",
+      "6h",
+      "12h",
+      "24h",
+      "2d",
+      "7d",
+      "30d"
     ]
   },
   "timezone": "browser",
-  "title": "AICO Raw Logs",
-  "uid": "aico-raw-logs",
-  "version": 10,
-  "weekStart": ""
+  "title": "AICO Rate Limit Offenders",
+  "uid": "aico-rate-limit-offenders",
+  "version": 1
 }

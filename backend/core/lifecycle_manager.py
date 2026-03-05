@@ -988,25 +988,6 @@ class BackendLifecycleManager:
         from backend.core.exception_handlers import register_exception_handlers
         register_exception_handlers(self.app)
 
-        # 1. CORS middleware (outermost)
-        from fastapi.middleware.cors import CORSMiddleware
-        cors_origins = self.config.get(
-            "api_gateway.cors_origins",
-            [
-                "http://localhost:3000",
-                "http://127.0.0.1:3000",
-                "http://localhost:3002",
-                "http://127.0.0.1:3002",
-            ],
-        )
-        self.app.add_middleware(
-            CORSMiddleware,
-            allow_origins=cors_origins,
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
-
         # 2. Metrics middleware (collect request metrics)
         from backend.api_gateway.middleware.metrics import MetricsMiddleware
         self.app.add_middleware(MetricsMiddleware)
@@ -1067,6 +1048,29 @@ class BackendLifecycleManager:
                     self.logger.warning(f"Response: {request.method} {request.url.path} -> {response.status_code}")
 
             return response
+
+        # 1. CORS middleware (outermost)
+        # NOTE: Starlette stacks middlewares such that the *last* added middleware
+        # becomes the outermost wrapper. CORS must therefore be added LAST so it
+        # can attach Access-Control-* headers even for early-return responses
+        # (e.g., 429 from rate limiting).
+        from fastapi.middleware.cors import CORSMiddleware
+        cors_origins = self.config.get(
+            "api_gateway.cors_origins",
+            [
+                "http://localhost:3000",
+                "http://127.0.0.1:3000",
+                "http://localhost:3002",
+                "http://127.0.0.1:3002",
+            ],
+        )
+        self.app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
         
         # 5. Plugin-based middleware will be added by plugins during their initialization
         self.logger.debug("Middleware stack configured")

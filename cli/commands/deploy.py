@@ -38,13 +38,26 @@ console = Console()
 
 
 def _get_aico_repo_root() -> Path:
-    """Resolve the AICO repo root by walking upwards from this file."""
+    """Resolve the AICO repo root by walking upwards from this file.
+
+    Note: This repo contains multiple Python projects (backend/cli/shared/modelservice)
+    with their own pyproject.toml files. For deploy commands we need the *git root*
+    (the top-level AICO repo), otherwise relative component paths resolve incorrectly.
+    """
 
     current = Path(__file__).resolve()
+
+    # Prefer git root if available (most reliable in a multi-pyproject monorepo).
     for parent in [current.parent, *current.parents]:
-        if (parent / "pyproject.toml").exists():
+        if (parent / ".git").exists():
             return parent
-    # Fallback: assume cli/commands/deploy.py => repo root is three levels up
+
+    # Fallback: look for repo-level marker files.
+    for parent in [current.parent, *current.parents]:
+        if (parent / "aico.code-workspace").exists() or (parent / "VERSIONS").exists() or (parent / "Makefile").exists():
+            return parent
+
+    # Last resort: assume cli/commands/deploy.py => repo root is three levels up
     return Path(__file__).parent.parent.parent.resolve()
 
 
@@ -67,6 +80,9 @@ def _resolve_component_path(component_name: str) -> Path:
     config = ConfigurationManager()
     config.initialize(lightweight=True)
     cfg_path = config.get_optional(f"system.components.{component_name}.path", default="")
+    if not (isinstance(cfg_path, str) and cfg_path.strip()):
+        # Backwards/alternate layout: components.<name>.path at root.
+        cfg_path = config.get_optional(f"components.{component_name}.path", default="")
 
     if isinstance(cfg_path, str) and cfg_path.strip():
         candidate = Path(os.path.expanduser(cfg_path.strip()))
@@ -1973,6 +1989,8 @@ def deploy_grafana(
         console.print(format_warning("⚠️  --nuke flag detected: Will destroy existing data!"))
         _nuke_grafana()
 
+    _ensure_docker_volume("aico-grafanadata")
+
     # Get or create Grafana admin password
     console.print("🔐 [cyan]Managing Grafana credentials...[/cyan]")
     grafana_password = _get_or_create_grafana_password()
@@ -2267,14 +2285,14 @@ def deploy_studio(
     console.print("🧩 [bold cyan]AICO Studio Deployment[/bold cyan]")
     console.print("=" * 60 + "\n")
 
-    # Resolve studio path WITHOUT ConfigurationManager to avoid keyring blocking
-    # Priority: env var > convention default
-    env_key = "AICO_COMPONENT_STUDIO_DIR"
-    if override := os.getenv(env_key):
-        studio_dir = Path(override).expanduser().resolve()
-    else:
-        repo_root = _get_aico_repo_root()
-        studio_dir = (repo_root / "../aico-studio").resolve()
+    # Resolve studio path:
+    # 1) Env var override: AICO_COMPONENT_STUDIO_DIR
+    # 2) Config: system.components.studio.path
+    # 3) Convention default: ../aico-studio relative to AICO repo root
+    #
+    # NOTE: _resolve_component_path uses ConfigurationManager(lightweight=True)
+    # to avoid keyring blocking.
+    studio_dir = _resolve_component_path("studio")
     if not studio_dir.exists():
         console.print(format_error(f"Studio directory not found: {studio_dir}"))
         console.print(format_info("Set system.components.studio.path in system.yaml or export AICO_COMPONENT_STUDIO_DIR."))
@@ -2379,6 +2397,31 @@ def _nuke_grafana():
     console.print("")
     console.print(format_success("✓ Grafana nuked successfully"))
     console.print("")
+
+
+def _ensure_docker_volume(volume_name: str) -> None:
+    try:
+        inspect = subprocess.run(
+            ["docker", "volume", "inspect", volume_name],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if inspect.returncode == 0:
+            return
+
+        create = subprocess.run(
+            ["docker", "volume", "create", volume_name],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if create.returncode != 0:
+            console.print(format_error(f"Failed to create docker volume: {volume_name}"))
+            raise typer.Exit(1)
+    except FileNotFoundError:
+        console.print(format_error("'docker' command not found. Install Docker and ensure it is on your PATH."))
+        raise typer.Exit(1)
 
 
 def _nuke_gateway() -> int:

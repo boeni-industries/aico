@@ -3,10 +3,5 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLI_DIR="$REPO_DIR/cli"
-CLI_VENV_BIN="$CLI_DIR/.venv/bin"
 
-if [[ ! -x "$CLI_VENV_BIN/aico" ]]; then
-  (cd "$CLI_DIR" && uv sync --frozen)
-fi
-
-exec "$CLI_VENV_BIN/aico" "$@"
+exec uv run --project "$CLI_DIR" aico "$@"

@@ -41,6 +41,17 @@
       "title": "\ud83d\udd0e Traces",
       "type": "link",
       "url": "/d/aico-traces-drilldown"
+    },
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": false,
+      "title": "\ud83d\udd0e Rate Limit Offenders",
+      "type": "link",
+      "url": "/d/aico-rate-limit-offenders"
     }
   ],
   "liveNow": false,

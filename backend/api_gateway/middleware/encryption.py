@@ -128,10 +128,10 @@ class EncryptionMiddleware:
         
         # Memory requests handled normally
         
-        # Handle handshake endpoint directly for non-preflight requests
+        # Handshake must go through FastAPI routing so CORSMiddleware can attach
+        # Access-Control-Allow-* headers.
         if normalized_path == "/api/v1/handshake":
-            response = await self._handle_handshake(request)
-            await response(scope, receive, send)
+            await self.app(scope, receive, send)
             return
 
         # Skip encryption for health checks only

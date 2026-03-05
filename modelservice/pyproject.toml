@@ -17,6 +17,7 @@ dependencies = [
     "torch>=1.12.0",
     "gliner>=0.2.22",
     "sentence-transformers>=5.1.1",
+    "openai>=1.0.0",
     "coqui-tts",
     "piper-tts>=1.2.0",
     "kokoro-onnx>=0.4.9",

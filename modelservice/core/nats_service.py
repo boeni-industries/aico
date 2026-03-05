@@ -51,11 +51,6 @@ class ModelserviceNATSService:
             AICOTopics.MODELSERVICE_SENTIMENT_REQUEST: self.handlers.handle_sentiment_request,
             AICOTopics.MODELSERVICE_STATUS_REQUEST: self.handlers.handle_status_request,
             AICOTopics.MODELSERVICE_TTS_REQUEST: self.handlers.handle_tts_request,
-            # Ollama management topics
-            AICOTopics.OLLAMA_STATUS_REQUEST: self._handle_ollama_status,
-            AICOTopics.OLLAMA_MODELS_REQUEST: self._handle_ollama_models,
-            AICOTopics.OLLAMA_MODELS_PULL_REQUEST: self._handle_ollama_pull,
-            AICOTopics.OLLAMA_MODELS_REMOVE_REQUEST: self._handle_ollama_remove,
         }
 
     def set_ollama_manager(self, ollama_manager):
@@ -109,10 +104,6 @@ class ModelserviceNATSService:
                 AICOTopics.MODELSERVICE_INTENT_REQUEST,
                 AICOTopics.MODELSERVICE_SENTIMENT_REQUEST,
                 AICOTopics.MODELSERVICE_TTS_REQUEST,
-                AICOTopics.OLLAMA_STATUS_REQUEST,
-                AICOTopics.OLLAMA_MODELS_REQUEST,
-                AICOTopics.OLLAMA_MODELS_PULL_REQUEST,
-                AICOTopics.OLLAMA_MODELS_REMOVE_REQUEST,
             ]
 
             for topic in modelservice_topics:
@@ -195,37 +186,5 @@ class ModelserviceNATSService:
             AICOTopics.MODELSERVICE_NER_REQUEST: AICOTopics.MODELSERVICE_NER_RESPONSE,
             AICOTopics.MODELSERVICE_SENTIMENT_REQUEST: AICOTopics.MODELSERVICE_SENTIMENT_RESPONSE,
             AICOTopics.MODELSERVICE_STATUS_REQUEST: AICOTopics.MODELSERVICE_STATUS_RESPONSE,
-            AICOTopics.OLLAMA_STATUS_REQUEST: AICOTopics.OLLAMA_STATUS_RESPONSE,
-            AICOTopics.OLLAMA_MODELS_REQUEST: AICOTopics.OLLAMA_MODELS_RESPONSE,
-            AICOTopics.OLLAMA_MODELS_PULL_REQUEST: AICOTopics.OLLAMA_MODELS_PULL_RESPONSE,
-            AICOTopics.OLLAMA_MODELS_REMOVE_REQUEST: AICOTopics.OLLAMA_MODELS_REMOVE_RESPONSE,
         }
         return response_mapping.get(request_topic)
-
-    async def _handle_ollama_status(self, request_data: dict) -> dict:
-        if hasattr(self.ollama_manager, "get_status"):
-            status = await self.ollama_manager.get_status()
-            return {"success": True, "data": status}
-        status = await self.handlers._check_ollama_status()
-        return {"success": True, "data": status}
-
-    async def _handle_ollama_models(self, request_data: dict) -> dict:
-        return await self.handlers.handle_models_request(request_data)
-
-    async def _handle_ollama_pull(self, request_data: dict) -> dict:
-        model_name = request_data.get("model")
-        if not model_name:
-            return {"success": False, "error": "model name is required"}
-        if hasattr(self.ollama_manager, "pull_model"):
-            result = await self.ollama_manager.pull_model(model_name)
-            return {"success": True, "data": result}
-        return {"success": False, "error": "pull_model not implemented"}
-
-    async def _handle_ollama_remove(self, request_data: dict) -> dict:
-        model_name = request_data.get("model")
-        if not model_name:
-            return {"success": False, "error": "model name is required"}
-        if hasattr(self.ollama_manager, "remove_model"):
-            result = await self.ollama_manager.remove_model(model_name)
-            return {"success": True, "data": result}
-        return {"success": False, "error": "remove_model not implemented"}

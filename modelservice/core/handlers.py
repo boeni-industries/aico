@@ -18,10 +18,10 @@ from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
 from aico.core.topics import AICOTopics
 # SpaCy removed - now using GLiNER for entity extraction
-from .ollama_manager import OllamaManager
 from .transformers_manager import TransformersManager
 from aico.core.version import get_modelservice_version
 from modelservice.handlers.tts_factory import TtsFactory
+from aico.ai.llm.factory import LLMClientFactory
 from aico.proto.aico_modelservice_pb2 import (
     HealthResponse, CompletionsResponse, ModelsResponse, ModelInfoResponse,
     EmbeddingsRequest, EmbeddingsResponse, NerResponse, EntityList, EntityWithConfidence, StatusResponse, ModelInfo, ServiceStatus, OllamaStatus,
@@ -43,7 +43,6 @@ class ModelserviceHandlers:
         self.logger.debug("ModelserviceHandlers constructor called - initializing...")
         self.logger.debug("ModelserviceHandlers constructor called - initializing...")
         self.config = config
-        self.ollama_manager = ollama_manager
         self.message_bus_client = message_bus_client
         self.version = get_modelservice_version()
         
@@ -53,6 +52,16 @@ class ModelserviceHandlers:
         
         # Store config manager for components that need it
         self.config_manager = config_manager
+
+        # LLM client (vLLM)
+        self.llm_client = None
+        try:
+            if self.config_manager is not None:
+                llm_config = self.config_manager.get("llm", {})
+                if llm_config:
+                    self.llm_client = LLMClientFactory.create(llm_config)
+        except Exception:
+            self.llm_client = None
         
         # SpaCy manager removed - using GLiNER via TransformersManager
         
@@ -243,215 +252,36 @@ class ModelserviceHandlers:
                 response.error = error_msg
                 return response
             
-            # Convert Protocol Buffer messages to Ollama chat format
-            chat_messages = []
-            for i, msg in enumerate(messages):
-                chat_messages.append({
-                    "role": msg.role,
-                    "content": msg.content
-                })
-                # self.logger.info(f"[CHAT] Message {i}: role='{msg.role}', content='{msg.content[:200]}{'...' if len(msg.content) > 200 else ''}'")  # Commented out to reduce log volume
-            
-            # Forward to Ollama - check config path
-            ollama_config = self.config.get('ollama', {})
-            # self.logger.info(f"[CHAT] Ollama config from self.config: {ollama_config}")  # Commented out to reduce log volume
-            # self.logger.info(f"[CHAT] Full config keys: {list(self.config.keys())}")
-            ollama_url = f"http://{ollama_config.get('host', '127.0.0.1')}:{ollama_config.get('port', 11434)}"
-            # self.logger.info(f"[CHAT] Forwarding to Ollama at {ollama_url}")
-            # self.logger.info(f"[CHAT] Chat messages count: {len(chat_messages)}")
-            
-            # self.logger.info(f"[CHAT] Creating HTTP client for streaming...")
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                # Check if thinking is explicitly disabled in request (default: True for conversations)
-                enable_thinking = request_payload.think if hasattr(request_payload, 'think') and request_payload.HasField('think') else True
-                
-                request_data = {
-                    "model": model,
-                    "messages": chat_messages,
-                    "stream": True,  # Enable streaming
-                    "think": enable_thinking  # Ollama 0.12+ thinking mode (default: True, can be disabled for KG extraction)
-                }
-                
-                # Add response_format if specified (for structured JSON output)
-                if hasattr(request_payload, 'response_format') and request_payload.HasField('response_format'):
-                    # Parse JSON Schema string back to dict for Ollama
-                    response_format_str = request_payload.response_format
-                    try:
-                        # Try to parse as JSON (for JSON Schema)
-                        request_data["format"] = json.loads(response_format_str)
-                    except (json.JSONDecodeError, ValueError):
-                        # If not valid JSON, use as-is (e.g., "json" string)
-                        request_data["format"] = response_format_str
-                # Commented out to reduce log volume
-                # self.logger.info(f"[CHAT] Request data prepared: model={model}, messages_count={len(chat_messages)}, streaming=True, thinking=True")
-                
-                try:
-                    # self.logger.info(f"[CHAT] Making streaming POST request to {ollama_url}/api/chat")
-                    
-                    # Stream response from Ollama and forward chunks immediately
-                    accumulated_content = ""
-                    accumulated_thinking = ""
-                    first_token_time = None
-                    start_time = time.perf_counter()
-                    from aico.proto.aico_modelservice_pb2 import CompletionResult, ConversationMessage
-                    
-                    # Track inference metrics for streaming chat
-                    with track_inference(model, task_type="chat_streaming") as tracker:
-                        async with client.stream("POST", f"{ollama_url}/api/chat", json=request_data) as stream_response:
-                            if stream_response.status_code != 200:
-                                error_text = await stream_response.aread()
-                                tracker.set_success(False)
-                                tracker.set_error(f"HTTP {stream_response.status_code}")
-                                raise Exception(f"Ollama error: {stream_response.status_code} - {error_text.decode()}")
-                            
-                            self.logger.debug(f"[CHAT] Streaming response started, forwarding chunks...")
-                            
-                            async for line in stream_response.aiter_lines():
-                                if not line.strip():
-                                    continue
-                                
-                                try:
-                                    chunk = json.loads(line)
-                                    
-                                    # Ollama 0.12+ returns thinking in separate field
-                                    chunk_thinking = chunk.get("message", {}).get("thinking", "")
-                                    chunk_content = chunk.get("message", {}).get("content", "")
-                                    
-                                    # Handle thinking chunks
-                                    if chunk_thinking:
-                                        accumulated_thinking += chunk_thinking
-                                        
-                                        # Publish thinking chunk
-                                        if self.message_bus_client and correlation_id:
-                                            from aico.proto.aico_modelservice_pb2 import StreamingChunk
-                                            
-                                            streaming_chunk = StreamingChunk()
-                                            streaming_chunk.request_id = correlation_id
-                                            streaming_chunk.content = chunk_thinking
-                                            streaming_chunk.accumulated_content = accumulated_thinking
-                                            streaming_chunk.done = False
-                                            streaming_chunk.model = model
-                                            streaming_chunk.timestamp = int(time.time() * 1000)
-                                            streaming_chunk.content_type = "thinking"
-                                            
-                                            await self.message_bus_client.publish(
-                                                AICOTopics.MODELSERVICE_COMPLETIONS_STREAM,
-                                                streaming_chunk,
-                                                correlation_id=correlation_id
-                                            )
-                                            # Commented out to reduce log volume
-                                            # self.logger.debug(f"[CHAT] Published thinking chunk for {correlation_id}")
-                                    
-                                    # Handle response content chunks
-                                    if chunk_content:
-                                        # Track TTFT (time to first token) on first content chunk
-                                        if not accumulated_content and not first_token_time:
-                                            first_token_time = time.perf_counter()
-                                            ttft = first_token_time - start_time
-                                            tracker.set_ttft(ttft)
-                                        
-                                        accumulated_content += chunk_content
-                                        
-                                        # Publish response chunk
-                                        if self.message_bus_client and correlation_id:
-                                            from aico.proto.aico_modelservice_pb2 import StreamingChunk
-                                            
-                                            streaming_chunk = StreamingChunk()
-                                            streaming_chunk.request_id = correlation_id
-                                            streaming_chunk.content = chunk_content
-                                            streaming_chunk.accumulated_content = accumulated_content
-                                            streaming_chunk.done = False
-                                            streaming_chunk.model = model
-                                            streaming_chunk.timestamp = int(time.time() * 1000)
-                                            streaming_chunk.content_type = "response"
-                                            
-                                            await self.message_bus_client.publish(
-                                                AICOTopics.MODELSERVICE_COMPLETIONS_STREAM,
-                                                streaming_chunk,
-                                                correlation_id=correlation_id
-                                            )
-                                            # Commented out to reduce log volume
-                                            # self.logger.debug(f"[CHAT] Published response chunk for {correlation_id}")
-                                    
-                                    # Check if this is the final chunk
-                                    if chunk.get("done", False):
-                                        # Commented out to reduce log volume
-                                        # self.logger.info(f"[CHAT] Streaming complete, thinking length: {len(accumulated_thinking)}, response length: {len(accumulated_content)}")
-                                        
-                                        # Publish final completion signal
-                                        if self.message_bus_client and correlation_id:
-                                            from aico.proto.aico_modelservice_pb2 import StreamingChunk
-                                            
-                                            # Create final streaming chunk
-                                            final_chunk = StreamingChunk()
-                                            final_chunk.request_id = correlation_id
-                                            final_chunk.content = ""  # No new content in final chunk
-                                            final_chunk.accumulated_content = accumulated_content
-                                            final_chunk.done = True
-                                            final_chunk.model = model
-                                            final_chunk.timestamp = int(time.time() * 1000)
-                                            final_chunk.content_type = "response"  # Final chunk is always response type
-                                            
-                                            # Publish final chunk
-                                            await self.message_bus_client.publish(
-                                                AICOTopics.MODELSERVICE_COMPLETIONS_STREAM,
-                                                final_chunk,
-                                                correlation_id=correlation_id
-                                            )
-                                        
-                                        # Create final Protocol Buffer response for ZMQ
-                                        result = CompletionResult()
-                                        result.model = model
-                                        result.done = True
-                                        
-                                        # Store thinking separately in result
-                                        if accumulated_thinking:
-                                            result.thinking = accumulated_thinking
-                                            self.logger.info(f"[CHAT] Extracted thinking: {len(accumulated_thinking)} chars")
-                                        
-                                        response_msg = ConversationMessage()
-                                        response_msg.role = "assistant"
-                                        response_msg.content = accumulated_content  # Clean response without thinking tags
-                                        result.message.CopyFrom(response_msg)
-                                        
-                                        # Optional timing fields from final chunk
-                                        if "total_duration" in chunk:
-                                            result.total_duration = chunk["total_duration"]
-                                        if "load_duration" in chunk:
-                                            result.load_duration = chunk["load_duration"]
-                                        if "prompt_eval_count" in chunk:
-                                            result.prompt_eval_count = chunk["prompt_eval_count"]
-                                            tracker.set_prompt_tokens(chunk["prompt_eval_count"])
-                                        if "prompt_eval_duration" in chunk:
-                                            result.prompt_eval_duration = chunk["prompt_eval_duration"]
-                                        if "eval_count" in chunk:
-                                            result.eval_count = chunk["eval_count"]
-                                            tracker.set_tokens(chunk["eval_count"])
-                                        if "eval_duration" in chunk:
-                                            result.eval_duration = chunk["eval_duration"]
-                                        
-                                        tracker.set_success(True)
-                                        response.success = True
-                                        response.result.CopyFrom(result)
-                                        break
-                                        
-                                except json.JSONDecodeError as je:
-                                    self.logger.warning(f"[CHAT] Failed to parse chunk: {line[:100]}... - {je}")
-                                    continue
-                    
-                    self.logger.info(f"[CHAT] ✅ Success! Streamed chat response for model {model}")
-                    self.logger.info(f"[CHAT] Final response length: {len(accumulated_content)} characters")
-                    self.logger.info(
-                        f"Completion streamed for model {model}",
-                        extra={"topic": AICOTopics.LOGS_ENTRY}
-                    )
-                    
-                except httpx.ConnectError as conn_err:
-                    raise Exception(f"Failed to connect to Ollama at {ollama_url}: {conn_err}")
-                except httpx.TimeoutException as timeout_err:
-                    raise Exception(f"Ollama request timed out: {timeout_err}")
-                except Exception as req_err:
-                    raise Exception(f"HTTP streaming request to Ollama failed: {req_err}")
+            self._require_llm_client()
+
+            llm_messages = []
+            for msg in messages:
+                if msg.content:
+                    llm_messages.append({"role": msg.role, "content": msg.content})
+
+            from aico.proto.aico_modelservice_pb2 import CompletionResult, ConversationMessage
+            with track_inference(model, task_type="chat") as tracker:
+                llm_response = await self.llm_client.chat_completion(
+                    messages=llm_messages,
+                    model=model,
+                    stream=False,
+                )
+                assistant_content = (
+                    (llm_response.get("choices") or [{}])[0]
+                    .get("message", {})
+                    .get("content", "")
+                )
+
+                result = CompletionResult()
+                result.model = model
+                result.done = True
+                response_msg = ConversationMessage()
+                response_msg.role = "assistant"
+                response_msg.content = assistant_content
+                result.message.CopyFrom(response_msg)
+                tracker.set_success(True)
+                response.success = True
+                response.result.CopyFrom(result)
                 
         except Exception as e:
             error_msg = f"Chat request failed: {str(e)}"
@@ -466,7 +296,7 @@ class ModelserviceHandlers:
         return response
     
     async def handle_completions_request(self, request_payload) -> CompletionsResponse:
-        """Handle completions requests via Protocol Buffers (single prompt analysis)."""
+        """Handle completions requests via Protocol Buffers (single prompt analysis tasks)."""
         response = CompletionsResponse()
         
         try:
@@ -500,77 +330,30 @@ class ModelserviceHandlers:
                 response.error = error_msg
                 return response
             
-            # Forward to Ollama /api/generate endpoint
-            ollama_config = self.config.get('ollama', {})
-            ollama_url = f"http://{ollama_config.get('host', '127.0.0.1')}:{ollama_config.get('port', 11434)}"
-            self.logger.info(f"[COMPLETIONS] Forwarding to Ollama at {ollama_url}")
-            
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                request_data = {
-                    "model": model,
-                    "prompt": prompt,
-                    "stream": False
-                }
-                self.logger.info(f"[COMPLETIONS] Request data prepared: model={model}")
-                
-                try:
-                    self.logger.info(f"[COMPLETIONS] Making POST request to {ollama_url}/api/generate")
-                    ollama_response = await client.post(
-                        f"{ollama_url}/api/generate",
-                        json=request_data
-                    )
-                    self.logger.info(f"[COMPLETIONS] Ollama response received with status: {ollama_response.status_code}")
-                except httpx.ConnectError as conn_err:
-                    raise Exception(f"Failed to connect to Ollama at {ollama_url}: {conn_err}")
-                except httpx.TimeoutException as timeout_err:
-                    raise Exception(f"Ollama request timed out after 30s: {timeout_err}")
-                except Exception as req_err:
-                    raise Exception(f"HTTP request to Ollama failed: {req_err}")
-                
-                if ollama_response.status_code != 200:
-                    raise Exception(f"Ollama error: {ollama_response.status_code} - {ollama_response.text}")
-                
-                data = ollama_response.json()
-                self.logger.info(f"[COMPLETIONS] Ollama raw response: {data}")
-                
-                # Extract response content
-                response_content = data.get("response", "")
-                self.logger.info(f"[COMPLETIONS] Extracted response content: '{response_content[:100]}...' (length: {len(response_content)})")
-                
-                # Create Protocol Buffer response
-                from aico.proto.aico_modelservice_pb2 import CompletionResult, ConversationMessage
+            self._require_llm_client()
+
+            from aico.proto.aico_modelservice_pb2 import CompletionResult, ConversationMessage
+            with track_inference(model, task_type="completion") as tracker:
+                llm_response = await self.llm_client.chat_completion(
+                    messages=[{"role": "user", "content": prompt}],
+                    model=model,
+                    stream=False,
+                )
+                response_content = (
+                    (llm_response.get("choices") or [{}])[0]
+                    .get("message", {})
+                    .get("content", "")
+                )
+
                 result = CompletionResult()
                 result.model = model
                 result.created_at.GetCurrentTime()
                 result.done = True
-                
-                # Set the message content
                 result.message.role = "assistant"
                 result.message.content = response_content
-                
-                # Optional timing fields
-                if "total_duration" in data:
-                    result.total_duration = data["total_duration"]
-                if "load_duration" in data:
-                    result.load_duration = data["load_duration"]
-                if "prompt_eval_count" in data:
-                    result.prompt_eval_count = data["prompt_eval_count"]
-                if "prompt_eval_duration" in data:
-                    result.prompt_eval_duration = data["prompt_eval_duration"]
-                if "eval_count" in data:
-                    result.eval_count = data["eval_count"]
-                if "eval_duration" in data:
-                    result.eval_duration = data["eval_duration"]
-                
                 response.success = True
                 response.result.CopyFrom(result)
-                
-                self.logger.info(f"[COMPLETIONS] ✅ Success! Generated completion for model {model}")
-                self.logger.info(f"[COMPLETIONS] Response length: {len(response_content)} characters")
-                self.logger.info(
-                    f"Completion generated for model {model}",
-                    extra={"topic": AICOTopics.LOGS_ENTRY}
-                )
+                tracker.set_success(True)
                 
         except Exception as e:
             error_msg = f"Completion failed: {str(e)}"
@@ -589,40 +372,20 @@ class ModelserviceHandlers:
         response = ModelsResponse()
         
         try:
-            # Forward to Ollama
-            ollama_url = f"http://{self.config.get('ollama', {}).get('host', 'localhost')}:{self.config.get('ollama', {}).get('port', 11434)}"
-            
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                ollama_response = await client.get(f"{ollama_url}/api/tags")
-                
-                if ollama_response.status_code != 200:
-                    raise Exception(f"Ollama error: {ollama_response.status_code} - {ollama_response.text}")
-                
-                ollama_data = ollama_response.json()
-                
-                for model_data in ollama_data.get("models", []):
-                    model_info = ModelInfo()
-                    model_info.name = model_data["name"]
-                    model_info.model = model_data["name"]
-                    model_info.size = model_data.get("size", 0)
-                    model_info.digest = model_data.get("digest", "")
-                    
-                    # Convert timestamp if present
-                    if "modified_at" in model_data:
-                        try:
-                            dt = datetime.fromisoformat(model_data["modified_at"].replace('Z', '+00:00'))
-                            model_info.modified_at.FromDatetime(dt)
-                        except:
-                            pass
-                    
-                    response.models.append(model_info)
-                
-                response.success = True
-                
-                self.logger.info(
-                    f"Retrieved {len(response.models)} models from Ollama",
-                    extra={"topic": AICOTopics.LOGS_ENTRY}
-                )
+            self._require_llm_client()
+            model_ids = await self.llm_client.list_models()
+            for model_id in model_ids:
+                model_info = ModelInfo()
+                model_info.name = model_id
+                model_info.model = model_id
+                response.models.append(model_info)
+
+            response.success = True
+
+            self.logger.info(
+                f"Retrieved {len(response.models)} models from vLLM",
+                extra={"topic": AICOTopics.LOGS_ENTRY}
+            )
                 
         except Exception as e:
             response.success = False
@@ -642,34 +405,18 @@ class ModelserviceHandlers:
                 response.error = "model is required"
                 return response
             
-            # Forward to Ollama
-            ollama_url = f"http://{self.config.get('ollama', {}).get('host', 'localhost')}:{self.config.get('ollama', {}).get('port', 11434)}"
-            
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                ollama_response = await client.post(
-                    f"{ollama_url}/api/show",
-                    json={"name": model_name}
-                )
-                
-                if ollama_response.status_code != 200:
-                    raise Exception(f"Ollama error: {ollama_response.status_code} - {ollama_response.text}")
-                
-                ollama_data = ollama_response.json()
-                
-                from aico.proto.aico_modelservice_pb2 import ModelDetails
-                details = ModelDetails()
-                details.format = ollama_data.get("format", "")
-                details.family = ollama_data.get("family", "")
-                details.parameter_size = ollama_data.get("parameter_size", 0)
-                details.quantization_level = ollama_data.get("quantization_level", 0)
-                
-                response.success = True
-                response.details.CopyFrom(details)
-                
-                self.logger.info(
-                    f"Retrieved info for model {model_name}",
-                    extra={"topic": AICOTopics.LOGS_ENTRY}
-                )
+            self._require_llm_client()
+            from aico.proto.aico_modelservice_pb2 import ModelDetails
+            details = ModelDetails()
+            details.family = "vllm"
+
+            response.success = True
+            response.details.CopyFrom(details)
+
+            self.logger.info(
+                f"Retrieved info for model {model_name}",
+                extra={"topic": AICOTopics.LOGS_ENTRY},
+            )
                 
         except Exception as e:
             response.success = False
@@ -1233,45 +980,30 @@ class ModelserviceHandlers:
             response.predicted_intent = "general"
             response.confidence = 0.0
             response.detected_language = "unknown"
-            response.error = str(e)
-            
+
             return response
-    
+
     async def handle_status_request(self, request_payload) -> StatusResponse:
-        """Handle status requests via Protocol Buffers."""
+        """Handle service status requests."""
         response = StatusResponse()
-        
+
         try:
-            # Create service status
             status = ServiceStatus()
             status.version = self.version
-            status.ollama_running = True  # Will be updated by health check
-            status.ollama_version = "unknown"
-            status.loaded_models_count = 0
-            
-            # Check Ollama status and get available Ollama models
-            ollama_status = await self._check_ollama_status()
-            ollama_models_count = 0
-            if ollama_status.get("available", False):
+            status.ollama_running = False
+            status.ollama_version = "retired"
+
+            vllm_models_count = 0
+            try:
+                self._require_llm_client()
                 status.ollama_running = True
-                # Get Ollama models count from /api/tags (all available models)
-                try:
-                    import httpx
-                    ollama_url = f"http://{self.config.get('ollama', {}).get('host', 'localhost')}:{self.config.get('ollama', {}).get('port', 11434)}"
-                    async with httpx.AsyncClient(timeout=2.0) as client:
-                        tags_response = await client.get(f"{ollama_url}/api/tags")
-                        if tags_response.status_code == 200:
-                            tags_data = tags_response.json()
-                            ollama_models = tags_data.get("models", [])
-                            ollama_models_count = len(ollama_models)
-                            for model in ollama_models:
-                                status.loaded_models.append(model.get("name", "unknown"))
-                except Exception as e:
-                    self.logger.debug(f"Could not query Ollama models: {e}")
-            else:
-                status.ollama_running = False
-            
-            # Add TransformersManager loaded models
+                model_ids = await self.llm_client.list_models()
+                for model_id in model_ids:
+                    status.loaded_models.append(model_id)
+                vllm_models_count = len(model_ids)
+            except Exception as e:
+                self.logger.debug(f"Could not query vLLM models: {e}")
+
             transformers_models_count = 0
             if self.transformers_manager is not None:
                 try:
@@ -1281,25 +1013,21 @@ class ModelserviceHandlers:
                         status.loaded_models.append(model_name)
                 except Exception as e:
                     self.logger.debug(f"Could not query TransformersManager models: {e}")
-            
-            # Total loaded models = Ollama + Transformers
-            status.loaded_models_count = ollama_models_count + transformers_models_count
-            
+
+            status.loaded_models_count = vllm_models_count + transformers_models_count
+
             response.success = True
             response.status.CopyFrom(status)
-            
-            self.logger.info(
-                "Status request completed",
-                extra={"topic": AICOTopics.LOGS_ENTRY}
-            )
-            
+
+            self.logger.info("Status request completed", extra={"topic": AICOTopics.LOGS_ENTRY})
+            return response
+
         except Exception as e:
             response.success = False
             response.error = f"Status request failed: {str(e)}"
             self.logger.error(response.error, extra={"topic": AICOTopics.LOGS_ENTRY})
-        
-        return response
-    
+            return response
+
     async def _check_system_health(self) -> Dict[str, Any]:
         """Comprehensive system health check."""
         health_data = {
@@ -1307,24 +1035,20 @@ class ModelserviceHandlers:
             "checks": {},
             "issues": []
         }
-        
+
         try:
-            # Check Ollama connectivity
             try:
-                ollama_status = await self._check_ollama_status()
-                health_data["checks"]["ollama"] = ollama_status
-                
-                if not ollama_status.get("available", False):
-                    # For testing purposes, treat Ollama unavailability as degraded, not unhealthy
-                    health_data["status"] = "healthy"  # Changed from "degraded" to "healthy"
-                    health_data["issues"].append("Ollama service unavailable (non-critical for basic health)")
+                self._require_llm_client()
+                vllm_ok = await self.llm_client.health_check()
+                health_data["checks"]["vllm"] = {"available": bool(vllm_ok)}
+                if not vllm_ok:
+                    health_data["status"] = "degraded"
+                    health_data["issues"].append("vLLM service unavailable")
             except Exception as e:
-                health_data["checks"]["ollama"] = {
-                    "available": False,
-                    "error": str(e)
-                }
-                health_data["issues"].append(f"Ollama check failed: {str(e)} (non-critical)")
-            
+                health_data["checks"]["vllm"] = {"available": False, "error": str(e)}
+                health_data["status"] = "degraded"
+                health_data["issues"].append(f"vLLM check failed: {str(e)}")
+
             # Check API Gateway connectivity (optional)
             try:
                 gateway_status = await self._check_gateway_status()
@@ -1334,92 +1058,66 @@ class ModelserviceHandlers:
                     "available": False,
                     "error": str(e)
                 }
-                # Gateway connectivity is not critical for modelservice
-            
+
         except Exception as e:
-            # Only mark as unhealthy for critical system errors
             self.logger.error(f"Critical health check error: {str(e)}")
             health_data["status"] = "unhealthy"
             health_data["issues"].append(f"Critical health check error: {str(e)}")
-        
+
         return health_data
-    
+
     async def _check_ollama_status(self) -> Dict[str, Any]:
-        """Check Ollama service status."""
-        try:
-            ollama_host = self.config.get('ollama', {}).get('host', 'localhost')
-            ollama_port = self.config.get('ollama', {}).get('port', 11434)
-            ollama_url = f"http://{ollama_host}:{ollama_port}"
-            
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                start_time = time.time()
-                response = await client.get(f"{ollama_url}/api/tags")
-                response_time = (time.time() - start_time) * 1000
-                
-                return {
-                    "available": response.status_code == 200,
-                    "response_time_ms": round(response_time),
-                    "url": ollama_url
-                }
-                
-        except Exception as e:
-            ollama_host = self.config.get('ollama', {}).get('host', 'localhost')
-            ollama_port = self.config.get('ollama', {}).get('port', 11434)
-            return {
-                "available": False,
-                "error": str(e),
-                "url": f"http://{ollama_host}:{ollama_port}"
-            }
-    
+        return {"available": False, "error": "Ollama retired"}
+
     async def _check_gateway_status(self) -> dict:
         """Check API Gateway status (optional)."""
         try:
             gateway_url = f"http://{self.config.get('api_gateway', {}).get('host', 'localhost')}:{self.config.get('api_gateway', {}).get('port', 8771)}"
-            
+
             async with httpx.AsyncClient(timeout=3.0) as client:
                 start_time = time.time()
                 response = await client.get(f"{gateway_url}/api/v1/health")
                 response_time = (time.time() - start_time) * 1000
-                
+
                 return {
                     "available": response.status_code == 200,
                     "response_time_ms": round(response_time),
                     "url": gateway_url
                 }
-                
+
         except Exception as e:
             return {
                 "available": False,
                 "error": str(e)
             }
-    
+
     async def initialize_tts_system(self):
         """
         Initialize the TTS system using Coqui XTTS.
-        
+
         This will block until the model is downloaded and loaded.
         On first run, this downloads ~1.8GB from HuggingFace.
-        
+
         Raises:
             Exception: If TTS initialization fails
         """
         if self.tts_initialized:
             return
-        
+
         self.logger.info("Starting TTS system initialization...")
         self.logger.info("⏳ This may take several minutes on first run (downloading ~1.8GB model)...")
-        
+
         await self.tts_handler.initialize()
         self.tts_initialized = True
         self.logger.info("✅ TTS system initialized successfully")
-    
+
     async def handle_tts_request(self, request: TtsRequest):
         """
         Handle TTS request and stream audio chunks.
-        
+
         Args:
             request: TtsRequest protobuf message
-            
+
         Yields:
             TtsStreamChunk messages with audio data
         """
@@ -1429,11 +1127,11 @@ class ModelserviceHandlers:
         print(f"Language: {request.language}")
         print(f"TTS initialized: {self.tts_initialized}")
         print("=" * 100)
-        
+
         if not self.tts_initialized:
             # Try to initialize on first request
             await self.initialize_tts_system()
-            
+
             if not self.tts_initialized:
                 # Still not initialized - return error
                 yield TtsStreamChunk(
@@ -1443,10 +1141,10 @@ class ModelserviceHandlers:
                     error="TTS system not initialized"
                 )
                 return
-        
+
         try:
             self.logger.info(f"🎤 TTS request: {len(request.text)} chars, language: {request.language}")
-            
+
             # Stream audio chunks
             actual_sample_rate = 22050  # Default fallback
             async for audio_bytes, sample_rate in self.tts_handler.synthesize_stream(
@@ -1460,16 +1158,16 @@ class ModelserviceHandlers:
                     sample_rate=sample_rate,
                     is_final=False
                 )
-            
+
             # Send final chunk with correct sample rate
             yield TtsStreamChunk(
                 audio_data=b"",
                 sample_rate=actual_sample_rate,
                 is_final=True
             )
-            
+
             self.logger.info("✅ TTS request completed")
-            
+
         except Exception as e:
             self.logger.error(f"TTS request failed: {e}", exc_info=True)
             yield TtsStreamChunk(
@@ -1478,7 +1176,4 @@ class ModelserviceHandlers:
                 is_final=True,
                 error=str(e)
             )
-    
-    # REMOVED: Coreference resolution handler (V3 cleanup)
-    # FastCoref doesn't work for first-person pronouns - moved to future property graph implementation
-    
+

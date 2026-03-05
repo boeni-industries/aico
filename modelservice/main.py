@@ -214,7 +214,7 @@ async def _check_backend_health(cfg: ConfigurationManager) -> bool:
         return False
 
 
-async def shutdown_modelservice(ollama_manager, process_manager):
+async def shutdown_modelservice(process_manager):
     """Gracefully shutdown modelservice."""
     # Get logger safely
     try:
@@ -240,17 +240,6 @@ async def shutdown_modelservice(ollama_manager, process_manager):
     if logger:
         logger.info("Stopping services")
     
-    # Stop Ollama gracefully
-    try:
-        await ollama_manager.stop_ollama()
-        print("[+] Ollama stopped")
-        if logger:
-            logger.info("Ollama stopped successfully")
-    except Exception as e:
-        print(f"[!] Error stopping Ollama: {e}")
-        if logger:
-            logger.error(f"Error stopping Ollama: {e}")
-        
     if process_manager:
         process_manager.cleanup_pid_files()
     print("[+] Shutdown complete.")
@@ -316,11 +305,10 @@ async def main():
             print(f"Modelservice error: {str(e)}")
         raise
     finally:
-        # Cleanup - ollama_manager and process_manager are always defined (may be None)
+        # Cleanup - process_manager is always defined (may be None)
         if _service:
             await _service.stop()
-        if ollama_manager is not None:
-            await shutdown_modelservice(ollama_manager, process_manager)
+        await shutdown_modelservice(process_manager)
 
 
 def run_main():
@@ -331,7 +319,7 @@ def run_main():
         try:
             logger = get_logger("modelservice.main")
             logger.info("Modelservice stopped by user")
-        except:
+        except Exception:
             print("Modelservice stopped by user")
     except Exception as e:
         try:

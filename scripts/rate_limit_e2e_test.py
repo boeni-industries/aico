@@ -230,8 +230,16 @@ def set_rate_limit_config(*, valkey_url: str, rpm: int, window_seconds: int) -> 
     # Best-effort: if the gateway is running in Docker, write runtime config directly
     # in the container so the in-container ConfigurationManager sees the change.
     # Fallback to CLI config set (host-side) if docker isn't available.
+    docker_valkey_url = valkey_url
+    try:
+        # If the gateway runs in Docker, localhost/127.0.0.1 points to the gateway container,
+        # not the Valkey container. Rewrite to the docker-compose service hostname.
+        docker_valkey_url = re.sub(r"redis://(127\.0\.0\.1|localhost)(:\d+)?/", "redis://valkey/", docker_valkey_url)
+    except Exception:
+        docker_valkey_url = valkey_url
+
     runtime_yaml = "api_gateway:\n  rate_limiting:\n    enabled: true\n"
-    runtime_yaml += f"    valkey_url: {json.dumps(valkey_url)}\n"
+    runtime_yaml += f"    valkey_url: {json.dumps(docker_valkey_url)}\n"
     runtime_yaml += f"    window_seconds: {int(window_seconds)}\n"
     runtime_yaml += f"    default_requests_per_minute: {int(rpm)}\n"
 
@@ -270,7 +278,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", default="http://127.0.0.1:8771")
     parser.add_argument("--valkey-url", default=os.environ.get("AICO_VALKEY_URL", "redis://127.0.0.1:6379/0"))
-    parser.add_argument("--rpm", type=int, default=2)
+    parser.add_argument("--rpm", type=int, default=200)
     parser.add_argument("--window-seconds", type=int, default=60)
     parser.add_argument("--requests", type=int, default=5)
     parser.add_argument("--endpoint", default="/api/v1/users-sessions/sessions")

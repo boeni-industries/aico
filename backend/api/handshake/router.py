@@ -65,14 +65,17 @@ async def handshake(request: Request):
                 "message": "Transport encryption is disabled. Requests will be processed without encryption."
             }
             return JSONResponse(content=response_data)
-        
-        # Transport encryption enabled but not properly initialized
-        logger.warning("Transport encryption enabled but transport manager not initialized")
-        raise_api_error(
-            status_code=503,
-            error_code="TRANSPORT_NOT_INITIALIZED",
-            message="Transport encryption is enabled but not properly initialized. Please check backend configuration.",
-        )
+
+        encryption_middleware = getattr(request.app.state, "encryption_middleware", None)
+        if encryption_middleware is None:
+            logger.warning("Transport encryption enabled but encryption middleware not available on app.state")
+            raise_api_error(
+                status_code=503,
+                error_code="TRANSPORT_NOT_INITIALIZED",
+                message="Transport encryption is enabled but not properly initialized. Please check backend configuration.",
+            )
+
+        return await encryption_middleware._handle_handshake(request)
         
     except HTTPException:
         raise

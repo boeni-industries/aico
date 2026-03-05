@@ -5,6 +5,8 @@ Gateway router that proxies system/metrics requests to core via NATS.
 All system endpoints require database access and must run on core.
 """
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from typing import Any, Dict
@@ -60,7 +62,48 @@ async def get_health_services():
         nats_client = get_gateway_nats_client()
         return await nats_client.request_health_services()
     except Exception as e:
-        raise_api_error(status_code=500, error_code="HEALTH_SERVICES_FAILED", message=str(e))
+        # Studio/ops UI expects a stable payload shape. NATS can be transiently unavailable
+        # during startup or restarts; return a degraded response instead of 500 so the UI
+        # can render the failure state.
+        now = datetime.now(timezone.utc).isoformat()
+        message = str(e)
+
+        nats_error = {
+            "error_code": "HEALTH_SERVICES_NATS_FAILED",
+            "message": message,
+            "last_checked": now,
+        }
+
+        core_status = "unhealthy"
+        if "TIMEOUT" in message.upper():
+            nats_error["error_code"] = "HEALTH_SERVICES_NATS_TIMEOUT"
+        elif "NOT INITIALIZED" in message.upper():
+            nats_error["error_code"] = "HEALTH_SERVICES_NATS_NOT_READY"
+        elif "NATS" in message.lower() and "timeout" in message.lower():
+            nats_error["error_code"] = "HEALTH_SERVICES_NATS_TIMEOUT"
+
+        # Minimal, meaningful service list so the UI can still show something.
+        services = [
+            {
+                "name": "API Gateway",
+                "status": "healthy",
+                "group": "api",
+                "metric": {"label": "Mode", "value": "degraded", "unit": None},
+                "trend": None,
+                "last_checked": now,
+            },
+            {
+                "name": "Core Services",
+                "status": core_status,
+                "group": "processing",
+                "metric": {"label": "NATS", "value": "unavailable", "unit": None},
+                "trend": None,
+                "last_checked": now,
+                "details": {"error": nats_error},
+            },
+        ]
+
+        return {"services": services, "error": nats_error}
 
 
 @router.get("/health/issues")

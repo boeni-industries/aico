@@ -43,8 +43,6 @@ REQUIRED_CONFIG_KEYS = {
     "modelservice": [
         "modelservice.host",
         "modelservice.port",
-        "modelservice.ollama.host",
-        "modelservice.ollama.port",
         "modelservice.transformers.models",
         "api_gateway.rest.host",
         "api_gateway.rest.port",

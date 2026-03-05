@@ -433,6 +433,17 @@ async def authenticate_user(
                 message="User is not assigned to a tenant",
                 details={"user_id": user.uuid},
             )
+
+        tenant_display_name = tenant_id
+        try:
+            tenant = await uow.tenants.get_by_id(tenant_id)
+            if tenant and getattr(tenant, "display_name", None):
+                tenant_display_name = tenant.display_name
+        except Exception as e:
+            logger.error(
+                f"Failed to resolve tenant display name: {e}",
+                extra={"tenant_id": tenant_id, "user_uuid": user.uuid},
+            )
         
         # Extract User-Agent from request headers for device detection
         user_agent = request_obj.headers.get("user-agent", "")
@@ -442,6 +453,7 @@ async def authenticate_user(
         jwt_token = auth_manager.generate_jwt_token(
             user_uuid=user.uuid,
             tenant_id=tenant_id,
+            tenant_display_name=tenant_display_name,
             username=user.full_name,
             roles=user_roles,
             permissions=user_permissions,
@@ -452,6 +464,7 @@ async def authenticate_user(
         refresh_token = auth_manager.generate_refresh_token(
             user_uuid=user.uuid,
             tenant_id=tenant_id,
+            tenant_display_name=tenant_display_name,
             username=user.full_name,
             roles=user_roles,
             permissions=user_permissions,
@@ -624,11 +637,24 @@ async def refresh_token(
                     error_code="AUTH_TOKEN_MISSING_TENANT_ID",
                     message="Invalid token: missing tenant id",
                 )
+
+            tenant_display_name = payload.get("tenant_display_name") or tenant_id
+            if tenant_display_name == tenant_id:
+                try:
+                    tenant = await uow.tenants.get_by_id(tenant_id)
+                    if tenant and getattr(tenant, "display_name", None):
+                        tenant_display_name = tenant.display_name
+                except Exception as e:
+                    logger.error(
+                        f"Failed to resolve tenant display name during refresh: {e}",
+                        extra={"tenant_id": tenant_id, "user_uuid": payload.get("user_uuid")},
+                    )
             
             # Generate new access token
             new_access_token = auth_manager.generate_jwt_token(
                 user_uuid=payload["user_uuid"],
                 tenant_id=tenant_id,
+                tenant_display_name=tenant_display_name,
                 username=payload.get("username"),
                 roles=payload.get("roles", ["user"]),
                 permissions=set(payload.get("permissions", [])),

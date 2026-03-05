@@ -282,21 +282,23 @@ class ValkeyFixedWindowRateLimiterMiddleware:
 
         return scope.get("path", "")
 
-    def _extract_identity(self, request: Request) -> tuple[str, str]:
+    def _extract_identity(self, request: Request) -> tuple[str, str, str, str]:
         tenant_id = "unknown_tenant"
         user_id = "unknown_user"
+        tenant_display_name = tenant_id
+        user_full_name = user_id
 
         auth = request.headers.get("authorization") or request.headers.get("Authorization")
         if not auth:
-            return tenant_id, user_id
+            return tenant_id, user_id, tenant_display_name, user_full_name
 
         parts = auth.split(" ", 1)
         if len(parts) != 2 or parts[0].lower() != "bearer":
-            return tenant_id, user_id
+            return tenant_id, user_id, tenant_display_name, user_full_name
 
         token = parts[1].strip()
         if not token:
-            return tenant_id, user_id
+            return tenant_id, user_id, tenant_display_name, user_full_name
 
         try:
             payload = jwt.decode(
@@ -306,10 +308,25 @@ class ValkeyFixedWindowRateLimiterMiddleware:
             if isinstance(payload, dict):
                 tenant_id = payload.get("tenant_id") or tenant_id
                 user_id = payload.get("user_id") or payload.get("user_uuid") or payload.get("sub") or user_id
-        except Exception:
-            return tenant_id, user_id
 
-        return tenant_id, user_id
+                tenant_display_name = (
+                    payload.get("tenant_display_name")
+                    or payload.get("tenant_name")
+                    or payload.get("tenant")
+                    or payload.get("tenant_label")
+                    or tenant_id
+                )
+                user_full_name = (
+                    payload.get("user_full_name")
+                    or payload.get("full_name")
+                    or payload.get("name")
+                    or payload.get("username")
+                    or user_id
+                )
+        except Exception:
+            return tenant_id, user_id, tenant_display_name, user_full_name
+
+        return tenant_id, user_id, tenant_display_name, user_full_name
 
     def _get_settings(self) -> dict[str, Any]:
         # The gateway process keeps an in-memory config cache. If runtime overrides
@@ -378,6 +395,11 @@ class ValkeyFixedWindowRateLimiterMiddleware:
         if not enabled:
             return await call_next(request)
 
+        # Never rate limit CORS preflight requests. They must reach CORSMiddleware
+        # so the browser can validate Access-Control-Allow-* headers.
+        if request.method.upper() == "OPTIONS":
+            return await call_next(request)
+
         if not self._get_valkey_url(settings):
             return await call_next(request)
 
@@ -389,6 +411,12 @@ class ValkeyFixedWindowRateLimiterMiddleware:
                     "/api/v1/health/",
                     "/api/v1/health/live",
                     "/api/v1/health/ready",
+                    "/api/v1/handshake*",
+                    "/api/v1/scheduler*",
+                    "/api/v1/system/overview",
+                    "/api/v1/kg/stats",
+                    "/api/v1/memory*",
+                    "/api/v1/emotion/history*",
                     "/api/v1/system/health*",
                     "/api/v1/system/remediate*",
                     "/api/v1/system/config*",
@@ -415,10 +443,28 @@ class ValkeyFixedWindowRateLimiterMiddleware:
             if default_rpm is None:
                 default_rpm = 100
             limit = int(default_rpm)
+
+            # Guardrail: extremely low defaults (e.g. 1-5 RPM) can brick browser clients
+            # and make the system look "unstable". Require an explicit opt-in if someone
+            # really wants to test such limits.
+            allow_very_low_limits = bool(settings.get("allow_very_low_limits", False))
+            min_limit = int(settings.get("min_requests_per_minute", 30))
+            if not allow_very_low_limits and limit < min_limit:
+                self._logger.warning(
+                    "rate_limiter.guardrail Raising low RPM limit",
+                    extra={
+                        "subsystem": "api_gateway",
+                        "function": "dispatch",
+                        "topic": "rate_limiter.guardrail",
+                        "configured_limit": limit,
+                        "effective_limit": min_limit,
+                    },
+                )
+                limit = min_limit
             if limit <= 0:
                 return await call_next(request)
 
-            tenant_id, user_id = self._extract_identity(request)
+            tenant_id, user_id, tenant_display_name, user_full_name = self._extract_identity(request)
             route_template = self._get_route_template(request)
             method = request.method
 
@@ -437,7 +483,9 @@ class ValkeyFixedWindowRateLimiterMiddleware:
                     "function": "dispatch",
                     "topic": "rate_limiter.rate_limited",
                     "tenant_id": locals().get("tenant_id"),
+                    "tenant_display_name": locals().get("tenant_display_name") or locals().get("tenant_id"),
                     "user_id": locals().get("user_id"),
+                    "user_full_name": locals().get("user_full_name") or locals().get("user_id"),
                     "method": locals().get("method"),
                     "route_template": locals().get("route_template"),
                     "limit": locals().get("limit"),
@@ -447,12 +495,14 @@ class ValkeyFixedWindowRateLimiterMiddleware:
             return JSONResponse(status_code=429, content={"detail": str(e)})
         except Exception as e:
             self._logger.error(
-                "Valkey rate limiting middleware error",
+                f"Valkey rate limiting middleware error: {e!r}",
+                exc_info=True,
                 extra={
                     "subsystem": "api_gateway",
                     "function": "dispatch",
                     "topic": "rate_limiter.valkey_error",
                     "error": str(e),
+                    "error_type": type(e).__name__,
                 },
             )
             return await call_next(request)
