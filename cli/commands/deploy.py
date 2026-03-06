@@ -1511,7 +1511,126 @@ def _nuke_vllm() -> int:
     return 0
 
 
-app = typer.Typer(help="Deploy and provision AICO infrastructure")
+app = typer.Typer(
+    help="Deploy and provision AICO infrastructure",
+    no_args_is_help=True,
+    rich_markup_mode="rich"
+)
+
+
+@app.callback(invoke_without_command=True)
+def deploy_help(ctx: typer.Context):
+    """Deploy and provision AICO infrastructure components.
+    
+    Use 'aico deploy <target>' to deploy specific components.
+    Run 'aico deploy <target> --help' for detailed options.
+    """
+    if ctx.invoked_subcommand is None:
+        console.print("\n[bold cyan]AICO Deployment System[/bold cyan]")
+        console.print("=" * 70)
+        console.print()
+        console.print("Deploy and provision AICO infrastructure components.\n")
+        
+        console.print("[bold yellow]📦 Available Deployment Targets:[/bold yellow]\n")
+        
+        # Full system deployment
+        console.print("  [bold cyan]system[/bold cyan]")
+        console.print("    One-command bootstrap: infrastructure + schema + tenant + admin user")
+        console.print("    [dim]Example: aico deploy system --tenant-display-name \"My Company\"[/dim]\n")
+        
+        # Infrastructure backends
+        console.print("[bold]Infrastructure Backends:[/bold]")
+        console.print("  [bold cyan]pg[/bold cyan]")
+        console.print("    PostgreSQL database (container + schema)")
+        console.print("    [dim]Example: aico deploy pg[/dim]")
+        console.print("    [dim]Reset: aico deploy pg --nuke[/dim]\n")
+        
+        console.print("  [bold cyan]valkey[/bold cyan]")
+        console.print("    Valkey in-memory cache (Redis-compatible)")
+        console.print("    [dim]Example: aico deploy valkey[/dim]\n")
+        
+        console.print("  [bold cyan]nats[/bold cyan]")
+        console.print("    NATS message broker (event streaming)")
+        console.print("    [dim]Example: aico deploy nats[/dim]\n")
+        
+        console.print("  [bold cyan]influx[/bold cyan]")
+        console.print("    InfluxDB time-series database (container + org/bucket)")
+        console.print("    [dim]Example: aico deploy influx[/dim]\n")
+        
+        console.print("  [bold cyan]loki[/bold cyan]")
+        console.print("    Loki log aggregation (container + config)")
+        console.print("    [dim]Example: aico deploy loki[/dim]\n")
+        
+        console.print("  [bold cyan]prometheus[/bold cyan]")
+        console.print("    Prometheus metrics collection and monitoring")
+        console.print("    [dim]Example: aico deploy prometheus[/dim]\n")
+        
+        console.print("  [bold cyan]tempo[/bold cyan]")
+        console.print("    Grafana Tempo distributed tracing")
+        console.print("    [dim]Example: aico deploy tempo[/dim]\n")
+        
+        console.print("  [bold cyan]grafana[/bold cyan]")
+        console.print("    Grafana visualization (container + datasources)")
+        console.print("    [dim]Example: aico deploy grafana[/dim]\n")
+        
+        console.print("  [bold cyan]otel-collector[/bold cyan]")
+        console.print("    OpenTelemetry Collector (telemetry aggregation)")
+        console.print("    [dim]Example: aico deploy otel-collector[/dim]\n")
+        
+        # Core services
+        console.print("[bold]Core Services:[/bold]")
+        console.print("  [bold cyan]gateway[/bold cyan]")
+        console.print("    AICO API Gateway (REST/WebSocket/ZMQ endpoints)")
+        console.print("    [dim]Example: aico deploy gateway[/dim]\n")
+        
+        console.print("  [bold cyan]core[/bold cyan]")
+        console.print("    AICO Core backend (conversation engine, memory, agency)")
+        console.print("    [dim]Example: aico deploy core[/dim]\n")
+        
+        console.print("  [bold cyan]modelservice[/bold cyan]")
+        console.print("    AICO Modelservice (NER, embeddings, sentiment analysis)")
+        console.print("    [dim]Example: aico deploy modelservice[/dim]\n")
+        
+        # Optional services
+        console.print("[bold]Optional Services:[/bold]")
+        console.print("  [bold cyan]vllm[/bold cyan]")
+        console.print("    vLLM inference server (Docker with GPU support, Linux/Windows only)")
+        console.print("    [dim]Example: aico deploy vllm --model Qwen/Qwen2.5-3B-Instruct[/dim]")
+        console.print("    [dim]Note: Use 'aico vllm deploy' for macOS Metal GPU support[/dim]\n")
+        
+        console.print("  [bold cyan]studio[/bold cyan]")
+        console.print("    AICO Studio web UI (React dashboard)")
+        console.print("    [dim]Example: aico deploy studio[/dim]")
+        console.print("    [dim]Dev mode: aico deploy studio --dev[/dim]\n")
+        
+        # Common options
+        console.print("[bold yellow]🔧 Common Options:[/bold yellow]\n")
+        console.print("  [bold]--nuke[/bold]")
+        console.print("    Destroy existing container/volume before provisioning (DANGEROUS)")
+        console.print("    [dim]Example: aico deploy pg --nuke[/dim]\n")
+        
+        console.print("  [bold]--help[/bold]")
+        console.print("    Show detailed help for a specific deployment target")
+        console.print("    [dim]Example: aico deploy system --help[/dim]\n")
+        
+        # Quick start
+        console.print("[bold yellow]🚀 Quick Start:[/bold yellow]\n")
+        console.print("  1. Deploy full system (recommended for first-time setup):")
+        console.print("     [cyan]aico deploy system --tenant-display-name \"My Company\" --admin-full-name \"John Doe\"[/cyan]\n")
+        
+        console.print("  2. Deploy individual components:")
+        console.print("     [cyan]aico deploy pg[/cyan]")
+        console.print("     [cyan]aico deploy gateway[/cyan]")
+        console.print("     [cyan]aico deploy core[/cyan]")
+        console.print("     [cyan]aico deploy modelservice[/cyan]\n")
+        
+        console.print("  3. Deploy monitoring stack:")
+        console.print("     [cyan]aico deploy influx[/cyan]")
+        console.print("     [cyan]aico deploy loki[/cyan]")
+        console.print("     [cyan]aico deploy grafana[/cyan]\n")
+        
+        console.print("[dim]For more information: https://docs.aico.ai/deployment[/dim]")
+        console.print()
 
 
 @app.command("system", help="Provision full AICO system (one-command bootstrap)")
@@ -1629,14 +1748,44 @@ def deploy_system(
     )
     _write_deploy_state(tenant_id=tenant_id, admin_user_uuid=admin_user_uuid)
 
+    # Deploy infrastructure backends
+    console.print("\n[bold cyan]Deploying Infrastructure Backends...[/bold cyan]")
+    deploy_valkey(nuke=False)
+    deploy_nats(nuke=False)
+    deploy_influx(nuke=False)
+    deploy_loki(nuke=False)
+    deploy_prometheus(nuke=False)
+    deploy_tempo(nuke=False)
+    deploy_grafana(nuke=False)
+    deploy_otel_collector(nuke=False)
+
+    # Deploy core services
     if services:
+        console.print("\n[bold cyan]Deploying Core Services...[/bold cyan]")
         deploy_gateway(nuke=False)
         deploy_core(nuke=False)
         deploy_modelservice(nuke=False)
 
+    console.print("\n" + "=" * 70)
     console.print(format_success("✅ System bootstrap complete"))
-    console.print(f"tenant_id: {tenant_id}")
-    console.print(f"admin_user_uuid: {admin_user_uuid}")
+    console.print("=" * 70)
+    console.print(f"\n[bold]Tenant ID:[/bold] {tenant_id}")
+    console.print(f"[bold]Admin User UUID:[/bold] {admin_user_uuid}")
+    console.print("\n[bold yellow]Deployed Components:[/bold yellow]")
+    console.print("  ✅ PostgreSQL (database)")
+    console.print("  ✅ Valkey (cache)")
+    console.print("  ✅ NATS (message broker)")
+    console.print("  ✅ InfluxDB (metrics)")
+    console.print("  ✅ Loki (logs)")
+    console.print("  ✅ Prometheus (monitoring)")
+    console.print("  ✅ Tempo (tracing)")
+    console.print("  ✅ Grafana (visualization)")
+    console.print("  ✅ OpenTelemetry Collector (telemetry)")
+    if services:
+        console.print("  ✅ Gateway (API)")
+        console.print("  ✅ Core (backend)")
+        console.print("  ✅ Modelservice (AI models)")
+    console.print("\n[bold green]🎉 AICO is ready to use![/bold green]\n")
 
 
 @app.command("pg", help="Provision Postgres (container + schema), optionally with --nuke for full reset")
@@ -2449,6 +2598,290 @@ def _ensure_docker_volume(volume_name: str) -> None:
     except FileNotFoundError:
         console.print(format_error("'docker' command not found. Install Docker and ensure it is on your PATH."))
         raise typer.Exit(1)
+
+
+@app.command("valkey", help="Provision Valkey (Redis-compatible cache), optionally with --nuke for full reset")
+def deploy_valkey(
+    nuke: bool = typer.Option(
+        False,
+        "--nuke",
+        help="Destroy Valkey container + volume before provisioning (DANGEROUS).",
+    )
+):
+    """Deploy Valkey in-memory data store (Redis-compatible).
+    
+    This command is FULLY AUTOMATED:
+    - No credentials needed (unauthenticated by default for local dev)
+    - Starts Valkey container with persistence
+    - Creates data volume for RDB snapshots
+    
+    Safe to run multiple times without --nuke. With --nuke it
+    will wipe the Valkey volume and start from a clean slate.
+    """
+    console.print("\n" + "=" * 60)
+    console.print("⚡ [bold cyan]AICO Valkey Deployment[/bold cyan]")
+    console.print("=" * 60 + "\n")
+
+    if nuke:
+        console.print(format_warning("⚠️  --nuke flag detected: Will destroy existing data!"))
+        _nuke_valkey()
+
+    console.print("🚀 [cyan]Starting Valkey container...[/cyan]")
+    code = _run_compose(["up", "-d", "valkey"])
+    if code != 0:
+        console.print(format_error("Failed to start Valkey container"))
+        raise typer.Exit(code)
+
+    console.print("")
+    console.print(format_success("✅ Valkey deployment completed successfully!"))
+    console.print(format_info("💡 Valkey available at: localhost:6379"))
+    console.print(format_info("💡 Redis-compatible protocol for caching and pub/sub"))
+    console.print("")
+
+
+@app.command("nats", help="Provision NATS (message broker), optionally with --nuke for full reset")
+def deploy_nats(
+    nuke: bool = typer.Option(
+        False,
+        "--nuke",
+        help="Destroy NATS container before provisioning.",
+    )
+):
+    """Deploy NATS message broker for event streaming.
+    
+    This command is FULLY AUTOMATED:
+    - No credentials needed (unauthenticated by default for local dev)
+    - Starts NATS container with JetStream enabled
+    - Provides client port (4222) and monitoring port (8222)
+    
+    Safe to run multiple times without --nuke.
+    """
+    console.print("\n" + "=" * 60)
+    console.print("📨 [bold cyan]AICO NATS Deployment[/bold cyan]")
+    console.print("=" * 60 + "\n")
+
+    if nuke:
+        console.print(format_warning("⚠️  --nuke flag detected: Will destroy existing NATS container!"))
+        _nuke_nats()
+
+    console.print("🚀 [cyan]Starting NATS container...[/cyan]")
+    code = _run_compose(["up", "-d", "nats"])
+    if code != 0:
+        console.print(format_error("Failed to start NATS container"))
+        raise typer.Exit(code)
+
+    console.print("")
+    console.print(format_success("✅ NATS deployment completed successfully!"))
+    console.print(format_info("💡 Client port: 4222"))
+    console.print(format_info("💡 Monitoring: http://localhost:8222"))
+    console.print("")
+
+
+@app.command("prometheus", help="Provision Prometheus (metrics), optionally with --nuke for full reset")
+def deploy_prometheus(
+    nuke: bool = typer.Option(
+        False,
+        "--nuke",
+        help="Destroy Prometheus container + volume before provisioning (DANGEROUS).",
+    )
+):
+    """Deploy Prometheus metrics collection and monitoring.
+    
+    This command is FULLY AUTOMATED:
+    - No credentials needed (unauthenticated by default for local dev)
+    - Starts Prometheus container with configuration
+    - Creates data volume for time-series storage
+    - Configures scrape targets for AICO services
+    
+    Safe to run multiple times without --nuke. With --nuke it
+    will wipe the Prometheus volume and start from a clean slate.
+    """
+    console.print("\n" + "=" * 60)
+    console.print("📊 [bold cyan]AICO Prometheus Deployment[/bold cyan]")
+    console.print("=" * 60 + "\n")
+
+    if nuke:
+        console.print(format_warning("⚠️  --nuke flag detected: Will destroy existing data!"))
+        _nuke_prometheus()
+
+    console.print("🚀 [cyan]Starting Prometheus container...[/cyan]")
+    code = _run_compose(["up", "-d", "prometheus"])
+    if code != 0:
+        console.print(format_error("Failed to start Prometheus container"))
+        raise typer.Exit(code)
+
+    console.print("")
+    console.print(format_success("✅ Prometheus deployment completed successfully!"))
+    console.print(format_info("💡 Web UI: http://localhost:9090"))
+    console.print(format_info("💡 Metrics endpoint for Grafana datasource configured"))
+    console.print("")
+
+
+@app.command("tempo", help="Provision Tempo (distributed tracing), optionally with --nuke for full reset")
+def deploy_tempo(
+    nuke: bool = typer.Option(
+        False,
+        "--nuke",
+        help="Destroy Tempo container + volume before provisioning (DANGEROUS).",
+    )
+):
+    """Deploy Grafana Tempo for distributed tracing.
+    
+    This command is FULLY AUTOMATED:
+    - No credentials needed (unauthenticated by default for local dev)
+    - Starts Tempo container with configuration
+    - Creates data volume for trace storage
+    - Supports OTLP, Jaeger, and Zipkin protocols
+    
+    Safe to run multiple times without --nuke. With --nuke it
+    will wipe the Tempo volume and start from a clean slate.
+    """
+    console.print("\n" + "=" * 60)
+    console.print("🔍 [bold cyan]AICO Tempo Deployment[/bold cyan]")
+    console.print("=" * 60 + "\n")
+
+    if nuke:
+        console.print(format_warning("⚠️  --nuke flag detected: Will destroy existing data!"))
+        _nuke_tempo()
+
+    console.print("🚀 [cyan]Starting Tempo container...[/cyan]")
+    code = _run_compose(["up", "-d", "tempo"])
+    if code != 0:
+        console.print(format_error("Failed to start Tempo container"))
+        raise typer.Exit(code)
+
+    console.print("")
+    console.print(format_success("✅ Tempo deployment completed successfully!"))
+    console.print(format_info("💡 HTTP API: http://localhost:3200"))
+    console.print(format_info("💡 OTLP gRPC: localhost:4317"))
+    console.print(format_info("💡 Query traces via Grafana datasource"))
+    console.print("")
+
+
+@app.command("otel-collector", help="Provision OpenTelemetry Collector, optionally with --nuke for full reset")
+def deploy_otel_collector(
+    nuke: bool = typer.Option(
+        False,
+        "--nuke",
+        help="Destroy OTel Collector container before provisioning.",
+    )
+):
+    """Deploy OpenTelemetry Collector for telemetry aggregation.
+    
+    This command is FULLY AUTOMATED:
+    - No credentials needed (configured via otel-collector-config.yaml)
+    - Starts OTel Collector container
+    - Receives telemetry from AICO services
+    - Exports to Prometheus, Tempo, and Loki
+    
+    Safe to run multiple times without --nuke.
+    """
+    console.print("\n" + "=" * 60)
+    console.print("📡 [bold cyan]AICO OpenTelemetry Collector Deployment[/bold cyan]")
+    console.print("=" * 60 + "\n")
+
+    if nuke:
+        console.print(format_warning("⚠️  --nuke flag detected: Will destroy existing OTel Collector container!"))
+        _nuke_otel_collector()
+
+    console.print("🚀 [cyan]Starting OpenTelemetry Collector container...[/cyan]")
+    code = _run_compose(["up", "-d", "otel-collector"])
+    if code != 0:
+        console.print(format_error("Failed to start OTel Collector container"))
+        raise typer.Exit(code)
+
+    console.print("")
+    console.print(format_success("✅ OpenTelemetry Collector deployment completed successfully!"))
+    console.print(format_info("💡 OTLP gRPC: localhost:4317"))
+    console.print(format_info("💡 OTLP HTTP: localhost:4318"))
+    console.print(format_info("💡 Prometheus metrics: localhost:8888/metrics"))
+    console.print(format_info("💡 Health check: localhost:8888"))
+    console.print("")
+
+
+def _nuke_valkey() -> int:
+    """Destroy Valkey container and volume."""
+    console.print("💣 [bold yellow]NUKING Valkey - cleanup of Docker artifacts...[/bold yellow]")
+
+    _run_compose(["stop", "valkey"])
+    _run_compose(["rm", "-f", "valkey"])
+
+    try:
+        subprocess.run(
+            ["docker", "volume", "rm", "-f", "aico-valkeydata"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        return 1
+
+    console.print(format_success("✅ Valkey nuked"))
+    return 0
+
+
+def _nuke_nats() -> int:
+    """Destroy NATS container."""
+    console.print("💣 [bold yellow]NUKING NATS - cleanup of Docker artifacts...[/bold yellow]")
+
+    _run_compose(["stop", "nats"])
+    _run_compose(["rm", "-f", "nats"])
+
+    console.print(format_success("✅ NATS nuked"))
+    return 0
+
+
+def _nuke_prometheus() -> int:
+    """Destroy Prometheus container and volume."""
+    console.print("💣 [bold yellow]NUKING Prometheus - cleanup of Docker artifacts...[/bold yellow]")
+
+    _run_compose(["stop", "prometheus"])
+    _run_compose(["rm", "-f", "prometheus"])
+
+    try:
+        subprocess.run(
+            ["docker", "volume", "rm", "-f", "aico-prometheusdata"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        return 1
+
+    console.print(format_success("✅ Prometheus nuked"))
+    return 0
+
+
+def _nuke_tempo() -> int:
+    """Destroy Tempo container and volume."""
+    console.print("💣 [bold yellow]NUKING Tempo - cleanup of Docker artifacts...[/bold yellow]")
+
+    _run_compose(["stop", "tempo"])
+    _run_compose(["rm", "-f", "tempo"])
+
+    try:
+        subprocess.run(
+            ["docker", "volume", "rm", "-f", "aico-tempodata"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        return 1
+
+    console.print(format_success("✅ Tempo nuked"))
+    return 0
+
+
+def _nuke_otel_collector() -> int:
+    """Destroy OpenTelemetry Collector container."""
+    console.print("💣 [bold yellow]NUKING OpenTelemetry Collector - cleanup of Docker artifacts...[/bold yellow]")
+
+    _run_compose(["stop", "otel-collector"])
+    _run_compose(["rm", "-f", "otel-collector"])
+
+    console.print(format_success("✅ OpenTelemetry Collector nuked"))
+    return 0
 
 
 def _nuke_gateway() -> int:
