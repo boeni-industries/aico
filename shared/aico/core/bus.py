@@ -156,6 +156,58 @@ class MessageBusClient:
         self._nats: Optional[NATS] = None
         self._nats_url: Optional[str] = None
 
+    async def _nats_error_callback(self, error: Exception):
+        """Custom error callback for NATS client to provide detailed error logging.
+        
+        This replaces the generic 'nats: encountered error' message from the NATS library
+        with actionable information about what failed and why.
+        """
+        error_type = type(error).__name__
+        error_msg = str(error)
+        
+        # Provide context-specific error messages
+        if isinstance(error, NATSTimeoutError):
+            self.logger.error(
+                f"NATS request timed out: {error_msg}",
+                extra={
+                    "error_type": error_type,
+                    "client_id": self.client_id,
+                    "nats_url": self._nats_url,
+                },
+                exc_info=error
+            )
+        elif isinstance(error, NATSError):
+            self.logger.error(
+                f"NATS protocol error: {error_msg}",
+                extra={
+                    "error_type": error_type,
+                    "client_id": self.client_id,
+                    "nats_url": self._nats_url,
+                },
+                exc_info=error
+            )
+        elif isinstance(error, ConnectionError):
+            self.logger.error(
+                f"NATS connection error: {error_msg}",
+                extra={
+                    "error_type": error_type,
+                    "client_id": self.client_id,
+                    "nats_url": self._nats_url,
+                },
+                exc_info=error
+            )
+        else:
+            # Generic error with full context
+            self.logger.error(
+                f"NATS client error ({error_type}): {error_msg}",
+                extra={
+                    "error_type": error_type,
+                    "client_id": self.client_id,
+                    "nats_url": self._nats_url,
+                },
+                exc_info=error
+            )
+
     async def connect(self):
         """Connect to the message bus"""
         try:
@@ -178,7 +230,10 @@ class MessageBusClient:
             )
 
             nc = NATS()
-            await nc.connect(servers=[self._nats_url])
+            await nc.connect(
+                servers=[self._nats_url],
+                error_cb=self._nats_error_callback
+            )
             self._nats = nc
 
             self.running = True
