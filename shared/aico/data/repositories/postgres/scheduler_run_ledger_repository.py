@@ -190,6 +190,56 @@ class PostgresSchedulerRunLedgerRepository(Repository[SchedulerTaskRun]):
         result = await self.session.execute(stmt)
         return int(result.scalar() or 0)
 
+    async def get_due_runs(
+        self,
+        *,
+        now: datetime,
+        limit: int = 100,
+    ) -> List[SchedulerTaskRun]:
+        """Fetch planned runs that are now due for execution.
+        
+        Returns runs where:
+        - state is 'planned'
+        - scheduled_for <= now
+        - started_at is NULL
+        
+        Ordered by scheduled_for ASC (oldest first).
+        """
+        stmt = (
+            select(scheduler_run_ledger)
+            .where(
+                and_(
+                    scheduler_run_ledger.c.state == "planned",
+                    scheduler_run_ledger.c.scheduled_for <= now,
+                    scheduler_run_ledger.c.started_at.is_(None),
+                )
+            )
+            .order_by(scheduler_run_ledger.c.scheduled_for.asc())
+            .limit(limit)
+        )
+        
+        result = await self.session.execute(stmt)
+        rows = result.fetchall()
+        
+        return [
+            SchedulerTaskRun(
+                id=row.id,
+                task_id=row.task_id,
+                run_key=row.run_key,
+                tenant_id=getattr(row, "tenant_id", None),
+                scheduled_for=row.scheduled_for,
+                planned_at=row.planned_at,
+                state=row.state,
+                enqueued_at=row.enqueued_at,
+                started_at=row.started_at,
+                completed_at=row.completed_at,
+                execution_id=row.execution_id,
+                reason_code=row.reason_code,
+                reason_detail=row.reason_detail,
+            )
+            for row in rows
+        ]
+
     async def mark_missed_before(
         self,
         *,

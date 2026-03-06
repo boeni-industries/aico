@@ -1027,7 +1027,13 @@ class TaskScheduler(BaseService):
         except Exception as e:
             self.logger.error(f"Failed to check for stuck tasks: {e}")
         
-        # 1. Enqueue scheduled tasks that are due
+        # 1. Enqueue due runs from deterministic run ledger
+        try:
+            await self._enqueue_due_runs(now=now)
+        except Exception as e:
+            self.logger.error(f"Failed to enqueue due runs from ledger: {e}", exc_info=True)
+        
+        # 2. Enqueue scheduled tasks that are due (legacy in-memory tracking)
         for task_id, next_run in list(self.next_run_times.items()):
             if next_run <= now:
                 try:
@@ -1037,7 +1043,7 @@ class TaskScheduler(BaseService):
                     self.logger.error(f"❌ Failed to enqueue scheduled task {task_id}: {e}", exc_info=True)
                     print(f"❌ Failed to enqueue task {task_id}: {e}")
 
-        # 2. Enqueue manually triggered tasks
+        # 3. Enqueue manually triggered tasks
         try:
             triggered_tasks = await self._check_for_triggers()
             for task_id in triggered_tasks:
@@ -1049,7 +1055,7 @@ class TaskScheduler(BaseService):
         except Exception as e:
             self.logger.error(f"❌ Failed to check for triggers: {e}", exc_info=True)
         
-        # 3. Execute tasks from priority queue
+        # 4. Execute tasks from priority queue
         try:
             await self._execute_from_priority_queue()
         except Exception as e:
@@ -1141,6 +1147,145 @@ class TaskScheduler(BaseService):
                 "[SCHEDULER] Reconciled planned runs",
                 extra={"created": created_count, "marked_missed": missed_count},
             )
+    
+    async def _enqueue_due_runs(self, *, now: datetime) -> None:
+        """Enqueue planned runs from run ledger that are now due.
+        
+        This is the critical integration point between the deterministic scheduler
+        (which plans runs ahead of time) and the task executor (which runs them).
+        """
+        from aico.data.postgres.connection import get_session_factory
+        from aico.data.uow import UnitOfWork
+        
+        session_factory = await get_session_factory()
+        
+        async with UnitOfWork(session_factory) as uow:
+            repo = uow.scheduler_run_ledger
+            get_due_runs = getattr(repo, "get_due_runs", None)
+            if get_due_runs is None:
+                return
+            
+            # Fetch planned runs that are now due
+            due_runs = await get_due_runs(now=now, limit=100)
+            
+            if not due_runs:
+                return
+            
+            self.logger.debug(f"Found {len(due_runs)} due runs to enqueue")
+            
+            # Enqueue each due run
+            for run in due_runs:
+                task_id = run.task_id
+                scheduled_for = run.scheduled_for
+                
+                try:
+                    # Get task configuration
+                    from aico.services.scheduler_service import SchedulerService
+                    scheduler_service = SchedulerService(uow)
+                    task_model = await scheduler_service.get_task(task_id)
+                    
+                    if not task_model:
+                        # Mark as suppressed - task no longer exists
+                        mark_suppressed = getattr(repo, "mark_suppressed", None)
+                        if mark_suppressed:
+                            await mark_suppressed(
+                                task_id=task_id,
+                                scheduled_for=scheduled_for,
+                                tenant_id=run.tenant_id,
+                                reason_code="TASK_NOT_FOUND",
+                                reason_detail="Task configuration not found",
+                            )
+                        continue
+                    
+                    # Check if task is enabled
+                    if not task_model.enabled:
+                        mark_suppressed = getattr(repo, "mark_suppressed", None)
+                        if mark_suppressed:
+                            await mark_suppressed(
+                                task_id=task_id,
+                                scheduled_for=scheduled_for,
+                                tenant_id=run.tenant_id,
+                                reason_code="DISABLED",
+                                reason_detail="Task disabled",
+                            )
+                        continue
+                    
+                    # Get task class
+                    task_class = self.task_registry.get_task_class(task_id)
+                    if not task_class:
+                        self.logger.warning(f"Task class not found for {task_id}")
+                        mark_suppressed = getattr(repo, "mark_suppressed", None)
+                        if mark_suppressed:
+                            await mark_suppressed(
+                                task_id=task_id,
+                                scheduled_for=scheduled_for,
+                                tenant_id=run.tenant_id,
+                                reason_code="UNKNOWN_TASK",
+                                reason_detail="Task class not found",
+                            )
+                        continue
+                    
+                    # Check if already running or queued
+                    if task_id in self.task_executor.running_tasks:
+                        self.logger.debug(f"Task {task_id} already running - skipping")
+                        mark_suppressed = getattr(repo, "mark_suppressed", None)
+                        if mark_suppressed:
+                            await mark_suppressed(
+                                task_id=task_id,
+                                scheduled_for=scheduled_for,
+                                tenant_id=run.tenant_id,
+                                reason_code="ALREADY_RUNNING",
+                                reason_detail="Task already running",
+                            )
+                        continue
+                    
+                    if hasattr(self, "priority_queue") and self.priority_queue and self.priority_queue.has_task(task_id):
+                        self.logger.debug(f"Task {task_id} already queued - skipping")
+                        continue
+                    
+                    # Prepare task config
+                    task_config = {
+                        'task_id': task_model.task_id,
+                        'task_class': task_model.task_class,
+                        'schedule': task_model.schedule,
+                        'config': task_model.config,
+                        'enabled': task_model.enabled
+                    }
+                    
+                    # Get task instance for priority/queue info
+                    task_instance = task_class()
+                    retry_count = self.retry_tracker.get_retry_count(task_id)
+                    
+                    # Enqueue to priority queue
+                    success = self.priority_queue.enqueue(
+                        task_id=task_id,
+                        task_class=task_class.__name__,
+                        priority=task_instance.priority,
+                        queue=task_instance.queue,
+                        config=task_config,
+                        retry_count=retry_count
+                    )
+                    
+                    if success:
+                        # Mark as enqueued in run ledger
+                        mark_enqueued = getattr(repo, "mark_enqueued", None)
+                        if mark_enqueued:
+                            await mark_enqueued(
+                                task_id=task_id,
+                                scheduled_for=scheduled_for,
+                                tenant_id=run.tenant_id,
+                                enqueued_at=now,
+                                execution_id=None,
+                            )
+                        self.logger.debug(f"Enqueued due run: {task_id} (scheduled for {scheduled_for})")
+                    else:
+                        self.logger.warning(f"Failed to enqueue {task_id} - queue full")
+                        
+                except Exception as e:
+                    self.logger.error(f"Failed to enqueue due run {task_id}: {e}", exc_info=True)
+            
+            # Commit all state changes
+            await uow.commit()
     
     async def _enqueue_task(self, task_id: str, is_scheduled: bool = True):
         """Enqueue task to priority queue
