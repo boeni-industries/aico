@@ -16,7 +16,8 @@ from typing import Annotated, Optional, List, Dict, Any, Tuple
 from pydantic import BaseModel
 from sqlalchemy import select, func, case
 
-from backend.api.conversation.dependencies import get_current_user
+from backend.api.dependencies import get_current_user
+from backend.api.errors import raise_api_error
 from backend.api.agency.models import (
     IntentionSetResponse,
     CuriosityStatusResponse,
@@ -201,16 +202,25 @@ async def get_agency_engine() -> AgencyEngine:
         engine = ai_registry.get("agency")
         
         if not engine:
-            raise HTTPException(
+            raise_api_error(
                 status_code=500,
-                detail="AgencyEngine not available in ai_registry - backend may not be fully initialized"
+                error_code="AGENCY_ENGINE_NOT_AVAILABLE",
+                message="AgencyEngine not available in ai_registry - backend may not be fully initialized",
             )
         
         return engine
         
+    except HTTPException:
+        # Preserve the original API error (e.g., AGENCY_ENGINE_NOT_AVAILABLE)
+        raise
+
     except Exception as e:
-        logger.error(f"Failed to get AgencyEngine from registry: {e}")
-        raise HTTPException(status_code=500, detail=f"Agency service unavailable: {str(e)}")
+        logger.error(f"Failed to get AgencyEngine from registry: {e}", exc_info=True)
+        raise_api_error(
+            status_code=500,
+            error_code="AGENCY_SERVICE_UNAVAILABLE",
+            message="Agency service unavailable",
+        )
 
 
 # Removed get_values_ethics_service - using repositories via UnitOfWork instead
@@ -235,7 +245,11 @@ async def get_intention_set(
         # Exclude technical/users used for internal instrumentation from
         # Studio-facing agency event streams.
         if user.get("is_technical"):
-            raise HTTPException(status_code=403, detail="Technical users are excluded from agency events")
+            raise_api_error(
+                status_code=403,
+                error_code="AGENCY_TECHNICAL_USER_FORBIDDEN",
+                message="Technical users are excluded from agency events",
+            )
 
         user_id = user["user_uuid"]
         
@@ -304,7 +318,11 @@ async def get_intention_set(
         
     except Exception as e:
         logger.error(f"Failed to get intention set: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise_api_error(
+            status_code=500,
+            error_code="AGENCY_INTENTIONS_FAILED",
+            message="Failed to get intention set",
+        )
 
 
 # ============================================================================
@@ -336,7 +354,11 @@ async def list_events(
     try:
         # Exclude technical/system users from Studio-facing agency event streams
         if user.get("is_technical"):
-            raise HTTPException(status_code=403, detail="Technical users are excluded from agency events")
+            raise_api_error(
+                status_code=403,
+                error_code="AGENCY_TECHNICAL_USER_FORBIDDEN",
+                message="Technical users are excluded from agency events",
+            )
 
         user_id = user["user_uuid"]
 
@@ -360,7 +382,11 @@ async def list_events(
 
     except Exception as e:
         logger.error(f"Failed to list agency events: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise_api_error(
+            status_code=500,
+            error_code="AGENCY_EVENTS_FAILED",
+            message="Failed to list agency events",
+        )
 
 
 def _build_goal_response(goal) -> GoalResponse:
@@ -541,10 +567,18 @@ async def get_goal_plans(
         # Load goal from AgencyEngine and enforce ownership
         goal = await engine.get_goal(goal_id)
         if not goal:
-            raise HTTPException(status_code=404, detail=f"Goal {goal_id} not found")
+            raise_api_error(
+                status_code=404,
+                error_code="AGENCY_GOAL_NOT_FOUND",
+                message=f"Goal {goal_id} not found",
+            )
 
         if goal.user_id != user_id:
-            raise HTTPException(status_code=403, detail="Not authorized to view this goal")
+            raise_api_error(
+                status_code=403,
+                error_code="FORBIDDEN",
+                message="Not authorized to view this goal",
+            )
 
         goal_response = _build_goal_response(goal)
 
@@ -699,7 +733,11 @@ async def get_goal_plans(
         raise
     except Exception as e:
         logger.error(f"Failed to get goal plans: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise_api_error(
+            status_code=500,
+            error_code="AGENCY_GOAL_PLANS_FAILED",
+            message="Failed to get goal plans",
+        )
 # ============================================================================
 # Skills & Tools Introspection / Invocation
 # ============================================================================
@@ -753,7 +791,11 @@ def _get_skill_registry_from_engine(engine: AgencyEngine) -> SkillRegistry:
         registry = getattr(engine, "skill_registry", None)
     if registry is None or not isinstance(registry, SkillRegistry):
         logger.error("AgencyEngine does not expose a valid SkillRegistry instance")
-        raise HTTPException(status_code=500, detail="SkillRegistry not available on AgencyEngine")
+        raise_api_error(
+            status_code=500,
+            error_code="AGENCY_SKILL_REGISTRY_NOT_AVAILABLE",
+            message="SkillRegistry not available on AgencyEngine",
+        )
     return registry
 
 
@@ -825,7 +867,11 @@ async def get_skill_info(
     registry = _get_skill_registry_from_engine(engine)
     info: Optional[Dict[str, Any]] = registry.get_skill_info(request.skill_id)
     if not info:
-        raise HTTPException(status_code=404, detail=f"Skill not found: {request.skill_id}")
+        raise_api_error(
+            status_code=404,
+            error_code="AGENCY_SKILL_NOT_FOUND",
+            message=f"Skill not found: {request.skill_id}",
+        )
     return SkillInfoResponse(**info)
 
 
@@ -851,10 +897,18 @@ async def invoke_skill(
         )
     except Exception as exc:
         logger.error(f"Skill invocation failed: {exc}")
-        raise HTTPException(status_code=500, detail="Skill invocation failed")
+        raise_api_error(
+            status_code=500,
+            error_code="AGENCY_SKILL_INVOCATION_FAILED",
+            message="Skill invocation failed",
+        )
 
     if not result.get("success"):
-        raise HTTPException(status_code=500, detail=result.get("error") or "Skill reported failure")
+        raise_api_error(
+            status_code=500,
+            error_code="AGENCY_SKILL_REPORTED_FAILURE",
+            message=result.get("error") or "Skill reported failure",
+        )
 
     return result.get("output")
 
@@ -885,10 +939,18 @@ async def connectivity_scan(
         )
     except Exception as exc:
         logger.error(f"Connectivity scan skill invocation failed: {exc}")
-        raise HTTPException(status_code=500, detail="Connectivity scan failed")
+        raise_api_error(
+            status_code=500,
+            error_code="AGENCY_CONNECTIVITY_SCAN_FAILED",
+            message="Connectivity scan failed",
+        )
 
     if not result.get("success"):
-        raise HTTPException(status_code=500, detail=result.get("error") or "Connectivity scan reported failure")
+        raise_api_error(
+            status_code=500,
+            error_code="AGENCY_CONNECTIVITY_SCAN_REPORTED_FAILURE",
+            message=result.get("error") or "Connectivity scan reported failure",
+        )
 
     return result.get("output")
 
@@ -919,7 +981,11 @@ async def get_tool_info(
     registry = get_tool_registry()
     tool = registry.get(request.tool_id)
     if not tool:
-        raise HTTPException(status_code=404, detail=f"Tool not found: {request.tool_id}")
+        raise_api_error(
+            status_code=404,
+            error_code="AGENCY_TOOL_NOT_FOUND",
+            message=f"Tool not found: {request.tool_id}",
+        )
     return _tool_to_info(tool)
 
 
@@ -933,7 +999,11 @@ async def invoke_tool(
     registry = get_tool_registry()
     tool = registry.get(request.tool_id)
     if not tool:
-        raise HTTPException(status_code=404, detail=f"Tool not found: {request.tool_id}")
+        raise_api_error(
+            status_code=404,
+            error_code="AGENCY_TOOL_NOT_FOUND",
+            message=f"Tool not found: {request.tool_id}",
+        )
 
     kwargs = request.input or {}
 
@@ -943,10 +1013,18 @@ async def invoke_tool(
         result = await tool.handler(**kwargs)
     except TypeError as exc:
         logger.error(f"Tool invocation failed (argument mismatch) for {request.tool_id}: {exc}")
-        raise HTTPException(status_code=400, detail="Tool invocation argument mismatch")
+        raise_api_error(
+            status_code=400,
+            error_code="AGENCY_TOOL_ARGUMENT_MISMATCH",
+            message="Tool invocation argument mismatch",
+        )
     except Exception as exc:
         logger.error(f"Tool invocation failed for {request.tool_id}: {exc}")
-        raise HTTPException(status_code=500, detail="Tool invocation failed")
+        raise_api_error(
+            status_code=500,
+            error_code="AGENCY_TOOL_INVOCATION_FAILED",
+            message="Tool invocation failed",
+        )
 
     return result
 
@@ -1009,7 +1087,11 @@ async def get_curiosity_status(
         
     except Exception as e:
         logger.error(f"Failed to get curiosity status: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise_api_error(
+            status_code=500,
+            error_code="AGENCY_CURIOSITY_STATUS_FAILED",
+            message="Failed to get curiosity status",
+        )
 
 
 # ============================================================================
@@ -1065,7 +1147,11 @@ async def get_value_profile(
         
     except Exception as e:
         logger.error(f"Failed to get value profile: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise_api_error(
+            status_code=500,
+            error_code="AGENCY_VALUE_PROFILE_FETCH_FAILED",
+            message="Failed to get value profile",
+        )
 
 
 @router.put("/profile", response_model=ValueProfileResponse)
@@ -1083,7 +1169,11 @@ async def update_value_profile(
         # Get existing profile
         profiles = await uow.ethics_value_profiles.list(filters={"user_id": user_id}, limit=1)
         if not profiles:
-            raise HTTPException(status_code=404, detail="Value profile not found")
+            raise_api_error(
+                status_code=404,
+                error_code="AGENCY_VALUE_PROFILE_NOT_FOUND",
+                message="Value profile not found",
+            )
         
         profile = profiles[0]
         
@@ -1132,7 +1222,11 @@ async def update_value_profile(
         raise
     except Exception as e:
         logger.error(f"Failed to update value profile: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise_api_error(
+            status_code=500,
+            error_code="AGENCY_VALUE_PROFILE_UPDATE_FAILED",
+            message="Failed to update value profile",
+        )
 
 
 # ============================================================================
@@ -1182,7 +1276,11 @@ async def list_policies(
         
     except Exception as e:
         logger.error(f"Failed to list policies: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise_api_error(
+            status_code=500,
+            error_code="AGENCY_POLICIES_LIST_FAILED",
+            message="Failed to list policies",
+        )
 
 
 # ============================================================================
@@ -1227,7 +1325,11 @@ async def grant_consent(
         
     except Exception as e:
         logger.error(f"Failed to grant consent: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise_api_error(
+            status_code=500,
+            error_code="AGENCY_CONSENT_GRANT_FAILED",
+            message="Failed to grant consent",
+        )
 
 
 @router.get("/consent", response_model=ConsentListResponse)
@@ -1265,7 +1367,11 @@ async def list_consents(
         
     except Exception as e:
         logger.error(f"Failed to list consents: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise_api_error(
+            status_code=500,
+            error_code="AGENCY_CONSENT_LIST_FAILED",
+            message="Failed to list consents",
+        )
 
 
 @router.delete("/consent/{consent_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -1283,11 +1389,11 @@ async def revoke_consent(
         # Get consent
         consent = await uow.consent_records.get_by_id(consent_id)
         if not consent:
-            raise HTTPException(status_code=404, detail="Consent not found")
+            raise_api_error(status_code=404, error_code="AGENCY_CONSENT_NOT_FOUND", message="Consent not found")
         
         # Verify ownership
         if consent.user_id != user_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise_api_error(status_code=403, error_code="FORBIDDEN", message="Not authorized")
         
         # Update decision to denied
         consent.decision = "denied"
@@ -1298,7 +1404,11 @@ async def revoke_consent(
         raise
     except Exception as e:
         logger.error(f"Failed to revoke consent: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise_api_error(
+            status_code=500,
+            error_code="AGENCY_CONSENT_REVOKE_FAILED",
+            message="Failed to revoke consent",
+        )
 
 
 # ============================================================================
@@ -1378,7 +1488,11 @@ async def list_goals(
         
     except Exception as e:
         logger.error(f"Failed to list goals: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise_api_error(
+            status_code=500,
+            error_code="AGENCY_GOALS_LIST_FAILED",
+            message="Failed to list goals",
+        )
 
 
 @router.get("/goals/{goal_id}", response_model=GoalResponse)
@@ -1395,11 +1509,19 @@ async def get_goal(
         
         goal = await engine.get_goal(goal_id)
         if not goal:
-            raise HTTPException(status_code=404, detail=f"Goal {goal_id} not found")
+            raise_api_error(
+                status_code=404,
+                error_code="AGENCY_GOAL_NOT_FOUND",
+                message=f"Goal {goal_id} not found",
+            )
         
         # Verify ownership
         if goal.user_id != user_id:
-            raise HTTPException(status_code=403, detail="Not authorized to view this goal")
+            raise_api_error(
+                status_code=403,
+                error_code="FORBIDDEN",
+                message="Not authorized to view this goal",
+            )
         
         # Enrich metadata with plan details
         enriched_metadata = goal.metadata.copy() if goal.metadata else {}
@@ -1465,7 +1587,11 @@ async def get_goal(
         raise
     except Exception as e:
         logger.error(f"Failed to get goal: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise_api_error(
+            status_code=500,
+            error_code="AGENCY_GOAL_FETCH_FAILED",
+            message="Failed to get goal",
+        )
 
 
 @router.post("/goals/{goal_id}/replan", response_model=dict)
@@ -1486,19 +1612,28 @@ async def replan_goal(
         # Get goal
         goal = await engine.get_goal(goal_id)
         if not goal:
-            raise HTTPException(status_code=404, detail=f"Goal {goal_id} not found")
+            raise_api_error(
+                status_code=404,
+                error_code="AGENCY_GOAL_NOT_FOUND",
+                message=f"Goal {goal_id} not found",
+            )
         
         # Verify ownership
         if goal.user_id != user_id:
-            raise HTTPException(status_code=403, detail="Not authorized to replan this goal")
+            raise_api_error(
+                status_code=403,
+                error_code="FORBIDDEN",
+                message="Not authorized to replan this goal",
+            )
         
         # Check if plan is active
         existing_plans = await engine.plan_store.list_plans_for_goal(goal_id)
         existing_plan = existing_plans[0] if existing_plans else None
         if existing_plan and existing_plan.status.value == "active" and not force:
-            raise HTTPException(
+            raise_api_error(
                 status_code=400,
-                detail="Plan is currently active. Use force=true to replan anyway."
+                error_code="AGENCY_PLAN_ACTIVE",
+                message="Plan is currently active. Use force=true to replan anyway.",
             )
         
         # Delete existing plan steps (if any) - plans are soft-deleted by status change
@@ -1527,7 +1662,11 @@ async def replan_goal(
         raise
     except Exception as e:
         logger.error(f"Failed to replan goal: {e}")
-        raise HTTPException(status_code=500, detail=f"Internal server error: {e}")
+        raise_api_error(
+            status_code=500,
+            error_code="AGENCY_REPLAN_FAILED",
+            message="Internal server error",
+        )
 
 
 @router.get("/state", response_model=AgencyStateResponse)
@@ -1545,7 +1684,11 @@ async def get_agency_state(
         # Agency state is a user-facing construct; do not compute it for
         # technical/system users.
         if user.get("is_technical"):
-            raise HTTPException(status_code=403, detail="Technical users are excluded from agency state")
+            raise_api_error(
+                status_code=403,
+                error_code="AGENCY_TECHNICAL_USER_FORBIDDEN",
+                message="Technical users are excluded from agency state",
+            )
 
         user_id = user["user_uuid"]
         
@@ -1658,7 +1801,11 @@ async def get_agency_state(
         
     except Exception as e:
         logger.error(f"Failed to get agency state: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise_api_error(
+            status_code=500,
+            error_code="AGENCY_STATE_FAILED",
+            message="Failed to get agency state",
+        )
 
 
 # ==========================================================================
@@ -1679,7 +1826,11 @@ async def list_reflection_runs(
         return ReflectionRunsListResponse(runs=[_reflection_run_to_api(r) for r in runs], total=len(runs))
     except Exception as e:
         logger.error(f"Failed to list reflection runs: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise_api_error(
+            status_code=500,
+            error_code="AGENCY_REFLECTION_RUNS_LIST_FAILED",
+            message="Failed to list reflection runs",
+        )
 
 
 @router.get("/reflection/lessons", response_model=LessonListResponse)
@@ -1703,7 +1854,11 @@ async def list_reflection_lessons(
         return LessonListResponse(lessons=[_lesson_to_api(l) for l in lessons], total=len(lessons))
     except Exception as e:
         logger.error(f"Failed to list reflection lessons: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise_api_error(
+            status_code=500,
+            error_code="AGENCY_REFLECTION_LESSONS_LIST_FAILED",
+            message="Failed to list reflection lessons",
+        )
 
 
 @router.get("/reflection/self-model", response_model=SelfModelListResponse)
@@ -1720,7 +1875,11 @@ async def list_self_model(
         return SelfModelListResponse(models=[_self_model_to_api(m) for m in models], total=len(models))
     except Exception as e:
         logger.error(f"Failed to list self model: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise_api_error(
+            status_code=500,
+            error_code="AGENCY_SELF_MODEL_LIST_FAILED",
+            message="Failed to list self model",
+        )
 
 
 @router.get("/reflection/skills/{skill_id}/performance", response_model=SkillPerformanceResponse)
@@ -1741,7 +1900,11 @@ async def get_skill_performance(
         )
     except Exception as e:
         logger.error(f"Failed to get skill performance: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise_api_error(
+            status_code=500,
+            error_code="AGENCY_SKILL_PERFORMANCE_FAILED",
+            message="Failed to get skill performance",
+        )
 
 
 @router.get("/reflection/summary", response_model=ReflectionSummaryResponse)
@@ -1826,4 +1989,8 @@ async def get_reflection_summary(
         )
     except Exception as e:
         logger.error(f"Failed to get reflection summary: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise_api_error(
+            status_code=500,
+            error_code="AGENCY_REFLECTION_SUMMARY_FAILED",
+            message="Failed to get reflection summary",
+        )

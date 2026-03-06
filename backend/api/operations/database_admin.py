@@ -2,11 +2,9 @@
 Database Administration Endpoints - Phase 1 Advanced Features
 
 Provides advanced database management capabilities:
-- Table/Collection browser with detailed metrics
+- Table browser with detailed metrics
 - SQL query execution interface
 - Storage growth trends and analytics
-- LMDB key-value browsing
-- ChromaDB semantic search
 """
 
 import asyncio
@@ -24,23 +22,54 @@ from fastapi import HTTPException, status
 from aico.core.logging import get_logger
 from aico.core.paths import AICOPaths, get_default_database_path
 from backend.api.operations.schemas import (
-    DatabaseDetailsResponse, TableInfo, CollectionInfo, LMDBDatabaseInfo,
+    DatabaseDetailsResponse, TableInfo, CollectionInfo,
     QueryRequest, QueryResult,
     StorageTrendResponse,
-    LMDBBrowseRequest, LMDBBrowseResponse, LMDBKeyInfo, LMDBKeyValueResponse,
-    ChromaDBSearchRequest, ChromaDBSearchResponse, ChromaDBDocument,
-    ChromaDBDeleteRequest, ChromaDBDeleteResponse,
-    ChromaDBBrowseResponse,
     SchemaMetadata,
 )
 
-# Import browser functions
-from backend.api.operations.lmdb_browser import (
-    browse_lmdb_keys, get_lmdb_key_value, delete_lmdb_keys, find_orphaned_lmdb_entries
-)
-from backend.api.operations.chromadb_browser import search_chromadb, delete_chromadb_documents, browse_chromadb_collection
-
 logger = get_logger("backend.api.operations.database_admin")
+
+
+def _resolve_postgres_connection_params() -> tuple[str, int, str, str, str]:
+    from aico.core.config import ConfigurationManager
+    from aico.security.key_manager import AICOKeyManager
+    from aico.security.credential_provider import CredentialProvider
+
+    config = ConfigurationManager()
+    config.initialize(lightweight=True)
+    pg_config = config.get("postgres", {})
+
+    db_user = pg_config.get("user", "postgres")
+    provider = CredentialProvider()
+    db_password = provider.get("pg_password")
+    if not db_password:
+        try:
+            key_manager = AICOKeyManager(config)
+            db_password = key_manager.get_database_password("postgres", username=db_user)
+        except Exception:
+            db_password = None
+
+    if not db_password:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=(
+                "Failed to retrieve schema metadata: PostgreSQL password missing. "
+                "Configure pg_password via Docker/Compose secrets."
+            ),
+        )
+
+    host = os.environ.get("AICO_PG_HOST") or pg_config.get("host") or "127.0.0.1"
+    port = int(pg_config.get("port", 5432))
+    database = (
+        os.environ.get("AICO_TEST_DB_NAME")
+        or os.environ.get("AICO_POSTGRES_DATABASE")
+        or pg_config.get("db_name")
+        or pg_config.get("database")
+        or "aico"
+    )
+
+    return host, port, database, db_user, db_password
 
 
 # ============================================================================
@@ -51,21 +80,14 @@ async def get_postgresql_details() -> DatabaseDetailsResponse:
     """Get detailed information about PostgreSQL database tables"""
     try:
         import psycopg2
-        from aico.core.config import ConfigurationManager
-        from aico.security.key_manager import AICOKeyManager
-        
-        config = ConfigurationManager()
-        pg_config = config.get('postgres', {})
-        
-        db_user = pg_config.get('user', 'postgres')
-        key_manager = AICOKeyManager(config)
-        db_password = key_manager.get_database_password('postgres', db_user) or ''
+
+        host, port, database, db_user, db_password = _resolve_postgres_connection_params()
         
         # Connect to PostgreSQL
         conn = psycopg2.connect(
-            host=pg_config.get('host', '127.0.0.1'),
-            port=pg_config.get('port', 5432),
-            database=pg_config.get('db_name', 'aico'),
+            host=host,
+            port=port,
+            database=database,
             user=db_user,
             password=db_password,
             connect_timeout=5
@@ -132,115 +154,6 @@ async def get_postgresql_details() -> DatabaseDetailsResponse:
         )
 
 
-async def get_influxdb_details() -> DatabaseDetailsResponse:
-    """Get detailed information about InfluxDB"""
-    try:
-        # InfluxDB doesn't have traditional tables/collections to browse
-        # The browser interface uses Flux queries instead
-        # Return empty response to satisfy the interface
-        return DatabaseDetailsResponse(
-            database_type="influxdb",
-            tables=None,
-            collections=None,
-            databases=None
-        )
-    except Exception as e:
-        logger.error(f"Failed to get InfluxDB details: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to retrieve InfluxDB details: {str(e)}"
-        )
-
-
-async def get_chromadb_details(request) -> DatabaseDetailsResponse:
-    """Get detailed information about ChromaDB collections"""
-    try:
-        collections = []
-        
-        # Try to get ChromaDB client from service container
-        from backend.core.lifecycle_manager import get_service_container
-        container = get_service_container(request)
-        
-        if container:
-            chroma_client = container.get_service("chromadb_client")
-            if chroma_client:
-                chroma_collections = chroma_client.list_collections()
-                
-                for collection in chroma_collections:
-                    # Get document count
-                    doc_count = collection.count()
-                    
-                    # Get metadata
-                    metadata = collection.metadata if hasattr(collection, 'metadata') else {}
-                    
-                    # Try to get embedding dimension from first document
-                    dimension = None
-                    if doc_count > 0:
-                        try:
-                            sample = collection.peek(1)
-                            if sample and 'embeddings' in sample and sample['embeddings']:
-                                dimension = len(sample['embeddings'][0])
-                        except Exception:
-                            pass
-                    
-                    collections.append(CollectionInfo(
-                        name=collection.name,
-                        document_count=doc_count,
-                        metadata=metadata,
-                        dimension=dimension
-                    ))
-        
-        return DatabaseDetailsResponse(
-            database_type="chromadb",
-            collections=collections
-        )
-    except Exception as e:
-        logger.error(f"Failed to get ChromaDB details: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to retrieve ChromaDB details: {str(e)}"
-        )
-
-
-async def get_lmdb_details() -> DatabaseDetailsResponse:
-    """Get detailed information about LMDB databases"""
-    try:
-        databases = []
-        
-        # Try to get memory manager from AI registry
-        from aico.ai import ai_registry
-        memory_manager = ai_registry.get("memory")
-        
-        if memory_manager and hasattr(memory_manager, '_working_store'):
-            working_store = memory_manager._working_store
-            
-            for db_name, db in working_store.dbs.items():
-                # Count keys in this database
-                key_count = 0
-                try:
-                    with working_store.env.begin(db=db) as txn:
-                        key_count = txn.stat()['entries']
-                except Exception as e:
-                    logger.warning(f"Failed to get key count for LMDB database {db_name}: {e}")
-                
-                databases.append(LMDBDatabaseInfo(
-                    name=db_name,
-                    key_count=key_count,
-                    size_bytes=None  # Would require page analysis
-                ))
-        
-        return DatabaseDetailsResponse(
-            database_type="lmdb",
-            databases=databases
-        )
-    except Exception as e:
-        logger.error(f"Failed to get LMDB details: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to retrieve LMDB details: {str(e)}"
-        )
-
-
 # ============================================================================
 # SQL Query Execution
 # ============================================================================
@@ -272,22 +185,15 @@ async def get_schema_metadata() -> SchemaMetadata:
     """
     try:
         import psycopg2
-        from aico.core.config import ConfigurationManager
-        from aico.security.key_manager import AICOKeyManager
-        
-        config = ConfigurationManager()
-        pg_config = config.get('postgres', {})
-        
-        db_user = pg_config.get('user', 'postgres')
-        key_manager = AICOKeyManager(config)
-        db_password = key_manager.get_database_password('postgres', db_user) or ''
+
+        host, port, database, db_user, db_password = _resolve_postgres_connection_params()
         
         # Connect to PostgreSQL
         conn = await asyncio.to_thread(
             psycopg2.connect,
-            host=pg_config.get('host', '127.0.0.1'),
-            port=pg_config.get('port', 5432),
-            database=pg_config.get('db_name', 'aico'),
+            host=host,
+            port=port,
+            database=database,
             user=db_user,
             password=db_password,
             connect_timeout=5
@@ -356,7 +262,8 @@ def validate_sql_query(query: str, allow_destructive: bool = False) -> tuple[boo
     # Check for forbidden patterns (always blocked)
     for pattern in FORBIDDEN_SQL_PATTERNS:
         if re.search(pattern, query_upper, re.IGNORECASE):
-            return False, f"Forbidden operation detected: {pattern.replace('\\b', '').replace('\\s+', ' ')}", False
+            cleaned_pattern = pattern.replace("\\b", "").replace("\\s+", " ")
+            return False, f"Forbidden operation detected: {cleaned_pattern}", False
     
     # Check for destructive patterns (require confirmation)
     is_destructive = False
@@ -415,21 +322,14 @@ async def execute_sql_query(
         
         # Connect to PostgreSQL and execute query
         import psycopg2
-        from aico.core.config import ConfigurationManager
-        from aico.security.key_manager import AICOKeyManager
-        
-        config = ConfigurationManager()
-        pg_config = config.get('postgres', {})
-        
-        db_user = pg_config.get('user', 'postgres')
-        key_manager = AICOKeyManager(config)
-        db_password = key_manager.get_database_password('postgres', db_user) or ''
+
+        host, port, database, db_user, db_password = _resolve_postgres_connection_params()
         
         conn = await asyncio.to_thread(
             psycopg2.connect,
-            host=pg_config.get('host', '127.0.0.1'),
-            port=pg_config.get('port', 5432),
-            database=pg_config.get('db_name', 'aico'),
+            host=host,
+            port=port,
+            database=database,
             user=db_user,
             password=db_password,
             connect_timeout=5
@@ -474,78 +374,6 @@ async def execute_sql_query(
         )
 
 
-async def execute_influx_query(query: str) -> QueryResult:
-    """
-    Execute a Flux query on InfluxDB.
-    
-    Returns time-series data from the configured InfluxDB instance.
-    """
-    try:
-        from aico.data.influx.connection import InfluxDBConnection
-        
-        # Connect to InfluxDB
-        influx_conn = InfluxDBConnection()
-        
-        # Execute query
-        results = influx_conn.query(query)
-        
-        # Convert results to table format
-        if not results:
-            influx_conn.close()
-            return QueryResult(
-                success=True,
-                error=None,
-                columns=[],
-                rows=[],
-                row_count=0,
-                is_destructive=False
-            )
-        
-        # Extract columns from first result
-        columns = list(results[0].keys()) if results else []
-        
-        # Convert results to rows
-        rows = []
-        for result in results:
-            row = [result.get(col) for col in columns]
-            rows.append(row)
-        
-        influx_conn.close()
-        
-        logger.info(f"InfluxDB query executed successfully: {len(rows)} rows returned")
-        
-        return QueryResult(
-            success=True,
-            error=None,
-            columns=columns,
-            rows=rows,
-            row_count=len(rows),
-            is_destructive=False
-        )
-        
-    except ValueError as e:
-        # Token not found in keyring
-        logger.error(f"InfluxDB credentials not configured: {e}")
-        return QueryResult(
-            success=False,
-            error=str(e),
-            columns=[],
-            rows=[],
-            row_count=0,
-            is_destructive=False
-        )
-    except Exception as e:
-        logger.error(f"InfluxDB query execution failed: {e}")
-        return QueryResult(
-            success=False,
-            error=str(e),
-            columns=[],
-            rows=[],
-            row_count=0,
-            is_destructive=False
-        )
-
-
 # ============================================================================
 # Storage Growth Trends
 # ============================================================================
@@ -567,16 +395,6 @@ async def get_storage_trends(database_name: str) -> StorageTrendResponse:
             chroma_path = AICOPaths.get_data_directory() / "data" / "memory" / "semantic"
             if os.path.exists(chroma_path):
                 for dirpath, dirnames, filenames in os.walk(chroma_path):
-                    for filename in filenames:
-                        filepath = os.path.join(dirpath, filename)
-                        try:
-                            current_size += os.path.getsize(filepath)
-                        except Exception:
-                            pass
-        elif database_name == "LMDB":
-            lmdb_path = AICOPaths.get_data_directory() / "data" / "memory" / "working"
-            if os.path.exists(lmdb_path):
-                for dirpath, dirnames, filenames in os.walk(lmdb_path):
                     for filename in filenames:
                         filepath = os.path.join(dirpath, filename)
                         try:

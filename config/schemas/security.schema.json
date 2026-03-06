@@ -140,6 +140,17 @@
     "authentication": {
       "type": "object",
       "properties": {
+        "admin_passcode_policy": {
+          "type": "object",
+          "properties": {
+            "min_length": {
+              "type": "integer",
+              "minimum": 12,
+              "default": 12
+            }
+          },
+          "required": ["min_length"]
+        },
         "session_timeout": {
           "type": "integer",
           "minimum": 300,

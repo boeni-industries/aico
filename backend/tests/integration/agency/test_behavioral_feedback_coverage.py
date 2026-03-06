@@ -551,12 +551,12 @@ class TestBehavioralFeedbackCoverage:
     async def test_get_user_satisfaction_trend_database_error(self, feedback_service, test_user):
         """Test error handling when fetching trend fails (covers lines 634-637)."""
         with patch.object(feedback_service.agency_service, "get_user_satisfaction_trend", side_effect=Exception("DB error")):
-            trend = await feedback_service.get_user_satisfaction_trend(
-                user_id=test_user,
-                days=30,
-            )
+            with pytest.raises(Exception):
+                await feedback_service.get_user_satisfaction_trend(
+                    user_id=test_user,
+                    days=30,
+                )
 
-        assert trend == []
         assert feedback_service.logger.error.called
     
     # ========================================================================

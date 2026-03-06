@@ -24,6 +24,8 @@ from backend.api.kg.dependencies import (
 from backend.core.postgres_dependencies import get_uow
 from aico.data.uow import UnitOfWork
 
+from backend.api.errors import error_responses, raise_api_error
+
 # Initialize router and logger
 router = APIRouter()
 logger = get_logger("backend.api.kg")
@@ -36,7 +38,11 @@ from backend.api.kg.temporal_router import router as temporal_router
 router.include_router(temporal_router, tags=["temporal"])
 
 
-@router.post("/query", response_model=GQLQueryResponse)
+@router.post(
+    "/query",
+    response_model=GQLQueryResponse,
+    responses=error_responses(400, 401, 500),
+)
 async def execute_gql_query(
     request: GQLQueryRequest,
     user: Annotated[dict, Depends(get_current_user)],
@@ -84,9 +90,10 @@ async def execute_gql_query(
     try:
         user_id = user.get("user_id")
         if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User ID not found in token"
+            raise_api_error(
+                status_code=401,
+                error_code="AUTH_MISSING_USER_ID",
+                message="User ID not found in token",
             )
         
         # Removed excessive logging
@@ -108,9 +115,10 @@ async def execute_gql_query(
         
         if not result["success"]:
             logger.warning(f"Query failed for user {user_id}: {result['error']}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=result["error"]
+            raise_api_error(
+                status_code=400,
+                error_code="KG_QUERY_INVALID",
+                message=str(result.get("error") or "Query failed"),
             )
         
         # Query executed successfully
@@ -131,13 +139,17 @@ async def execute_gql_query(
                 'error_message': str(e)
             }
         )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Query execution failed: {str(e)}"
+        raise_api_error(
+            status_code=500,
+            error_code="KG_QUERY_EXECUTION_FAILED",
+            message="Query execution failed",
         )
 
 
-@router.get("/schema")
+@router.get(
+    "/schema",
+    responses=error_responses(401, 500),
+)
 async def get_kg_schema(
     user: Annotated[dict, Depends(get_current_user)],
     uow: Annotated[UnitOfWork, Depends(get_uow)]
@@ -153,9 +165,10 @@ async def get_kg_schema(
     try:
         user_id = user.get("user_id")
         if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User ID not found in token"
+            raise_api_error(
+                status_code=401,
+                error_code="AUTH_MISSING_USER_ID",
+                message="User ID not found in token",
             )
         
         # Get all current nodes and edges for this user
@@ -191,13 +204,18 @@ async def get_kg_schema(
         raise
     except Exception as e:
         logger.error(f"Failed to fetch KG schema for user {user_id}: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch schema: {str(e)}"
+        raise_api_error(
+            status_code=500,
+            error_code="KG_SCHEMA_FETCH_FAILED",
+            message="Failed to fetch schema",
         )
 
 
-@router.get("/stats", response_model=GraphStatsResponse)
+@router.get(
+    "/stats",
+    response_model=GraphStatsResponse,
+    responses=error_responses(401, 500),
+)
 async def get_graph_stats(
     user: Annotated[dict, Depends(get_current_user)],
     uow: Annotated[UnitOfWork, Depends(get_uow)]
@@ -216,9 +234,10 @@ async def get_graph_stats(
     try:
         user_id = user.get("user_id")
         if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User ID not found in token"
+            raise_api_error(
+                status_code=401,
+                error_code="AUTH_MISSING_USER_ID",
+                message="User ID not found in token",
             )
         
         # Check cache first (30 second TTL)
@@ -389,13 +408,17 @@ async def get_graph_stats(
         import traceback
         logger.error(f"Failed to get graph stats: {e}")
         logger.error(f"Traceback: {traceback.format_exc()}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to retrieve graph statistics: {str(e)}"
+        raise_api_error(
+            status_code=500,
+            error_code="KG_STATS_FAILED",
+            message="Failed to retrieve graph statistics",
         )
 
 
-@router.get("/nodes")
+@router.get(
+    "/nodes",
+    responses=error_responses(401, 500),
+)
 async def list_nodes(
     user: Annotated[dict, Depends(get_current_user)],
     uow: Annotated[UnitOfWork, Depends(get_uow)],
@@ -417,9 +440,10 @@ async def list_nodes(
     try:
         user_id = user.get("user_id")
         if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User ID not found in token"
+            raise_api_error(
+                status_code=401,
+                error_code="AUTH_MISSING_USER_ID",
+                message="User ID not found in token",
             )
         
         # Clamp limit
@@ -451,17 +475,19 @@ async def list_nodes(
         # Nodes fetched
         return {"nodes": nodes, "total": len(nodes), "limit": limit, "offset": offset}
         
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Failed to fetch nodes: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch nodes: {str(e)}"
+        raise_api_error(
+            status_code=500,
+            error_code="KG_NODES_FETCH_FAILED",
+            message="Failed to fetch nodes",
         )
 
 
-@router.get("/edges")
+@router.get(
+    "/edges",
+    responses=error_responses(401, 500),
+)
 async def list_edges(
     user: Annotated[dict, Depends(get_current_user)],
     uow: Annotated[UnitOfWork, Depends(get_uow)],
@@ -483,9 +509,10 @@ async def list_edges(
     try:
         user_id = user.get("user_id")
         if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User ID not found in token"
+            raise_api_error(
+                status_code=401,
+                error_code="AUTH_MISSING_USER_ID",
+                message="User ID not found in token",
             )
         
         # Clamp limit
@@ -521,13 +548,17 @@ async def list_edges(
         raise
     except Exception as e:
         logger.error(f"Failed to fetch edges: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch edges: {str(e)}"
+        raise_api_error(
+            status_code=500,
+            error_code="KG_EDGES_FETCH_FAILED",
+            message="Failed to fetch edges",
         )
 
 
-@router.get("/query-templates")
+@router.get(
+    "/query-templates",
+    responses=error_responses(401, 500, 503),
+)
 async def get_query_templates(
     user: Annotated[dict, Depends(get_current_user)]
 ):
@@ -554,9 +585,10 @@ async def get_query_templates(
                 f"Query templates not found at {templates_path}. "
                 f"Run 'aico config init' to initialize templates from repository defaults."
             )
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Query templates not initialized. Run 'aico config init' to set up templates."
+            raise_api_error(
+                status_code=503,
+                error_code="KG_QUERY_TEMPLATES_NOT_INITIALIZED",
+                message="Query templates not initialized. Run 'aico config init' to set up templates.",
             )
         
         with open(templates_path, 'r', encoding='utf-8') as f:
@@ -567,21 +599,27 @@ async def get_query_templates(
         
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse query templates JSON: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Query templates file is malformed"
+        raise_api_error(
+            status_code=500,
+            error_code="KG_QUERY_TEMPLATES_MALFORMED",
+            message="Query templates file is malformed",
         )
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to load query templates: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to load query templates: {str(e)}"
+        raise_api_error(
+            status_code=500,
+            error_code="KG_QUERY_TEMPLATES_LOAD_FAILED",
+            message="Failed to load query templates",
         )
 
 
-@router.put("/query-templates", tags=["Knowledge Graph"])
+@router.put(
+    "/query-templates",
+    tags=["Knowledge Graph"],
+    responses=error_responses(400, 401, 500),
+)
 async def update_query_templates(
     templates_data: dict,
     user: dict = Depends(get_current_user)
@@ -615,31 +653,35 @@ async def update_query_templates(
         
         # Validate templates structure
         if 'templates' not in templates_data:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Request must contain 'templates' array"
+            raise_api_error(
+                status_code=400,
+                error_code="KG_QUERY_TEMPLATES_INVALID_REQUEST",
+                message="Request must contain 'templates' array",
             )
         
         templates = templates_data['templates']
         if not isinstance(templates, list):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="'templates' must be an array"
+            raise_api_error(
+                status_code=400,
+                error_code="KG_QUERY_TEMPLATES_INVALID_REQUEST",
+                message="'templates' must be an array",
             )
         
         # Validate each template has required fields
         required_fields = {'id', 'title', 'description', 'category', 'query', 'tags'}
         for idx, template in enumerate(templates):
             if not isinstance(template, dict):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Template at index {idx} must be an object"
+                raise_api_error(
+                    status_code=400,
+                    error_code="KG_QUERY_TEMPLATES_INVALID_REQUEST",
+                    message=f"Template at index {idx} must be an object",
                 )
             missing_fields = required_fields - set(template.keys())
             if missing_fields:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Template '{template.get('id', idx)}' missing fields: {missing_fields}"
+                raise_api_error(
+                    status_code=400,
+                    error_code="KG_QUERY_TEMPLATES_INVALID_REQUEST",
+                    message=f"Template '{template.get('id', idx)}' missing fields: {missing_fields}",
                 )
         
         # Get target path
@@ -664,13 +706,15 @@ async def update_query_templates(
         raise
     except json.JSONDecodeError as e:
         logger.error(f"Failed to encode templates JSON: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid JSON structure in templates"
+        raise_api_error(
+            status_code=400,
+            error_code="KG_QUERY_TEMPLATES_INVALID_REQUEST",
+            message="Invalid JSON structure in templates",
         )
     except Exception as e:
         logger.error(f"Failed to update query templates: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to update query templates: {str(e)}"
+        raise_api_error(
+            status_code=500,
+            error_code="KG_QUERY_TEMPLATES_UPDATE_FAILED",
+            message="Failed to update query templates",
         )

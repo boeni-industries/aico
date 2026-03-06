@@ -80,12 +80,28 @@ class ResultFormatter:
             logger.info(f"Formatter received results keys: {results.keys() if isinstance(results, dict) else 'N/A'}")
             if isinstance(results, dict) and results:
                 first_key = list(results.keys())[0]
-                first_value = results[first_key][0] if results[first_key] else None
-                logger.info(f"First result - key: {first_key}, value type: {type(first_value)}, value: {first_value}")
+                first_col = results.get(first_key)
+                if isinstance(first_col, list):
+                    first_value = first_col[0] if first_col else None
+                else:
+                    first_value = first_col
+                logger.info(
+                    f"First result - key: {first_key}, value type: {type(first_value)}, value: {first_value}"
+                )
             
             if not results:
                 logger.debug("Empty results, returning empty dict")
                 return {"columns": [], "rows": [], "count": 0}
+
+            # Normalize to dict-of-lists. Some query paths (aggregations) may yield scalars.
+            if isinstance(results, dict):
+                normalized: Dict[str, List[Any]] = {}
+                for k, v in results.items():
+                    if isinstance(v, list):
+                        normalized[k] = v
+                    else:
+                        normalized[k] = [v]
+                results = normalized
             
             # GrandCypher returns dict of {column_name: [values]}
             columns = list(results.keys())

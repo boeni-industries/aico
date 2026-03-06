@@ -72,7 +72,7 @@ async def test_transformers_manager():
                 
                 print(f"Raw label: '{sentiment_result['label']}' -> '{label}'")
                 
-                # Map model labels to standard format (same as zmq_handlers.py)
+                # Map model labels to standard format (same as handlers.py)
                 # nlptown/bert-base-multilingual-uncased-sentiment uses star ratings
                 if label in ['5 stars', '4 stars']:
                     sentiment = 'positive'

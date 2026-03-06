@@ -1,0 +1,246 @@
+syntax = "proto3";
+import "google/protobuf/descriptor.proto";
+
+package aico.core;
+
+option go_package = "github.com/boeni-industries/aico/proto/core";
+option java_package = "industries.boeni.aico.proto.core";
+option java_multiple_files = true;
+
+import "google/protobuf/any.proto";
+import "google/protobuf/timestamp.proto";
+import "aico_core_common.proto";
+
+// Update System Messages
+// These messages define the communication protocol for the AICO Update System
+
+// Version information
+message VersionInfo {
+  string version = 1;                     // Semantic version (e.g., "1.2.3")
+  string build_id = 2;                    // Build identifier
+  google.protobuf.Timestamp build_time = 3;  // Build timestamp
+  string commit_hash = 4;                 // Git commit hash
+  string channel = 5;                     // Update channel (stable, beta, dev)
+  map<string, string> attributes = 6;     // Additional version attributes
+}
+
+// Component type enum
+enum ComponentType {
+  COMPONENT_UNKNOWN = 0;
+  COMPONENT_BACKEND = 1;
+  COMPONENT_FRONTEND = 2;
+  COMPONENT_FULL = 3;                     // Both backend and frontend
+  COMPONENT_MODULE = 4;                   // Specific module
+}
+
+// Update check request
+message UpdateCheckRequest {
+  VersionInfo current_version = 1;        // Current version information
+  ComponentType component_type = 2;       // Component type to check
+  string component_id = 3;                // Specific component ID if applicable
+  bool include_beta = 4;                  // Whether to include beta updates
+  string device_id = 5;                   // Device identifier
+  map<string, string> system_info = 6;    // System information
+}
+
+// Update check response
+message UpdateCheckResponse {
+  bool update_available = 1;              // Whether an update is available
+  VersionInfo latest_version = 2;         // Latest version information
+  UpdateInfo update_info = 3;             // Update information if available
+  bool force_update = 4;                  // Whether update is mandatory
+  string update_message = 5;              // User-facing update message
+}
+
+// Update information
+message UpdateInfo {
+  string update_id = 1;                   // Unique update identifier
+  VersionInfo target_version = 2;         // Target version
+  ComponentType component_type = 3;       // Component type
+  string component_id = 4;                // Specific component ID if applicable
+  uint64 size_bytes = 5;                  // Update size in bytes
+  string changelog = 6;                   // Changelog in markdown format
+  google.protobuf.Timestamp release_date = 7;  // Release date
+  repeated string affected_modules = 8;   // Affected modules
+  bool requires_restart = 9;              // Whether restart is required
+  uint32 estimated_install_time_seconds = 10;  // Estimated installation time
+  UpdateType update_type = 11;            // Type of update
+  SecurityImpact security_impact = 12;    // Security impact
+}
+
+// Update type enum
+enum UpdateType {
+  UPDATE_TYPE_UNKNOWN = 0;
+  UPDATE_TYPE_PATCH = 1;                  // Minor bug fixes
+  UPDATE_TYPE_MINOR = 2;                  // New features, backward compatible
+  UPDATE_TYPE_MAJOR = 3;                  // Breaking changes
+  UPDATE_TYPE_SECURITY = 4;               // Security update
+}
+
+// Security impact enum
+enum SecurityImpact {
+  SECURITY_IMPACT_UNKNOWN = 0;
+  SECURITY_IMPACT_NONE = 1;               // No security impact
+  SECURITY_IMPACT_LOW = 2;                // Low security impact
+  SECURITY_IMPACT_MEDIUM = 3;             // Medium security impact
+  SECURITY_IMPACT_HIGH = 4;               // High security impact
+  SECURITY_IMPACT_CRITICAL = 5;           // Critical security impact
+}
+
+// Download update request
+message DownloadUpdateRequest {
+  string update_id = 1;                   // Update ID to download
+  bool background = 2;                    // Whether to download in background
+  string target_location = 3;             // Target download location
+}
+
+// Download progress message
+message DownloadProgress {
+  string update_id = 1;                   // Update ID
+  uint64 bytes_downloaded = 2;            // Bytes downloaded
+  uint64 total_bytes = 3;                 // Total bytes
+  double progress_percent = 4;            // Progress percentage
+  DownloadStatus status = 5;              // Download status
+  string message = 6;                     // Status message
+  uint32 estimated_remaining_seconds = 7; // Estimated time remaining
+}
+
+// Download status enum
+enum DownloadStatus {
+  DOWNLOAD_UNKNOWN = 0;
+  DOWNLOAD_PENDING = 1;                   // Download pending
+  DOWNLOAD_IN_PROGRESS = 2;               // Download in progress
+  DOWNLOAD_PAUSED = 3;                    // Download paused
+  DOWNLOAD_COMPLETED = 4;                 // Download completed
+  DOWNLOAD_FAILED = 5;                    // Download failed
+  DOWNLOAD_CANCELED = 6;                  // Download canceled
+}
+
+// Install update request
+message InstallUpdateRequest {
+  string update_id = 1;                   // Update ID to install
+  bool auto_restart = 2;                  // Whether to auto-restart after install
+  bool backup_current = 3;                // Whether to backup current version
+}
+
+// Install update response
+message InstallUpdateResponse {
+  bool success = 1;                       // Whether installation was successful
+  string message = 2;                     // Status message
+  InstallStatus status = 3;               // Installation status
+  string backup_id = 4;                   // Backup ID if backup was created
+}
+
+// Install status enum
+enum InstallStatus {
+  INSTALL_UNKNOWN = 0;
+  INSTALL_PENDING = 1;                    // Installation pending
+  INSTALL_IN_PROGRESS = 2;                // Installation in progress
+  INSTALL_COMPLETED = 3;                  // Installation completed
+  INSTALL_FAILED = 4;                     // Installation failed
+  INSTALL_CANCELED = 5;                   // Installation canceled
+  INSTALL_VERIFICATION_FAILED = 6;        // Verification failed
+}
+
+// Update settings
+message UpdateSettings {
+  bool auto_check = 1;                    // Auto-check for updates
+  uint32 check_interval_hours = 2;        // Check interval in hours
+  bool auto_download = 3;                 // Auto-download updates
+  bool auto_install = 4;                  // Auto-install updates
+  bool include_beta = 5;                  // Include beta updates
+  string preferred_install_time = 6;      // Preferred install time (cron format)
+  bool notify_available = 7;              // Notify when updates available
+  bool allow_restart = 8;                 // Allow automatic restart
+  string update_channel = 9;              // Update channel
+}
+
+// Update notification
+message UpdateNotification {
+  enum NotificationType {
+    NOTIFICATION_UNKNOWN = 0;
+    NOTIFICATION_AVAILABLE = 1;           // Update available
+    NOTIFICATION_DOWNLOADED = 2;          // Update downloaded
+    NOTIFICATION_INSTALLING = 3;          // Update installing
+    NOTIFICATION_INSTALLED = 4;           // Update installed
+    NOTIFICATION_FAILED = 5;              // Update failed
+    NOTIFICATION_RESTART_REQUIRED = 6;    // Restart required
+  }
+  
+  NotificationType type = 1;              // Notification type
+  string update_id = 2;                   // Update ID
+  VersionInfo version = 3;                // Version information
+  string message = 4;                     // Notification message
+  bool is_critical = 5;                   // Whether update is critical
+  google.protobuf.Timestamp expiry = 6;   // Notification expiry
+  repeated string actions = 7;            // Available actions
+}
+
+// Prepare for update request
+message PrepareForUpdateRequest {
+  string update_id = 1;                   // Update ID
+  ComponentType component_type = 2;       // Component type
+  uint32 estimated_downtime_seconds = 3;  // Estimated downtime
+}
+
+// Prepare for update response
+message PrepareForUpdateResponse {
+  bool ready = 1;                         // Whether system is ready for update
+  string message = 2;                     // Status message
+  repeated string blocking_operations = 3; // Operations blocking update
+  uint32 suggested_delay_seconds = 4;     // Suggested delay before retry
+}
+
+// Restart request
+message RestartRequest {
+  ComponentType component_type = 1;       // Component type to restart
+  string component_id = 2;                // Specific component ID if applicable
+  bool graceful = 3;                      // Whether to perform graceful restart
+  uint32 timeout_seconds = 4;             // Timeout for graceful restart
+}
+
+// Restart response
+message RestartResponse {
+  bool success = 1;                       // Whether restart was initiated
+  string message = 2;                     // Status message
+  uint32 estimated_downtime_seconds = 3;  // Estimated downtime
+}
+
+// Rollback request
+message RollbackRequest {
+  string backup_id = 1;                   // Backup ID to roll back to
+  bool auto_restart = 2;                  // Whether to auto-restart after rollback
+}
+
+// Rollback response
+message RollbackResponse {
+  bool success = 1;                       // Whether rollback was successful
+  string message = 2;                     // Status message
+  VersionInfo rolled_back_version = 3;    // Version rolled back to
+}
+
+// Update state sync message
+message UpdateStateSync {
+  string device_id = 1;                   // Device ID
+  ComponentType component_type = 2;       // Component type
+  VersionInfo current_version = 3;        // Current version
+  string update_id = 4;                   // Current update in progress if any
+  UpdateStatus update_status = 5;         // Current update status
+  google.protobuf.Timestamp last_check = 6;  // Last update check timestamp
+  google.protobuf.Timestamp last_update = 7; // Last successful update timestamp
+}
+
+// Update status enum
+enum UpdateStatus {
+  UPDATE_STATUS_UNKNOWN = 0;
+  UPDATE_STATUS_UP_TO_DATE = 1;           // System is up to date
+  UPDATE_STATUS_UPDATE_AVAILABLE = 2;     // Update is available
+  UPDATE_STATUS_DOWNLOADING = 3;          // Update is downloading
+  UPDATE_STATUS_READY_TO_INSTALL = 4;     // Update is ready to install
+  UPDATE_STATUS_INSTALLING = 5;           // Update is installing
+  UPDATE_STATUS_RESTART_REQUIRED = 6;     // Restart required to complete update
+  UPDATE_STATUS_FAILED = 7;               // Update failed
+}
+
+// TODO: IMPLEMENT additional message types for update verification, 
+// cryptographic signing, and delta update mechanisms.

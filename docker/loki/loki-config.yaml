@@ -13,10 +13,6 @@ server:
 
 common:
   path_prefix: /loki
-  storage:
-    filesystem:
-      chunks_directory: /loki/chunks
-      rules_directory: /loki/rules
   replication_factor: 1
   ring:
     instance_addr: 127.0.0.1
@@ -26,12 +22,16 @@ common:
 schema_config:
   configs:
     - from: 2020-10-24
-      store: boltdb-shipper
+      store: tsdb
       object_store: filesystem
-      schema: v11
+      schema: v13
       index:
         prefix: index_
         period: 24h
+
+storage_config:
+  filesystem:
+    directory: /loki/chunks
 
 frontend:
   max_outstanding_per_tenant: 32768
@@ -78,8 +78,8 @@ limits_config:
 # Compactor for retention enforcement
 compactor:
   working_directory: /loki/compactor
-  shared_store: filesystem
   compaction_interval: 10m
+  delete_request_store: filesystem
   retention_enabled: true
   retention_delete_delay: 2h
   retention_delete_worker_count: 150

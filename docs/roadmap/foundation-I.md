@@ -111,7 +111,7 @@ Build the **essential** system infrastructure required for MVP companion feature
 ### Core Functionality ✅
 - [x] Message bus handles high-frequency messages with CurveZMQ encryption
 - [x] Core services restart gracefully without data loss
-- [x] Development environment setup via UV workspace (< 5 minutes)
+- [x] Development environment setup via UV (per-component locks) and Docker (< 5 minutes)
 - [x] All components work offline by default
 - [x] LLM operations run with resource monitoring and auto-management
 

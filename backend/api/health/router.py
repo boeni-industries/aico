@@ -19,6 +19,7 @@ from .schemas import (
     LivenessResponse, SystemMetrics, ComponentHealth, 
     DatabaseHealth, MessageBusHealth
 )
+from aico.core.bus import MessageBusClient
 
 logger = get_logger("aico.api.health.router")
 
@@ -26,7 +27,6 @@ router = APIRouter()
 
 # These will be injected during app initialization
 gateway = None
-message_bus_host = None
 start_time = time.time()
 
 # Get version from canonical VERSIONS file via shared module
@@ -58,7 +58,7 @@ async def health_check():
         components={
             "api": "healthy",
             "gateway": "healthy" if gateway and gateway.running else "unavailable",
-            "message_bus": "healthy" if message_bus_host and message_bus_host.running else "unavailable"
+            "message_bus": "healthy"
         }
     )
 
@@ -102,16 +102,25 @@ async def detailed_health():
         details={"note": "Gateway is serving this request"}
     )
     
-    # Message Bus health - assume running if backend is up
+    # Message Bus health - external NATS
+    bus_status = "running"
+    try:
+        client = MessageBusClient("backend_health_probe")
+        await client.connect()
+        await client.disconnect()
+        bus_status = "healthy"
+    except Exception as e:
+        bus_status = "unavailable"
+
     components["message_bus"] = ComponentHealth(
-        status="running",
+        status=bus_status,
         uptime=uptime,
         last_check=current_time.isoformat(),
         version=BACKEND_VERSION,
-        details={"note": "Message bus is part of backend process"}
+        details={"note": "NATS is external"}
     )
     
-    # Modelservice health - poll via ZMQ for actual uptime
+    # Modelservice health
     modelservice_uptime = None
     modelservice_status = "healthy"
     try:
@@ -135,27 +144,39 @@ async def detailed_health():
         version=MODELSERVICE_VERSION,
         details={"note": "Modelservice is a separate process"}
     )
-    
-    # Ollama health - managed by modelservice
-    # Try to detect Ollama version from its API
-    ollama_version = "unknown"
-    ollama_status = "healthy"
+
+    # vLLM health - OpenAI-compatible HTTP server
+    vllm_version = "unknown"
+    vllm_status = "healthy"
     try:
+        from aico.core.config import ConfigurationManager
         import httpx
-        response = httpx.get("http://localhost:11434/api/version", timeout=2.0)
-        if response.status_code == 200:
-            version_data = response.json()
-            ollama_version = version_data.get("version", "unknown")
+
+        config = ConfigurationManager()
+        vllm_cfg = config.get("llm.vllm", {})
+
+        host = vllm_cfg.get("host", "localhost")
+        port = int(vllm_cfg.get("port", 8774))
+        base_url = f"http://{host}:{port}"
+
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            # Prefer /health if available
+            resp = await client.get(f"{base_url}/health")
+            if resp.status_code != 200:
+                # Fallback to OpenAI models list
+                resp = await client.get(f"{base_url}/v1/models")
+                if resp.status_code != 200:
+                    vllm_status = "unavailable"
     except Exception as e:
-        logger.debug(f"Could not detect Ollama version: {e}")
-        ollama_status = "unavailable"
-    
-    components["ollama"] = ComponentHealth(
-        status=ollama_status,
-        uptime=modelservice_uptime if ollama_status == "healthy" else None,
+        logger.debug(f"Could not detect vLLM availability: {e}")
+        vllm_status = "unavailable"
+
+    components["vllm"] = ComponentHealth(
+        status=vllm_status,
+        uptime=None,
         last_check=current_time.isoformat(),
-        version=ollama_version,
-        details={"note": "Managed by modelservice"}
+        version=vllm_version,
+        details={"note": "OpenAI-compatible LLM server"}
     )
     
     # Determine overall status
@@ -172,6 +193,42 @@ async def detailed_health():
         timestamp=current_time.isoformat(),
         system_metrics=system_metrics,
         components=components
+    )
+
+
+@router.get("/ready", response_model=ReadinessResponse)
+async def readiness_check() -> ReadinessResponse:
+    current_time = datetime.now(UTC)
+
+    components: Dict[str, bool] = {
+        "api": True,
+    }
+    missing: List[str] = []
+
+    try:
+        client = MessageBusClient("backend_readiness_probe")
+        await client.connect()
+        await client.disconnect()
+        components["message_bus"] = True
+    except Exception:
+        components["message_bus"] = False
+        missing.append("message_bus")
+
+    ready = all(components.values())
+    return ReadinessResponse(
+        ready=ready,
+        components=components,
+        missing_dependencies=missing or None,
+    )
+
+
+@router.get("/live", response_model=LivenessResponse)
+async def liveness_check() -> LivenessResponse:
+    uptime = time.time() - start_time
+    return LivenessResponse(
+        alive=True,
+        uptime=uptime,
+        last_heartbeat=datetime.now(UTC).isoformat(),
     )
 
 

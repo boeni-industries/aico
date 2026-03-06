@@ -16,10 +16,6 @@ import signal
 import uvicorn
 from pathlib import Path
 
-# Fix Windows asyncio event loop compatibility with ZMQ
-if sys.platform == "win32":
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
 # Add the backend directory to the Python path
 backend_dir = Path(__file__).parent
 sys.path.insert(0, str(backend_dir))
@@ -28,10 +24,13 @@ sys.path.insert(0, str(backend_dir))
 from aico.core.config import ConfigurationManager
 from aico.core.config_validation import validate_startup_config, print_config_summary
 from aico.core.logging import initialize_logging, get_logger, shutdown_logging
+from aico.core.fs_guard import enable_fs_guard
 
 # Initialize backend-specific logging first before importing any modules that use loggers
 config_manager = ConfigurationManager()
 initialize_logging(service_name="backend", enable_loki=True, enable_console=True)
+
+enable_fs_guard()
 
 # Explicitly initialize configuration before validation to avoid implicit initialization
 # (and file watcher startup) during validate_startup_config().
@@ -49,21 +48,9 @@ __version__ = get_backend_version()
 
 # Global components - config_manager already initialized above
 logger = get_logger("backend.main")
-process_manager = None
 shutdown_event = asyncio.Event()
 
-try:
-    # Initialize process manager AFTER logging is set up
-    from aico.core.process import ProcessManager
-    process_manager = ProcessManager("gateway")
-    process_manager.write_pid(os.getpid())
-    
-    
-    # Lifecycle manager already imported above
-    
-except Exception as e:
-    print(f"Initialization error: {e}")
-    sys.exit(1)
+# Lifecycle manager already imported above
 
 
 async def setup_backend_components():
@@ -72,8 +59,9 @@ async def setup_backend_components():
     # No shared database connection needed - each request gets its own UnitOfWork
     logger.info("Backend using PostgreSQL with UnitOfWork pattern - no shared connection needed")
     
-    # Create and initialize lifecycle manager with service container
-    lifecycle_manager = BackendLifecycleManager(config_manager)
+    # Create and initialize lifecycle manager with explicit role.
+    # Monolith mode is removed; this entrypoint runs the HTTP gateway.
+    lifecycle_manager = BackendLifecycleManager(config_manager, role="gateway")
     
     # Create FastAPI app using lifecycle manager
     app = await lifecycle_manager.startup()

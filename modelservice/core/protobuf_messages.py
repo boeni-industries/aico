@@ -262,12 +262,6 @@ class ModelserviceMessageParser:
             AICOTopics.MODELSERVICE_SENTIMENT_REQUEST: SentimentRequest,
             AICOTopics.MODELSERVICE_STATUS_REQUEST: StatusRequest,
             AICOTopics.MODELSERVICE_TTS_REQUEST: TtsRequest,
-            AICOTopics.OLLAMA_STATUS_REQUEST: OllamaStatusRequest,
-            AICOTopics.OLLAMA_MODELS_REQUEST: OllamaModelsRequest,
-            AICOTopics.OLLAMA_MODELS_PULL_REQUEST: OllamaPullRequest,
-            AICOTopics.OLLAMA_MODELS_REMOVE_REQUEST: OllamaRemoveRequest,
-            AICOTopics.OLLAMA_SERVE_REQUEST: OllamaServeRequest,
-            AICOTopics.OLLAMA_SHUTDOWN_REQUEST: OllamaShutdownRequest,
         }
         
         request_class = request_types.get(message_type)
@@ -294,12 +288,6 @@ class ModelserviceMessageParser:
             AICOTopics.MODELSERVICE_INTENT_RESPONSE: IntentClassificationResponse,
             AICOTopics.MODELSERVICE_SENTIMENT_RESPONSE: SentimentResponse,
             AICOTopics.MODELSERVICE_STATUS_RESPONSE: StatusResponse,
-            AICOTopics.OLLAMA_STATUS_RESPONSE: OllamaStatusResponse,
-            AICOTopics.OLLAMA_MODELS_RESPONSE: OllamaModelsResponse,
-            AICOTopics.OLLAMA_MODELS_PULL_RESPONSE: OllamaPullResponse,
-            AICOTopics.OLLAMA_MODELS_REMOVE_RESPONSE: OllamaRemoveResponse,
-            AICOTopics.OLLAMA_SERVE_RESPONSE: OllamaServeResponse,
-            AICOTopics.OLLAMA_SHUTDOWN_RESPONSE: OllamaShutdownResponse,
         }
         
         response_class = response_types.get(message_type)

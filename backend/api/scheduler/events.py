@@ -1,16 +1,18 @@
 """
-Scheduler Events WebSocket Endpoint
+Scheduler Events - DEPRECATED
 
-Real-time scheduler event streaming for AICO Studio monitoring.
-Follows the same pattern as conversation WebSocket endpoint.
+WebSocket functionality moved to API Gateway WebSocket adapter.
+This module is kept for backward compatibility but should not be used.
+Clients should connect to ws://gateway:8772/ws and subscribe to "scheduler.events"
 """
 
 import uuid
 from typing import Dict, Any
-from fastapi import WebSocket, WebSocketDisconnect
+from fastapi import HTTPException, WebSocket, WebSocketDisconnect
 from datetime import datetime, UTC
 
 from aico.core.logging import get_logger
+from backend.api.dependencies import authenticate_websocket
 from backend.api.scheduler.schemas import (
     SchedulerEventMessage,
     SchedulerEventType
@@ -18,7 +20,7 @@ from backend.api.scheduler.schemas import (
 
 logger = get_logger("backend.api.scheduler.events")
 
-# Active WebSocket connections for scheduler events
+# DEPRECATED: Active WebSocket connections moved to gateway adapter
 active_scheduler_connections: Dict[str, WebSocket] = {}
 
 
@@ -34,8 +36,15 @@ async def scheduler_events_websocket(websocket: WebSocket):
     
     Follows the same pattern as conversation WebSocket endpoint.
     """
+    try:
+        user = authenticate_websocket(websocket=websocket)
+    except HTTPException:
+        await websocket.close(code=4401)
+        return
+
     await websocket.accept()
-    connection_id = f"scheduler_{uuid.uuid4()}"
+    user_id = user["user_id"]
+    connection_id = f"scheduler_{user_id}_{uuid.uuid4()}"
     active_scheduler_connections[connection_id] = websocket
     
     logger.info(f"Scheduler WebSocket connection established", extra={

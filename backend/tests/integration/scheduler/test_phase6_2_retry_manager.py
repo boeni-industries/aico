@@ -11,7 +11,6 @@ from backend.scheduler.retry_manager import RetryManager, RetryTracker
 from backend.scheduler.tasks.base import RetryConfig, RetryStrategy
 
 
-@pytest.mark.asyncio
 class TestRetryManager:
     """Test retry manager calculations"""
     
@@ -191,7 +190,6 @@ class TestRetryManager:
         assert "exponential" in info
 
 
-@pytest.mark.asyncio
 class TestRetryTracker:
     """Test retry tracking functionality"""
     

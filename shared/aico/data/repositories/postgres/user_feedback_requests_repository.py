@@ -6,7 +6,7 @@ Handles CRUD operations for user feedback requests.
 
 from typing import Optional, List, Dict, Any
 from datetime import datetime, UTC
-from sqlalchemy import select, update, delete, and_, func
+from sqlalchemy import select, update, delete, and_, func, literal_column
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aico.data.user.models import UserFeedbackRequest
@@ -16,6 +16,22 @@ from aico.data.repositories.base import Repository
 
 class PostgresUserFeedbackRequestsRepository(Repository[UserFeedbackRequest]):
     """PostgreSQL implementation of user feedback requests repository."""
+
+    @staticmethod
+    def _normalize_dt(value):
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, str):
+            s = value.strip()
+            if s.endswith("+00"):
+                s = s + ":00"
+            try:
+                return datetime.fromisoformat(s)
+            except ValueError:
+                return value
+        return value
     
     def __init__(self, session: AsyncSession):
         self.session = session
@@ -57,8 +73,8 @@ class PostgresUserFeedbackRequestsRepository(Repository[UserFeedbackRequest]):
             question=row.question,
             response=row.response,
             rating=row.rating,
-            responded_at=row.responded_at,
-            created_at=row.created_at,
+            responded_at=self._normalize_dt(row.responded_at),
+            created_at=self._normalize_dt(row.created_at),
         )
     
     async def update(self, entity: UserFeedbackRequest) -> UserFeedbackRequest:
@@ -111,8 +127,8 @@ class PostgresUserFeedbackRequestsRepository(Repository[UserFeedbackRequest]):
                 question=row.question,
                 response=row.response,
                 rating=row.rating,
-                responded_at=row.responded_at,
-                created_at=row.created_at,
+                responded_at=self._normalize_dt(row.responded_at),
+                created_at=self._normalize_dt(row.created_at),
             )
             for row in result.fetchall()
         ]
@@ -154,8 +170,8 @@ class PostgresUserFeedbackRequestsRepository(Repository[UserFeedbackRequest]):
                 question=row.question,
                 response=row.response,
                 rating=row.rating,
-                responded_at=row.responded_at,
-                created_at=row.created_at,
+                responded_at=self._normalize_dt(row.responded_at),
+                created_at=self._normalize_dt(row.created_at),
             )
             for row in result.fetchall()
         ]
@@ -174,9 +190,9 @@ class PostgresUserFeedbackRequestsRepository(Repository[UserFeedbackRequest]):
         result = await self.session.execute(stmt)
         return result.rowcount > 0
 
-    async def get_satisfaction_trend(self, user_id: str, from_iso: str) -> List[Dict[str, Any]]:
+    async def get_satisfaction_trend(self, user_id: str, from_iso) -> List[Dict[str, Any]]:
         """Get satisfaction rating trend for a user grouped by day."""
-        day_expr = func.substr(user_feedback_requests.c.responded_at, 1, 10)
+        day_expr = func.date_trunc(literal_column("'day'"), user_feedback_requests.c.responded_at)
         stmt = (
             select(
                 day_expr.label("day"),

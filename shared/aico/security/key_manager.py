@@ -28,21 +28,14 @@ _logger = None
 def _get_logger():
     global _logger
     if _logger is None:
-        try:
-            from aico.core.logging import get_logger, initialize_logging
-            from aico.core.config import ConfigurationManager
-            
-            # Try to initialize logging if not already done
-            try:
-                _logger = get_logger("shared.security.key_manager")
-            except RuntimeError:
-                # Logging not initialized, use basic logger
-                _logger = get_logger("shared.security.key_manager")
-        except Exception:
-            # Fallback to standard logging if unified system fails
-            import logging
-            _logger = logging.getLogger("security.key_manager")
+        # Use standard logging to avoid circular dependency with ConfigurationManager
+        # The unified logging system can be initialized later if needed
+        import logging
+        _logger = logging.getLogger("security.key_manager")
     return _logger
+
+
+_JWT_SECRET_GLOBAL_CACHE: dict[str, str] = {}
 
 
 class AICOKeyManager:
@@ -61,7 +54,8 @@ class AICOKeyManager:
         self._session_cache_file = self._get_session_cache_file()
         self._session_cache = self._load_session_cache()  # Load persistent session cache
         self._keyring_bypass_count = self._session_cache.get("keyring_bypass_count", 0)
-        _get_logger().debug(f"Initialized AICOKeyManager for service: {self.service_name}")
+        self._jwt_secret_cache: dict[str, str] = {}
+        # Note: Removed logger call here to avoid circular dependency with ConfigurationManager during CLI initialization
     
     def _is_sensitive_command(self, command_path: str) -> bool:
         """Check if command requires fresh authentication."""
@@ -100,19 +94,45 @@ class AICOKeyManager:
     def get_jwt_secret(self, service_name: str = "api_gateway") -> str:
         """Get or create JWT signing secret for a service"""
         import secrets
-        
+
         key_name = f"{service_name}_jwt_secret"
-        
+
+        # 0. Process-global cache (avoid regenerating secrets across multiple
+        # AICOKeyManager instances within the same process/container)
+        cached_global = _JWT_SECRET_GLOBAL_CACHE.get(key_name)
+        if cached_global:
+            return cached_global
+
+        # 0b. Instance cache
+        cached = self._jwt_secret_cache.get(key_name)
+        if cached:
+            _JWT_SECRET_GLOBAL_CACHE[key_name] = cached
+            return cached
+
+        # 1. Environment variable / secrets (container-friendly)
         try:
-            # Try to get existing secret
+            from aico.security.credential_provider import CredentialProvider
+
+            provider = CredentialProvider()
+            env_secret = provider.get(key_name)
+            if env_secret:
+                self._jwt_secret_cache[key_name] = env_secret
+                _JWT_SECRET_GLOBAL_CACHE[key_name] = env_secret
+                return env_secret
+        except Exception:
+            # CredentialProvider is best-effort here; fall back to keyring/gen.
+            pass
+
+        # 2. Keyring (local dev only; may be unavailable in containers)
+        try:
             secret = keyring.get_password(self.service_name, key_name)
             if secret:
+                self._jwt_secret_cache[key_name] = secret
+                _JWT_SECRET_GLOBAL_CACHE[key_name] = secret
                 return secret
         except Exception as e:
-            # Log keyring access failure - this could indicate system keyring issues
             _get_logger().warning(f"Failed to retrieve secret from keyring for {key_name}: {e}")
-            # Continue to create new secret as fallback
-        
+
         # Create new JWT secret
         secret = secrets.token_urlsafe(32)
         
@@ -121,7 +141,10 @@ class AICOKeyManager:
             _get_logger().info(f"Created new JWT secret for service: {service_name}")
         except Exception as e:
             _get_logger().warning(f"Could not store JWT secret in keyring: {e}")
-        
+
+        # Cache so it stays stable for this process even if keyring is unavailable.
+        self._jwt_secret_cache[key_name] = secret
+        _JWT_SECRET_GLOBAL_CACHE[key_name] = secret
         return secret
     
     def rotate_jwt_secret(self, service_name: str = "api_gateway") -> str:
@@ -326,8 +349,9 @@ class AICOKeyManager:
                 import json
                 with open(self._session_cache_file, 'r') as f:
                     return json.load(f)
-        except Exception as e:
-            _get_logger().debug(f"Failed to load session cache: {e}")
+        except Exception:
+            # Silently fail - session cache is optional
+            pass
         return {}
     
     def _save_session_cache(self) -> None:
@@ -336,8 +360,9 @@ class AICOKeyManager:
             import json
             with open(self._session_cache_file, 'w') as f:
                 json.dump(self._session_cache, f)
-        except Exception as e:
-            _get_logger().debug(f"Failed to save session cache: {e}")
+        except Exception:
+            # Silently fail - session cache is optional
+            pass
 
     def _cache_session(self, master_key: bytes) -> None:
         """Cache session with timestamp for timeout management."""
@@ -1000,16 +1025,7 @@ class AICOKeyManager:
         # Use first 32 bytes as secret key seed for CurveZMQ
         secret_key_bytes = key_material[:32]
         
-        # Generate deterministic keypair using ZMQ curve functions
-        import zmq
-        from zmq.utils import z85
-        
-        # Encode the 32-byte secret key as Z85 (40 characters)
-        secret_key = z85.encode(secret_key_bytes).decode('ascii')
-        
-        # Generate public key from the secret key
-        public_key = zmq.curve_public(secret_key.encode('ascii')).decode('ascii')
-        
-        _get_logger().debug(f"Derived CurveZMQ keypair for component: {component_name}")
-        
-        return public_key, secret_key
+        raise RuntimeError(
+            "CurveZMQ key derivation is disabled (NATS-only architecture). "
+            "Do not call derive_curve_keypair()."
+        )

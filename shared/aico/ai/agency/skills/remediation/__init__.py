@@ -7,9 +7,6 @@ from .database import (
     RemediationPostgresVacuumSkill,
     RemediationPostgresArchiveSkill,
     RemediationDatabaseDiskPressureSkill,
-    RemediationChromaCompactSkill,
-    RemediationLmdbCompactSkill,
-    RemediationLmdbCleanupSkill,
 )
 from .influx import (
     RemediationInfluxGetMeasurementsSkill,
@@ -26,9 +23,6 @@ __all__ = [
     "RemediationPostgresVacuumSkill",
     "RemediationPostgresArchiveSkill",
     "RemediationDatabaseDiskPressureSkill",
-    "RemediationChromaCompactSkill",
-    "RemediationLmdbCompactSkill",
-    "RemediationLmdbCleanupSkill",
     "RemediationInfluxGetMeasurementsSkill",
     "RemediationInfluxApplyRetentionSkill",
     "RemediationInfluxDropMeasurementSkill",

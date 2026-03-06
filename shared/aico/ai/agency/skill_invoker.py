@@ -334,7 +334,7 @@ class SkillInvoker:
                     return
 
                 # Update fields on the existing entity
-                updated = existing.copy(update={
+                updated = existing.model_copy(update={
                     "execution_time_ms": duration_ms,
                     "outcome": "completed" if success else "failed",
                     "error_message": error_message,

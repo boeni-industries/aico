@@ -46,7 +46,7 @@ Each stage builds deeper companionship rather than just adding features.
 AICO is engineered to deliver a truly companionable, proactive, and privacy-first AI experience. Its capabilities span conversation, memory, emotion, agency, embodiment, privacy, extensibility, and system administration.
 
 ### 👥 **Social Relationship Intelligence** ✅ *Production*
-- **Property Graph Storage**: Hybrid storage using PostgreSQL + ChromaDB with 204 nodes, 27 edges, 552 indexed properties
+- **Property Graph Storage**: Hybrid storage using PostgreSQL + ChromaDB
 - **Multi-Pass Entity Extraction**: GLiNER zero-shot recognition + LLM relationship extraction
 - **Entity Resolution**: 3-step deduplication (semantic blocking → LLM matching → merging)
 - **Temporal Reasoning**: Bi-temporal tracking (valid_from, valid_until, is_current)

@@ -6,6 +6,7 @@ import subprocess
 import tarfile
 import time
 import uuid
+import os
 from datetime import datetime, UTC
 from pathlib import Path
 from typing import Optional
@@ -58,13 +59,59 @@ def _utc_now_iso() -> str:
 
 
 def _backup_root() -> Path:
-    root = AICOPaths.get_data_directory() / "backups" / "backup_sets"
+    root = AICOPaths.get_data_directory() / "artifacts" / "backups" / "backup_sets"
     root.mkdir(parents=True, exist_ok=True)
     return root
 
 
+def _validate_output_root(output_root: Path) -> Path:
+    output_root = output_root.expanduser()
+    if not output_root.is_absolute():
+        output_root = (Path.cwd() / output_root)
+    output_root = output_root.resolve(strict=False)
+
+    data_root = AICOPaths.get_data_directory().resolve(strict=False)
+    allowed_roots = (
+        data_root / "runtime",
+        data_root / "cache",
+        data_root / "logs",
+        data_root / "tmp",
+        data_root / "artifacts",
+    )
+
+    try:
+        if any(output_root.is_relative_to(r) for r in allowed_roots):
+            return output_root
+    except Exception:
+        # Fallback for Python < 3.9 or unusual path behavior
+        if any(str(output_root).startswith(str(r)) for r in allowed_roots):
+            return output_root
+
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail=(
+            "output_path is outside allowed roots. "
+            "Writes are only allowed under AICO_DATA_DIR/{runtime,cache,logs,tmp,artifacts}."
+        ),
+    )
+
+
+def _get_host_runtime_dir() -> Optional[Path]:
+    value = os.environ.get("AICO_HOST_RUNTIME_DIR")
+    if not value:
+        return None
+    p = Path(value)
+    return p if p.exists() else None
+
+
 def _registry_path() -> Path:
     return _backup_root() / "backup_sets_registry.json"
+
+
+def _archives_root() -> Path:
+    root = _backup_root() / "archives"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
 
 
 def _load_registry() -> dict:
@@ -112,19 +159,36 @@ def _run_cmd(cmd: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, text=True)
 
 
+def _run_cmd_with_env(cmd: list[str], env: Optional[dict[str, str]] = None) -> subprocess.CompletedProcess:
+    merged_env = os.environ.copy()
+    if env:
+        merged_env.update(env)
+    return subprocess.run(cmd, capture_output=True, text=True, env=merged_env)
+
+
 async def _run_cmd_async(cmd: list[str]) -> subprocess.CompletedProcess:
     return await asyncio.to_thread(_run_cmd, cmd)
 
 
+async def _run_cmd_async_with_env(cmd: list[str], env: Optional[dict[str, str]] = None) -> subprocess.CompletedProcess:
+    return await asyncio.to_thread(_run_cmd_with_env, cmd, env)
+
+
 def _get_pg_connection_info() -> tuple[str, str, str]:
     config = ConfigurationManager()
+    config.initialize(lightweight=True)
     pg_cfg = config.get("postgres", {}) or {}
+
+    from aico.security.credential_provider import CredentialProvider
 
     db_name = pg_cfg.get("db_name", "aico")
     db_user = pg_cfg.get("user", "postgres")
 
-    key_manager = AICOKeyManager(config)
-    db_password = key_manager.get_database_password("postgres", db_user) or ""
+    provider = CredentialProvider()
+    db_password = provider.get("pg_password") or ""
+    if not db_password:
+        key_manager = AICOKeyManager(config)
+        db_password = key_manager.get_database_password("postgres", username=db_user) or ""
 
     if not db_password:
         raise HTTPException(
@@ -135,16 +199,27 @@ def _get_pg_connection_info() -> tuple[str, str, str]:
     return db_name, db_user, db_password
 
 
+def _get_pg_host_port() -> tuple[str, str]:
+    # In docker-compose.local.yml the postgres service is reachable via the service name.
+    host = os.environ.get("AICO_PG_HOST") or "postgres"
+    port = os.environ.get("AICO_PG_PORT") or "5432"
+    return host, port
+
+
 def _get_influx_connection_info() -> tuple[str, str, str, str]:
     config = ConfigurationManager()
+    config.initialize(lightweight=True)
     influx_cfg = config.get("influx", {}) or {}
 
     url = influx_cfg.get("url", "http://127.0.0.1:8086")
     org = influx_cfg.get("org", "aico")
     bucket = influx_cfg.get("bucket", "aico_telemetry")
 
-    key_manager = AICOKeyManager(config)
-    token = key_manager.get_database_password("influx", username="admin_token")
+    provider = CredentialProvider()
+    token = provider.get("influx_admin_token") or ""
+    if not token:
+        key_manager = AICOKeyManager(config)
+        token = key_manager.get_database_password("influx", username="admin_token") or ""
 
     if not token:
         raise HTTPException(
@@ -196,33 +271,33 @@ async def _docker_cp_to(container: str, host_path: Path, container_path: str) ->
 async def _postgres_dump(backup_dir: Path) -> dict:
     db_name, db_user, db_password = _get_pg_connection_info()
 
-    container_tmp = f"/tmp/aico_pg_backup_{int(time.time())}.dump"
+    host, port = _get_pg_host_port()
     host_dest = backup_dir / "postgres" / "pgdump.dump"
     host_dest.parent.mkdir(parents=True, exist_ok=True)
 
-    await _docker_exec(
-        _POSTGRES_PRIMARY_CONTAINER,
-        [
-            "pg_dump",
-            "-Fc",
-            "-Z",
-            "6",
-            "-f",
-            container_tmp,
-            "-U",
-            db_user,
-            "-d",
-            db_name,
-            "-h",
-            "127.0.0.1",
-            "-p",
-            "5432",
-        ],
-        env={"PGPASSWORD": db_password},
-    )
+    cmd = [
+        "pg_dump",
+        "-Fc",
+        "-Z",
+        "6",
+        "-f",
+        str(host_dest),
+        "-U",
+        db_user,
+        "-d",
+        db_name,
+        "-h",
+        host,
+        "-p",
+        str(port),
+    ]
 
-    await _docker_cp_from(_POSTGRES_PRIMARY_CONTAINER, container_tmp, host_dest)
-    await _docker_exec(_POSTGRES_PRIMARY_CONTAINER, ["rm", "-f", container_tmp])
+    result = await _run_cmd_async_with_env(cmd, env={"PGPASSWORD": db_password})
+    if result.returncode != 0:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Command failed: {' '.join(cmd)}\n{(result.stderr or '').strip()}",
+        )
 
     return {
         "path": str(host_dest.relative_to(backup_dir)),
@@ -233,56 +308,66 @@ async def _postgres_dump(backup_dir: Path) -> dict:
 
 
 async def _postgres_restore_to(container: str, dump_path: Path) -> None:
+    # Dockerized setup: restore via TCP to the target Postgres service.
     db_name, db_user, db_password = _get_pg_connection_info()
 
-    container_tmp = "/tmp/aico_restore.dump"
-    await _docker_cp_to(container, dump_path, container_tmp)
+    # `container` parameter historically was a container name; keep the signature but
+    # interpret it as a host selector.
+    host = "postgres" if container == _POSTGRES_PRIMARY_CONTAINER else "postgres-shadow"
+    port = "5432"
 
-    await _docker_exec(
-        container,
-        [
-            "pg_restore",
-            "--clean",
-            "--if-exists",
-            "--no-owner",
-            "--no-privileges",
-            "-U",
-            db_user,
-            "-d",
-            db_name,
-            "-h",
-            "127.0.0.1",
-            "-p",
-            "5432",
-            container_tmp,
-        ],
-        env={"PGPASSWORD": db_password},
-    )
+    cmd = [
+        "pg_restore",
+        "--clean",
+        "--if-exists",
+        "--no-owner",
+        "--no-privileges",
+        "-U",
+        db_user,
+        "-d",
+        db_name,
+        "-h",
+        host,
+        "-p",
+        port,
+        str(dump_path),
+    ]
 
-    await _docker_exec(container, ["rm", "-f", container_tmp])
+    result = await _run_cmd_async_with_env(cmd, env={"PGPASSWORD": db_password})
+    if result.returncode != 0:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Command failed: {' '.join(cmd)}\n{(result.stderr or '').strip()}",
+        )
 
 
 async def _verify_postgres_container(container: str) -> None:
     db_name, db_user, db_password = _get_pg_connection_info()
 
-    result = await _docker_exec(
-        container,
-        [
-            "psql",
-            "-U",
-            db_user,
-            "-d",
-            db_name,
-            "-h",
-            "127.0.0.1",
-            "-p",
-            "5432",
-            "-t",
-            "-c",
-            "SELECT 1;",
-        ],
-        env={"PGPASSWORD": db_password},
-    )
+    host = "postgres" if container == _POSTGRES_PRIMARY_CONTAINER else "postgres-shadow"
+    port = "5432"
+
+    cmd = [
+        "psql",
+        "-U",
+        db_user,
+        "-d",
+        db_name,
+        "-h",
+        host,
+        "-p",
+        port,
+        "-t",
+        "-c",
+        "SELECT 1;",
+    ]
+
+    result = await _run_cmd_async_with_env(cmd, env={"PGPASSWORD": db_password})
+    if result.returncode != 0:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Command failed: {' '.join(cmd)}\n{(result.stderr or '').strip()}",
+        )
 
     if "1" not in (result.stdout or ""):
         raise HTTPException(
@@ -317,7 +402,6 @@ def _create_manifest_base(backup_id: str, include_influx: bool) -> dict:
         "included": {
             "postgres": True,
             "chromadb": True,
-            "lmdb": True,
             "influxdb": bool(include_influx),
         },
         "containers": {
@@ -326,7 +410,7 @@ def _create_manifest_base(backup_id: str, include_influx: bool) -> dict:
             "influxdb": _INFLUX_CONTAINER,
         },
         "artifacts": {},
-        "restore_order": ["postgres", "chromadb", "lmdb", "influxdb"],
+        "restore_order": ["postgres", "chromadb", "influxdb"],
     }
 
 
@@ -335,7 +419,9 @@ async def create_backup_set(request: BackupSetCreateRequest) -> BackupSetCreateR
         backup_id = str(uuid.uuid4())
         root = _backup_root()
 
-        target_root = Path(request.output_path) if request.output_path else root
+        target_root = root
+        if request.output_path:
+            target_root = _validate_output_root(Path(request.output_path))
         target_root.mkdir(parents=True, exist_ok=True)
 
         backup_dir = target_root / backup_id
@@ -346,7 +432,15 @@ async def create_backup_set(request: BackupSetCreateRequest) -> BackupSetCreateR
         try:
             manifest["artifacts"]["postgres"] = await _postgres_dump(backup_dir)
 
-            chroma_src = AICOPaths.get_semantic_memory_path()
+            host_runtime = _get_host_runtime_dir()
+
+            # In dockerized mode, Chroma may still live on the host runtime directory.
+            # Prefer that mounted location when present so backups reflect the actual live data.
+            chroma_src = (
+                (host_runtime / "data" / "memory" / "semantic")
+                if host_runtime is not None
+                else AICOPaths.get_semantic_memory_path()
+            )
             chroma_tar = backup_dir / "chromadb" / "chromadb.tar.gz"
             chroma_meta = await _backup_directory_to_tar(chroma_src, chroma_tar)
             manifest["artifacts"]["chromadb"] = {
@@ -355,36 +449,11 @@ async def create_backup_set(request: BackupSetCreateRequest) -> BackupSetCreateR
                 "size_bytes": chroma_meta["size_bytes"],
             }
 
-            lmdb_src = AICOPaths.get_working_memory_path()
-            lmdb_tar = backup_dir / "lmdb" / "lmdb.tar.gz"
-            lmdb_meta = await _backup_directory_to_tar(lmdb_src, lmdb_tar)
-            manifest["artifacts"]["lmdb"] = {
-                "path": str(lmdb_tar.relative_to(backup_dir)),
-                "sha256": lmdb_meta["sha256"],
-                "size_bytes": lmdb_meta["size_bytes"],
-            }
-
             if request.include_influx:
-                url, org, bucket, token = _get_influx_connection_info()
-                container_tmp_dir = f"/tmp/aico_influx_backup_{int(time.time())}"
-
-                await _docker_exec(
-                    _INFLUX_CONTAINER,
-                    [
-                        "sh",
-                        "-lc",
-                        f"rm -rf {container_tmp_dir} && mkdir -p {container_tmp_dir} && influx backup {container_tmp_dir} --org {org} --host http://127.0.0.1:8086 --token $INFLUX_TOKEN",
-                    ],
-                    env={"INFLUX_TOKEN": token},
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="InfluxDB backup is not supported in the dockerized setup yet",
                 )
-
-                influx_host_dest = backup_dir / "influxdb" / "influx_backup"
-                await _docker_cp_from(_INFLUX_CONTAINER, container_tmp_dir, influx_host_dest)
-                await _docker_exec(_INFLUX_CONTAINER, ["rm", "-rf", container_tmp_dir])
-
-                manifest["artifacts"]["influxdb"] = {
-                    "path": str(influx_host_dest.relative_to(backup_dir)),
-                }
 
             manifest["completed_at"] = _utc_now_iso()
             (backup_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
@@ -454,7 +523,7 @@ def download_backup_set(backup_id: str) -> FileResponse:
     if not backup_dir.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backup set directory missing")
 
-    tar_path = backup_dir.parent / f"{backup_id}.tar.gz"
+    tar_path = _archives_root() / f"{backup_id}.tar.gz"
 
     with tarfile.open(tar_path, "w:gz") as tf:
         tf.add(backup_dir, arcname=backup_dir.name)
@@ -475,9 +544,15 @@ def delete_backup_set(backup_id: str) -> BackupSetDeleteResponse:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backup set not found")
 
     backup_dir = Path(match["path"])
-    tar_path = backup_dir.parent / f"{backup_id}.tar.gz"
 
-    freed_bytes = _safe_dir_size_bytes(backup_dir) + _safe_dir_size_bytes(tar_path)
+    preferred_tar_path = _archives_root() / f"{backup_id}.tar.gz"
+    legacy_tar_path = backup_dir.parent / f"{backup_id}.tar.gz"
+
+    freed_bytes = (
+        _safe_dir_size_bytes(backup_dir)
+        + _safe_dir_size_bytes(preferred_tar_path)
+        + _safe_dir_size_bytes(legacy_tar_path)
+    )
 
     deleted_dir = False
     deleted_archive = False
@@ -486,9 +561,10 @@ def delete_backup_set(backup_id: str) -> BackupSetDeleteResponse:
         shutil.rmtree(backup_dir)
         deleted_dir = True
 
-    if tar_path.exists():
-        tar_path.unlink()
-        deleted_archive = True
+    for tar_path in (preferred_tar_path, legacy_tar_path):
+        if tar_path.exists():
+            tar_path.unlink()
+            deleted_archive = True
 
     registry["backup_sets"] = [b for b in backup_sets if b.get("backup_id") != backup_id]
     _save_registry(registry)
@@ -585,7 +661,9 @@ def prune_backup_sets(request: BackupSetPruneRequest) -> BackupSetPruneResponse:
 async def upload_backup_set(file: UploadFile, output_path: Optional[str]) -> BackupSetUploadResponse:
     async with _backup_lock:
         import_id = str(uuid.uuid4())
-        root = Path(output_path) if output_path else _backup_root()
+        root = _backup_root()
+        if output_path:
+            root = _validate_output_root(Path(output_path))
         root.mkdir(parents=True, exist_ok=True)
 
         staging_dir = root / f".upload_{import_id}"
@@ -686,18 +764,6 @@ async def restore_backup_set(request: BackupSetRestoreRequest) -> BackupSetResto
                 shutil.rmtree(target)
             target.mkdir(parents=True, exist_ok=True)
             with tarfile.open(chroma_tar, "r:gz") as tf:
-                _safe_extract_tar(tf, target.parent)
-
-        lmdb_rel = artifacts.get("lmdb", {}).get("path")
-        if lmdb_rel:
-            lmdb_tar = backup_dir / lmdb_rel
-            target = AICOPaths.get_working_memory_path()
-            pre = target.parent / f"{target.name}.pre_restore_{int(time.time())}"
-            if target.exists():
-                shutil.copytree(target, pre)
-                shutil.rmtree(target)
-            target.mkdir(parents=True, exist_ok=True)
-            with tarfile.open(lmdb_tar, "r:gz") as tf:
                 _safe_extract_tar(tf, target.parent)
 
         if manifest.get("included", {}).get("influxdb"):

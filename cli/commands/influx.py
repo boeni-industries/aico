@@ -11,14 +11,14 @@ not installation.
 import sys
 import socket
 import subprocess
+import os
 from pathlib import Path
-from urllib.parse import urlparse
-
 import typer
 import requests
 from rich.console import Console
 from rich.table import Table
 from rich import box
+from urllib.parse import urlparse
 
 # Add shared module to path for CLI usage (mirrors database.py pattern)
 if getattr(sys, "frozen", False):
@@ -176,6 +176,28 @@ def status():
     host = parsed.hostname or "127.0.0.1"
     port = parsed.port or (443 if parsed.scheme == "https" else 8086)
 
+    check_url = url
+    host_from_compose = False
+    if host not in {"127.0.0.1", "localhost"}:
+        try:
+            result = subprocess.run(
+                ["docker", "port", "aico-influxdb", f"{port}/tcp"],
+                capture_output=True,
+                text=True,
+                timeout=3,
+                check=False,
+            )
+            port_line = (result.stdout or "").strip().splitlines()
+            if port_line:
+                mapped = port_line[0].rsplit(":", 1)[-1].strip()
+                mapped_port = int(mapped)
+                check_url = f"{parsed.scheme or 'http'}://127.0.0.1:{mapped_port}"
+                host = "127.0.0.1"
+                port = mapped_port
+                host_from_compose = True
+        except Exception:
+            pass
+
     # Configuration table
     config_table = Table(
         title="📋 Configuration",
@@ -224,18 +246,28 @@ def status():
         health_table.add_row("Container", "[dim]○ Unknown[/dim]", "Docker not available")
 
     # 2. TCP connectivity
-    try:
-        with socket.create_connection((host, port), timeout=3.0):
-            health_table.add_row("TCP Connectivity", "[green]✓ Connected[/green]", f"{host}:{port}")
-            tcp_ok = True
-    except OSError as exc:
-        health_table.add_row("TCP Connectivity", "[red]✗ Failed[/red]", f"{exc.__class__.__name__}")
+    if host not in {"127.0.0.1", "localhost"} and not host_from_compose:
+        # Avoid potential DNS stalls on docker-only hostnames like `influxdb`.
+        health_table.add_row(
+            "TCP Connectivity",
+            "[dim]○ Skipped[/dim]",
+            f"Host '{host}' may not resolve on the host. Use http://127.0.0.1:8086 or run via docker port mapping.",
+        )
         tcp_ok = False
+        http_ok = False
+    else:
+        try:
+            with socket.create_connection((host, port), timeout=3.0):
+                health_table.add_row("TCP Connectivity", "[green]✓ Connected[/green]", f"{host}:{port}")
+                tcp_ok = True
+        except OSError as exc:
+            health_table.add_row("TCP Connectivity", "[red]✗ Failed[/red]", f"{exc.__class__.__name__}")
+            tcp_ok = False
 
     # 3. HTTP health endpoint
     if tcp_ok:
         try:
-            response = requests.get(f"{url}/health", timeout=3)
+            response = requests.get(f"{check_url}/health", timeout=3)
             if response.status_code == 200:
                 health_table.add_row("HTTP Health", "[green]✓ Healthy[/green]", "API responding")
                 http_ok = True
@@ -253,12 +285,16 @@ def status():
     from aico.security.key_manager import AICOKeyManager
     config_manager = ConfigurationManager()
     config_manager.initialize(lightweight=True)
-    key_manager = AICOKeyManager(config_manager)
-    
-    admin_token = key_manager.get_database_password("influx", username="admin_token")
+    non_interactive = (not sys.stdin.isatty()) or (os.getenv("AICO_NONINTERACTIVE") == "true")
+
+    admin_token = os.getenv("AICO_INFLUX_ADMIN_TOKEN")
+    if not admin_token and not non_interactive:
+        key_manager = AICOKeyManager(config_manager)
+        admin_token = key_manager.get_database_password("influx", username="admin_token")
     
     if admin_token:
-        health_table.add_row("Credentials", "[green]✓ Available[/green]", "Token stored in keyring")
+        details = "Token from env" if os.getenv("AICO_INFLUX_ADMIN_TOKEN") else "Token stored in keyring"
+        health_table.add_row("Credentials", "[green]✓ Available[/green]", details)
         has_token = True
     else:
         health_table.add_row("Credentials", "[yellow]⚠ Missing[/yellow]", "Run 'aico deploy influx'")
@@ -268,7 +304,7 @@ def status():
     if http_ok and has_token:
         try:
             headers = {"Authorization": f"Token {admin_token}"}
-            response = requests.get(f"{url}/api/v2/me", headers=headers, timeout=3)
+            response = requests.get(f"{check_url}/api/v2/me", headers=headers, timeout=3)
             if response.status_code == 200:
                 health_table.add_row("Authentication", "[green]✓ Authenticated[/green]", "Token valid")
                 auth_ok = True
@@ -286,7 +322,7 @@ def status():
     if auth_ok:
         try:
             headers = {"Authorization": f"Token {admin_token}"}
-            response = requests.get(f"{url}/api/v2/orgs", headers=headers, timeout=3)
+            response = requests.get(f"{check_url}/api/v2/orgs", headers=headers, timeout=3)
             if response.status_code == 200:
                 orgs = response.json().get("orgs", [])
                 org_exists = any(o.get("name") == org for o in orgs)
@@ -310,7 +346,7 @@ def status():
     if org_ok:
         try:
             headers = {"Authorization": f"Token {admin_token}"}
-            response = requests.get(f"{url}/api/v2/buckets", headers=headers, params={"org": org}, timeout=3)
+            response = requests.get(f"{check_url}/api/v2/buckets", headers=headers, params={"org": org}, timeout=3)
             if response.status_code == 200:
                 buckets = response.json().get("buckets", [])
                 bucket_exists = any(b.get("name") == bucket for b in buckets)
@@ -329,7 +365,12 @@ def status():
     console.print()
 
     # Data Overview (only if authenticated and bucket exists)
-    if auth_ok and org_ok:
+    overview_enabled = os.getenv("AICO_INFLUX_DOCTOR_OVERVIEW") == "true"
+    if non_interactive and not overview_enabled:
+        console.print("[dim]Data overview skipped in non-interactive mode (set AICO_INFLUX_DOCTOR_OVERVIEW=true to enable).[/dim]")
+        return
+
+    if auth_ok and org_ok and overview_enabled:
         try:
             from aico.data.influx.connection import InfluxDBConnection
             

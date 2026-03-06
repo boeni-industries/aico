@@ -10,6 +10,8 @@
 CREATE SCHEMA IF NOT EXISTS aico_core;
 SET search_path TO aico_core, public;
 
+CREATE EXTENSION IF NOT EXISTS vector;
+
 -- Tables created without foreign key constraints to avoid dependency ordering issues
 
 CREATE TABLE IF NOT EXISTS agency_arbiter_adjustments (
@@ -593,7 +595,22 @@ CREATE TABLE IF NOT EXISTS "ams_user_memories" (
                 source_message_id TEXT,
                 -- Timestamps
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, user_note TEXT, tags_json JSONB, is_favorite BOOLEAN DEFAULT FALSE, revisit_count INTEGER DEFAULT 0, last_revisited TIMESTAMPTZ, emotional_tone TEXT, memory_type TEXT, content_type TEXT DEFAULT 'message', conversation_title TEXT, conversation_summary TEXT, turn_range TEXT, key_moments_json JSONB, temporal_metadata TEXT DEFAULT NULL, language TEXT
+                updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                -- Memory Album feature columns
+                user_note TEXT,
+                tags_json JSONB,
+                is_favorite BOOLEAN DEFAULT FALSE,
+                revisit_count INTEGER DEFAULT 0,
+                last_revisited TIMESTAMPTZ,
+                emotional_tone TEXT,
+                memory_type TEXT,
+                content_type TEXT DEFAULT 'message',
+                conversation_title TEXT,
+                conversation_summary TEXT,
+                turn_range TEXT,
+                key_moments_json JSONB,
+                temporal_metadata TEXT DEFAULT NULL,
+                language TEXT
             );
 
 CREATE INDEX IF NOT EXISTS idx_facts_category ON "ams_user_memories"(category);
@@ -684,7 +701,8 @@ CREATE TABLE IF NOT EXISTS auth_sessions (
                 jwt_token_hash TEXT NOT NULL,
                 expires_at TIMESTAMPTZ NOT NULL,
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-                is_active BOOLEAN DEFAULT TRUE, session_type TEXT DEFAULT 'unified'
+                is_active BOOLEAN DEFAULT TRUE,
+                session_type TEXT DEFAULT 'unified'
             );
 
 CREATE INDEX IF NOT EXISTS idx_auth_sessions_active ON auth_sessions(is_active, expires_at);
@@ -694,7 +712,7 @@ CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions(user_uuid);
 CREATE TABLE IF NOT EXISTS "auth_user_credentials" (
                 uuid TEXT PRIMARY KEY,
                 user_uuid TEXT NOT NULL,
-                pin_hash TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
                 failed_attempts INTEGER DEFAULT 0,
                 locked_until TIMESTAMPTZ,
                 last_login TIMESTAMPTZ,
@@ -702,9 +720,39 @@ CREATE TABLE IF NOT EXISTS "auth_user_credentials" (
                 updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
             );
 
-CREATE INDEX IF NOT EXISTS idx_user_authentication_locked_until ON "auth_user_credentials"(locked_until);
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'aico_core'
+      AND table_name = 'auth_user_credentials'
+      AND column_name = 'pin_hash'
+  ) AND NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'aico_core'
+      AND table_name = 'auth_user_credentials'
+      AND column_name = 'password_hash'
+  ) THEN
+    ALTER TABLE auth_user_credentials RENAME COLUMN pin_hash TO password_hash;
+  END IF;
 
-CREATE INDEX IF NOT EXISTS idx_user_authentication_pin_hash ON "auth_user_credentials"(pin_hash);
+  IF EXISTS (
+    SELECT 1
+    FROM pg_indexes
+    WHERE schemaname = 'aico_core'
+      AND tablename = 'auth_user_credentials'
+      AND indexname = 'idx_user_authentication_pin_hash'
+  ) THEN
+    DROP INDEX idx_user_authentication_pin_hash;
+  END IF;
+
+  CREATE INDEX IF NOT EXISTS idx_user_authentication_password_hash
+    ON auth_user_credentials(password_hash);
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_user_authentication_locked_until ON "auth_user_credentials"(locked_until);
 
 CREATE INDEX IF NOT EXISTS idx_user_authentication_user ON "auth_user_credentials"(user_uuid);
 
@@ -758,6 +806,223 @@ CREATE INDEX IF NOT EXISTS idx_consents_scope ON "consent_user_consents"(scope, 
 CREATE INDEX IF NOT EXISTS idx_consents_type ON "consent_user_consents"(consent_type, granted);
 
 CREATE INDEX IF NOT EXISTS idx_consents_user ON "consent_user_consents"(user_id);
+
+-- ==========================================================================
+-- Tenants (deployment-level data boundary)
+-- ==========================================================================
+
+CREATE TABLE IF NOT EXISTS tenants (
+                tenant_id TEXT PRIMARY KEY,
+                tenant_type TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
+                primary_language TEXT,
+                metadata_json JSONB,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+CREATE INDEX IF NOT EXISTS idx_tenants_status ON tenants(status);
+
+CREATE TABLE IF NOT EXISTS tenant_memberships (
+                membership_id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'member',
+                created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT uq_tenant_memberships_tenant_user UNIQUE (tenant_id, user_id)
+            );
+
+CREATE INDEX IF NOT EXISTS idx_tenant_memberships_tenant ON tenant_memberships(tenant_id);
+
+CREATE INDEX IF NOT EXISTS idx_tenant_memberships_user ON tenant_memberships(user_id);
+
+-- ==========================================================================
+-- Conversations (source of truth)
+-- ==========================================================================
+
+CREATE TABLE IF NOT EXISTS conversations (
+                tenant_id TEXT NOT NULL,
+                conversation_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                agent_id TEXT,
+                title TEXT,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (tenant_id, conversation_id)
+            );
+
+CREATE INDEX IF NOT EXISTS idx_conversations_user_time
+    ON conversations (tenant_id, user_id, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_conversations_status_time
+    ON conversations (tenant_id, status, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS conversation_messages (
+                message_id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
+                conversation_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                agent_id TEXT,
+                actor_type TEXT NOT NULL,
+                actor_id TEXT,
+                message_type TEXT NOT NULL,
+                content TEXT NOT NULL,
+                metadata_json JSONB,
+                correlation_id TEXT,
+                request_id TEXT NOT NULL,
+                turn_number INTEGER NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT uq_conversation_messages_request UNIQUE (tenant_id, user_id, request_id, message_type),
+                CONSTRAINT uq_conversation_messages_turn UNIQUE (tenant_id, conversation_id, turn_number)
+            );
+
+
+CREATE INDEX IF NOT EXISTS idx_conversation_messages_conversation_time
+    ON conversation_messages (tenant_id, conversation_id, created_at ASC);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_messages_conversation_turn
+    ON conversation_messages (tenant_id, conversation_id, turn_number ASC);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_messages_user_time
+    ON conversation_messages (tenant_id, user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_messages_correlation
+    ON conversation_messages (tenant_id, correlation_id)
+    WHERE correlation_id IS NOT NULL;
+
+-- ==========================================================================
+-- Idempotency (gateway mutation safety)
+-- ==========================================================================
+
+CREATE TABLE IF NOT EXISTS idempotency_requests (
+                auth_hash TEXT NOT NULL,
+                idempotency_key TEXT NOT NULL,
+                request_method TEXT NOT NULL,
+                request_path TEXT NOT NULL,
+                request_hash TEXT NOT NULL,
+                status TEXT NOT NULL,
+                response_status_code INTEGER,
+                response_body JSONB,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMPTZ NOT NULL,
+                PRIMARY KEY (auth_hash, idempotency_key, request_method, request_path)
+            );
+
+CREATE INDEX IF NOT EXISTS idx_idempotency_requests_expires_at
+    ON idempotency_requests (expires_at);
+
+-- ==========================================================================
+-- Outbox (durable publication fallback)
+-- ==========================================================================
+
+CREATE TABLE IF NOT EXISTS outbox_events (
+                event_id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                payload_bytes BYTEA NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                attempts INTEGER NOT NULL DEFAULT 0,
+                last_error TEXT,
+                available_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                sent_at TIMESTAMPTZ
+            );
+
+CREATE INDEX IF NOT EXISTS idx_outbox_events_pending
+    ON outbox_events (status, available_at, created_at)
+    WHERE status = 'pending';
+
+CREATE INDEX IF NOT EXISTS idx_outbox_events_created
+    ON outbox_events (created_at);
+
+-- ==========================================================================
+-- Working Memory (Postgres-backed LMDB replacement)
+-- ==========================================================================
+
+CREATE TABLE IF NOT EXISTS working_memory_messages (
+                id BIGSERIAL PRIMARY KEY,
+                conversation_id TEXT NOT NULL,
+                user_id TEXT,
+                message_id TEXT,
+                role TEXT,
+                content TEXT,
+                language TEXT,
+                message_type TEXT,
+                payload_json JSONB,
+                stored_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMPTZ,
+                last_accessed_at TIMESTAMPTZ,
+                access_count INTEGER NOT NULL DEFAULT 0
+            );
+
+CREATE INDEX IF NOT EXISTS idx_working_memory_conversation_stored_at
+    ON working_memory_messages (conversation_id, stored_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_working_memory_user_stored_at
+    ON working_memory_messages (user_id, stored_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_working_memory_expires_at
+    ON working_memory_messages (expires_at)
+    WHERE expires_at IS NOT NULL;
+
+-- ==========================================================================
+-- Vector Memory (pgvector) - Replaces ChromaDB
+-- ==========================================================================
+
+-- Conversation segments with embeddings for semantic search
+CREATE TABLE IF NOT EXISTS conversation_segments (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    embedding vector(768) NOT NULL,
+    timestamp TIMESTAMPTZ NOT NULL,
+    metadata JSONB,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_segments_user
+    ON conversation_segments (user_id);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_segments_conversation
+    ON conversation_segments (conversation_id);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_segments_timestamp
+    ON conversation_segments (timestamp DESC);
+
+-- HNSW index for fast vector similarity search
+CREATE INDEX IF NOT EXISTS idx_conversation_segments_embedding
+    ON conversation_segments USING hnsw (embedding vector_cosine_ops);
+
+-- Knowledge graph nodes with embeddings
+CREATE TABLE IF NOT EXISTS kg_node_embeddings (
+    node_id TEXT PRIMARY KEY,
+    embedding vector(768) NOT NULL,
+    document TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- HNSW index for KG node semantic search
+CREATE INDEX IF NOT EXISTS idx_kg_node_embeddings_vector
+    ON kg_node_embeddings USING hnsw (embedding vector_cosine_ops);
+
+-- Knowledge graph edges with embeddings
+CREATE TABLE IF NOT EXISTS kg_edge_embeddings (
+    edge_id TEXT PRIMARY KEY,
+    embedding vector(768) NOT NULL,
+    document TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- HNSW index for KG edge semantic search
+CREATE INDEX IF NOT EXISTS idx_kg_edge_embeddings_vector
+    ON kg_edge_embeddings USING hnsw (embedding vector_cosine_ops);
 
 -- ==========================================================================
 -- Unified Interaction Request System
@@ -1016,10 +1281,47 @@ CREATE TABLE IF NOT EXISTS "proactive_reminder_clusters" (
 
 CREATE INDEX IF NOT EXISTS idx_reminder_clusters_user ON "proactive_reminder_clusters"(user_id);
 
+CREATE TABLE IF NOT EXISTS "scheduler_run_ledger" (
+                id BIGSERIAL PRIMARY KEY,
+                task_id TEXT NOT NULL,
+                run_key TEXT NOT NULL,
+                tenant_id TEXT,
+                scheduled_for TIMESTAMPTZ NOT NULL,
+                planned_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                state TEXT NOT NULL,
+                enqueued_at TIMESTAMPTZ,
+                started_at TIMESTAMPTZ,
+                completed_at TIMESTAMPTZ,
+                execution_id TEXT,
+                reason_code TEXT,
+                reason_detail TEXT
+            );
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_scheduler_run_ledger_idempotency_single_tenant
+    ON "scheduler_run_ledger" (task_id, scheduled_for)
+    WHERE tenant_id IS NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_scheduler_run_ledger_idempotency_multi_tenant
+    ON "scheduler_run_ledger" (task_id, tenant_id, scheduled_for)
+    WHERE tenant_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_scheduler_run_ledger_task_id
+    ON "scheduler_run_ledger" (task_id);
+
+CREATE INDEX IF NOT EXISTS idx_scheduler_run_ledger_scheduled_for
+    ON "scheduler_run_ledger" (scheduled_for);
+
+CREATE INDEX IF NOT EXISTS idx_scheduler_run_ledger_state
+    ON "scheduler_run_ledger" (state);
+
+CREATE INDEX IF NOT EXISTS idx_scheduler_run_ledger_state_scheduled_for
+    ON "scheduler_run_ledger" (state, scheduled_for);
+
 CREATE TABLE IF NOT EXISTS "scheduler_task_executions" (
                 id BIGSERIAL PRIMARY KEY,
                 task_id TEXT NOT NULL,
                 execution_id TEXT NOT NULL,
+                run_key TEXT,
                 status TEXT NOT NULL,
                 started_at TIMESTAMPTZ NOT NULL,
                 completed_at TIMESTAMPTZ,
@@ -1034,6 +1336,13 @@ CREATE INDEX IF NOT EXISTS idx_task_executions_started_at ON "scheduler_task_exe
 CREATE INDEX IF NOT EXISTS idx_task_executions_task_id ON "scheduler_task_executions" (task_id);
 
 CREATE INDEX IF NOT EXISTS idx_task_executions_acknowledged ON "scheduler_task_executions" (status, acknowledged) WHERE status = 'failed' AND acknowledged = FALSE;
+
+ALTER TABLE "scheduler_task_executions"
+    ADD COLUMN IF NOT EXISTS run_key TEXT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_scheduler_task_executions_run_key
+    ON "scheduler_task_executions" (task_id, run_key)
+    WHERE run_key IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS "scheduler_tasks" (
                 task_id TEXT PRIMARY KEY,
@@ -1242,80 +1551,235 @@ CREATE INDEX IF NOT EXISTS idx_user_time_preferences_active ON user_time_prefere
 
 -- Foreign key constraints added after all tables are created
 
-ALTER TABLE agency_arbiter_adjustments
-    ADD CONSTRAINT fk_agency_arbiter_adjustments_lesson_id_agency_lessons
-    FOREIGN KEY (lesson_id) REFERENCES agency_lessons(lesson_id) ON DELETE CASCADE;
-ALTER TABLE agency_events ADD CONSTRAINT fk_agency_events_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE agency_events ADD CONSTRAINT fk_agency_events_goal_id_agency_goals FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id) ON DELETE SET NULL;
-ALTER TABLE agency_events ADD CONSTRAINT fk_agency_events_plan_id_agency_plans FOREIGN KEY (plan_id) REFERENCES agency_plans(plan_id) ON DELETE SET NULL;
-ALTER TABLE agency_events_log ADD CONSTRAINT fk_agency_events_log_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE agency_events_log ADD CONSTRAINT fk_agency_events_log_parent_event_id_agency_events_log FOREIGN KEY (parent_event_id) REFERENCES agency_events_log(event_id) ON DELETE SET NULL;
-ALTER TABLE agency_execution_snapshots ADD CONSTRAINT fk_agency_execution_snapshots_execution_id_agency_plan_executions FOREIGN KEY (execution_id) REFERENCES agency_plan_executions(execution_id) ON DELETE CASCADE;
-ALTER TABLE agency_followups ADD CONSTRAINT fk_agency_followups_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE agency_followups ADD CONSTRAINT fk_agency_followups_goal_id_agency_goals FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id) ON DELETE SET NULL;
-ALTER TABLE agency_goal_dependencies ADD CONSTRAINT fk_agency_goal_dependencies_goal_id_agency_goals FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id);
-ALTER TABLE agency_goal_dependencies ADD CONSTRAINT fk_agency_goal_dependencies_prerequisite_goal_id_agency_goals FOREIGN KEY (prerequisite_goal_id) REFERENCES agency_goals(goal_id);
-ALTER TABLE agency_goal_outcomes ADD CONSTRAINT fk_agency_goal_outcomes_goal_id_agency_goals FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id);
-ALTER TABLE agency_goal_outcomes ADD CONSTRAINT fk_agency_goal_outcomes_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE agency_goal_outcomes ADD CONSTRAINT fk_agency_goal_outcomes_arm_id_arbiter_bandit_arms FOREIGN KEY (arm_id) REFERENCES arbiter_bandit_arms(arm_id);
-ALTER TABLE agency_goal_skill_executions ADD CONSTRAINT fk_agency_goal_skill_executions_goal_id_agency_goals FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id) ON DELETE CASCADE;
-ALTER TABLE agency_goals ADD CONSTRAINT fk_agency_goals_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE agency_intention_set ADD CONSTRAINT fk_agency_intention_set_goal_id_agency_goals FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id) ON DELETE CASCADE;
-ALTER TABLE agency_intention_set ADD CONSTRAINT fk_agency_intention_set_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE agency_lessons ADD CONSTRAINT fk_agency_lessons_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE agency_lessons ADD CONSTRAINT fk_agency_lessons_superseded_by_agency_lessons FOREIGN KEY (superseded_by) REFERENCES agency_lessons(lesson_id) ON DELETE SET NULL;
-ALTER TABLE agency_plan_executions ADD CONSTRAINT fk_agency_plan_executions_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE agency_plans ADD CONSTRAINT fk_agency_plans_goal_id_agency_goals FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id) ON DELETE CASCADE;
-ALTER TABLE agency_policy_rules ADD CONSTRAINT fk_agency_policy_rules_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE agency_reflection_notes ADD CONSTRAINT fk_agency_reflection_notes_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE agency_reflection_notes ADD CONSTRAINT fk_agency_reflection_notes_related_goal_id_agency_goals FOREIGN KEY (related_goal_id) REFERENCES agency_goals(goal_id) ON DELETE SET NULL;
-ALTER TABLE agency_reflection_notes ADD CONSTRAINT fk_agency_reflection_notes_related_plan_id_agency_plans FOREIGN KEY (related_plan_id) REFERENCES agency_plans(plan_id) ON DELETE SET NULL;
-ALTER TABLE agency_reflection_runs ADD CONSTRAINT fk_agency_reflection_runs_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE agency_reminders ADD CONSTRAINT fk_agency_reminders_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE agency_reminders ADD CONSTRAINT fk_agency_reminders_goal_id_agency_goals FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id) ON DELETE SET NULL;
-ALTER TABLE agency_self_model ADD CONSTRAINT fk_agency_self_model_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE agency_skill_executions ADD CONSTRAINT fk_agency_skill_executions_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE agency_skill_executions ADD CONSTRAINT fk_agency_skill_executions_goal_id_agency_goals FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id) ON DELETE SET NULL;
-ALTER TABLE agency_step_executions ADD CONSTRAINT fk_agency_step_executions_execution_id_agency_plan_executions FOREIGN KEY (execution_id) REFERENCES agency_plan_executions(execution_id) ON DELETE CASCADE;
-ALTER TABLE ams_behavioral_feedback ADD CONSTRAINT fk_ams_behavioral_feedback_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE ams_context_preference_vectors ADD CONSTRAINT fk_ams_context_preference_vectors_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE ams_context_skill_stats ADD CONSTRAINT fk_ams_context_skill_stats_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE ams_context_skill_stats ADD CONSTRAINT fk_ams_context_skill_stats_skill_id_ams_behavioral_skills FOREIGN KEY (skill_id) REFERENCES ams_behavioral_skills(skill_id) ON DELETE CASCADE;
-ALTER TABLE ams_trajectories ADD CONSTRAINT fk_ams_trajectories_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE ams_user_memories ADD CONSTRAINT fk_ams_user_memories_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE arbiter_ab_tests ADD CONSTRAINT fk_arbiter_ab_tests_arm_a_id_arbiter_bandit_arms FOREIGN KEY (arm_a_id) REFERENCES arbiter_bandit_arms(arm_id);
-ALTER TABLE arbiter_ab_tests ADD CONSTRAINT fk_arbiter_ab_tests_arm_b_id_arbiter_bandit_arms FOREIGN KEY (arm_b_id) REFERENCES arbiter_bandit_arms(arm_id);
-ALTER TABLE auth_access_policies ADD CONSTRAINT fk_auth_access_policies_user_uuid_user_profiles FOREIGN KEY (user_uuid) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE auth_sessions ADD CONSTRAINT fk_auth_sessions_user_uuid_user_profiles FOREIGN KEY (user_uuid) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE auth_user_credentials ADD CONSTRAINT fk_auth_user_credentials_user_uuid_user_profiles FOREIGN KEY (user_uuid) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE consent_audit_log ADD CONSTRAINT fk_consent_audit_log_consent_id_consent_user_consents FOREIGN KEY (consent_id) REFERENCES consent_user_consents(consent_id) ON DELETE CASCADE;
-ALTER TABLE consent_audit_log ADD CONSTRAINT fk_consent_audit_log_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE consent_records ADD CONSTRAINT fk_consent_records_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE consent_user_consents ADD CONSTRAINT fk_consent_user_consents_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE consent_user_consents ADD CONSTRAINT fk_consent_user_consents_inherited_from_consent_user_consents FOREIGN KEY (inherited_from) REFERENCES consent_user_consents(consent_id) ON DELETE SET NULL;
-ALTER TABLE interaction_requests ADD CONSTRAINT fk_interaction_requests_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE interaction_events ADD CONSTRAINT fk_interaction_events_interaction_id_interaction_requests FOREIGN KEY (interaction_id) REFERENCES interaction_requests(interaction_id) ON DELETE CASCADE;
-ALTER TABLE interaction_events ADD CONSTRAINT fk_interaction_events_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE ethics_decisions_cache ADD CONSTRAINT fk_ethics_decisions_cache_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE ethics_gate_audit ADD CONSTRAINT fk_ethics_gate_audit_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE ethics_value_profiles ADD CONSTRAINT fk_ethics_value_profiles_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE kg_edges ADD CONSTRAINT fk_kg_edges_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE kg_edges ADD CONSTRAINT fk_kg_edges_source_id_kg_nodes FOREIGN KEY (source_id) REFERENCES kg_nodes(id) ON DELETE CASCADE;
-ALTER TABLE kg_edges ADD CONSTRAINT fk_kg_edges_target_id_kg_nodes FOREIGN KEY (target_id) REFERENCES kg_nodes(id) ON DELETE CASCADE;
-ALTER TABLE kg_nodes ADD CONSTRAINT fk_kg_nodes_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE proactive_analytics ADD CONSTRAINT fk_proactive_analytics_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE proactive_reminder_clusters ADD CONSTRAINT fk_proactive_reminder_clusters_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE scheduler_task_executions ADD CONSTRAINT fk_scheduler_task_executions_task_id_scheduler_tasks FOREIGN KEY (task_id) REFERENCES scheduler_tasks(task_id);
-ALTER TABLE system_event_replay_sessions ADD CONSTRAINT fk_system_event_replay_sessions_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE user_feedback_requests ADD CONSTRAINT fk_user_feedback_requests_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE user_feedback_requests ADD CONSTRAINT fk_user_feedback_requests_goal_id_agency_goals FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id) ON DELETE SET NULL;
-ALTER TABLE user_proactive_preferences ADD CONSTRAINT fk_user_proactive_preferences_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE user_relationships ADD CONSTRAINT fk_user_relationships_user_uuid_user_profiles FOREIGN KEY (user_uuid) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE user_relationships ADD CONSTRAINT fk_user_relationships_related_user_uuid_user_profiles FOREIGN KEY (related_user_uuid) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE user_skill_confidence ADD CONSTRAINT fk_user_skill_confidence_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE workflow_executions ADD CONSTRAINT fk_workflow_executions_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
-ALTER TABLE workflow_stages ADD CONSTRAINT fk_workflow_stages_execution_id_workflow_executions FOREIGN KEY (execution_id) REFERENCES workflow_executions(execution_id) ON DELETE CASCADE;
-ALTER TABLE user_time_preferences ADD CONSTRAINT fk_user_time_preferences_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+DO $$ BEGIN
+  BEGIN
+    ALTER TABLE agency_arbiter_adjustments
+        ADD CONSTRAINT fk_agency_arbiter_adjustments_lesson_id_agency_lessons
+        FOREIGN KEY (lesson_id) REFERENCES agency_lessons(lesson_id) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_events ADD CONSTRAINT fk_agency_events_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_events ADD CONSTRAINT fk_agency_events_goal_id_agency_goals FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id) ON DELETE SET NULL;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_events ADD CONSTRAINT fk_agency_events_plan_id_agency_plans FOREIGN KEY (plan_id) REFERENCES agency_plans(plan_id) ON DELETE SET NULL;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_events_log ADD CONSTRAINT fk_agency_events_log_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_events_log ADD CONSTRAINT fk_agency_events_log_parent_event_id_agency_events_log FOREIGN KEY (parent_event_id) REFERENCES agency_events_log(event_id) ON DELETE SET NULL;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_execution_snapshots ADD CONSTRAINT fk_agency_execution_snapshots_execution_id_agency_plan_executions FOREIGN KEY (execution_id) REFERENCES agency_plan_executions(execution_id) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_followups ADD CONSTRAINT fk_agency_followups_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_followups ADD CONSTRAINT fk_agency_followups_goal_id_agency_goals FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id) ON DELETE SET NULL;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_goal_dependencies ADD CONSTRAINT fk_agency_goal_dependencies_goal_id_agency_goals FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id);
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_goal_dependencies ADD CONSTRAINT fk_agency_goal_dependencies_prerequisite_goal_id_agency_goals FOREIGN KEY (prerequisite_goal_id) REFERENCES agency_goals(goal_id);
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_goal_outcomes ADD CONSTRAINT fk_agency_goal_outcomes_goal_id_agency_goals FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id);
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_goal_outcomes ADD CONSTRAINT fk_agency_goal_outcomes_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_goal_outcomes ADD CONSTRAINT fk_agency_goal_outcomes_arm_id_arbiter_bandit_arms FOREIGN KEY (arm_id) REFERENCES arbiter_bandit_arms(arm_id);
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_goal_skill_executions ADD CONSTRAINT fk_agency_goal_skill_executions_goal_id_agency_goals FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_goals ADD CONSTRAINT fk_agency_goals_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_intention_set ADD CONSTRAINT fk_agency_intention_set_goal_id_agency_goals FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_intention_set ADD CONSTRAINT fk_agency_intention_set_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_lessons ADD CONSTRAINT fk_agency_lessons_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_lessons ADD CONSTRAINT fk_agency_lessons_superseded_by_agency_lessons FOREIGN KEY (superseded_by) REFERENCES agency_lessons(lesson_id) ON DELETE SET NULL;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_plan_executions ADD CONSTRAINT fk_agency_plan_executions_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_plans ADD CONSTRAINT fk_agency_plans_goal_id_agency_goals FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_policy_rules ADD CONSTRAINT fk_agency_policy_rules_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_reflection_notes ADD CONSTRAINT fk_agency_reflection_notes_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_reflection_notes ADD CONSTRAINT fk_agency_reflection_notes_related_goal_id_agency_goals FOREIGN KEY (related_goal_id) REFERENCES agency_goals(goal_id) ON DELETE SET NULL;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_reflection_notes ADD CONSTRAINT fk_agency_reflection_notes_related_plan_id_agency_plans FOREIGN KEY (related_plan_id) REFERENCES agency_plans(plan_id) ON DELETE SET NULL;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_reflection_runs ADD CONSTRAINT fk_agency_reflection_runs_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_reminders ADD CONSTRAINT fk_agency_reminders_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_reminders ADD CONSTRAINT fk_agency_reminders_goal_id_agency_goals FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id) ON DELETE SET NULL;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_self_model ADD CONSTRAINT fk_agency_self_model_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_skill_executions ADD CONSTRAINT fk_agency_skill_executions_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_skill_executions ADD CONSTRAINT fk_agency_skill_executions_goal_id_agency_goals FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id) ON DELETE SET NULL;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE agency_step_executions ADD CONSTRAINT fk_agency_step_executions_execution_id_agency_plan_executions FOREIGN KEY (execution_id) REFERENCES agency_plan_executions(execution_id) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE ams_behavioral_feedback ADD CONSTRAINT fk_ams_behavioral_feedback_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE ams_context_preference_vectors ADD CONSTRAINT fk_ams_context_preference_vectors_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE ams_context_skill_stats ADD CONSTRAINT fk_ams_context_skill_stats_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE ams_context_skill_stats ADD CONSTRAINT fk_ams_context_skill_stats_skill_id_ams_behavioral_skills FOREIGN KEY (skill_id) REFERENCES ams_behavioral_skills(skill_id) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE ams_trajectories ADD CONSTRAINT fk_ams_trajectories_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE ams_user_memories ADD CONSTRAINT fk_ams_user_memories_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE arbiter_ab_tests ADD CONSTRAINT fk_arbiter_ab_tests_arm_a_id_arbiter_bandit_arms FOREIGN KEY (arm_a_id) REFERENCES arbiter_bandit_arms(arm_id);
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE arbiter_ab_tests ADD CONSTRAINT fk_arbiter_ab_tests_arm_b_id_arbiter_bandit_arms FOREIGN KEY (arm_b_id) REFERENCES arbiter_bandit_arms(arm_id);
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE auth_access_policies ADD CONSTRAINT fk_auth_access_policies_user_uuid_user_profiles FOREIGN KEY (user_uuid) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE auth_sessions ADD CONSTRAINT fk_auth_sessions_user_uuid_user_profiles FOREIGN KEY (user_uuid) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE auth_user_credentials ADD CONSTRAINT fk_auth_user_credentials_user_uuid_user_profiles FOREIGN KEY (user_uuid) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE consent_audit_log ADD CONSTRAINT fk_consent_audit_log_consent_id_consent_user_consents FOREIGN KEY (consent_id) REFERENCES consent_user_consents(consent_id) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE consent_audit_log ADD CONSTRAINT fk_consent_audit_log_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE consent_records ADD CONSTRAINT fk_consent_records_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE consent_user_consents ADD CONSTRAINT fk_consent_user_consents_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE consent_user_consents ADD CONSTRAINT fk_consent_user_consents_inherited_from_consent_user_consents FOREIGN KEY (inherited_from) REFERENCES consent_user_consents(consent_id) ON DELETE SET NULL;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE interaction_requests ADD CONSTRAINT fk_interaction_requests_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE interaction_events ADD CONSTRAINT fk_interaction_events_interaction_id_interaction_requests FOREIGN KEY (interaction_id) REFERENCES interaction_requests(interaction_id) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE interaction_events ADD CONSTRAINT fk_interaction_events_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE ethics_decisions_cache ADD CONSTRAINT fk_ethics_decisions_cache_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE ethics_gate_audit ADD CONSTRAINT fk_ethics_gate_audit_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE ethics_value_profiles ADD CONSTRAINT fk_ethics_value_profiles_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE kg_edges ADD CONSTRAINT fk_kg_edges_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE kg_edges ADD CONSTRAINT fk_kg_edges_source_id_kg_nodes FOREIGN KEY (source_id) REFERENCES kg_nodes(id) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE kg_edges ADD CONSTRAINT fk_kg_edges_target_id_kg_nodes FOREIGN KEY (target_id) REFERENCES kg_nodes(id) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE kg_nodes ADD CONSTRAINT fk_kg_nodes_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE kg_node_embeddings ADD CONSTRAINT fk_kg_node_embeddings_node_id_kg_nodes FOREIGN KEY (node_id) REFERENCES kg_nodes(id) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE kg_edge_embeddings ADD CONSTRAINT fk_kg_edge_embeddings_edge_id_kg_edges FOREIGN KEY (edge_id) REFERENCES kg_edges(id) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE proactive_analytics ADD CONSTRAINT fk_proactive_analytics_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE proactive_reminder_clusters ADD CONSTRAINT fk_proactive_reminder_clusters_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE scheduler_run_ledger ADD CONSTRAINT fk_scheduler_run_ledger_task_id_scheduler_tasks FOREIGN KEY (task_id) REFERENCES scheduler_tasks(task_id);
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE scheduler_task_executions ADD CONSTRAINT fk_scheduler_task_executions_task_id_scheduler_tasks FOREIGN KEY (task_id) REFERENCES scheduler_tasks(task_id);
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE system_event_replay_sessions ADD CONSTRAINT fk_system_event_replay_sessions_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE user_feedback_requests ADD CONSTRAINT fk_user_feedback_requests_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE user_feedback_requests ADD CONSTRAINT fk_user_feedback_requests_goal_id_agency_goals FOREIGN KEY (goal_id) REFERENCES agency_goals(goal_id) ON DELETE SET NULL;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE user_proactive_preferences ADD CONSTRAINT fk_user_proactive_preferences_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE user_relationships ADD CONSTRAINT fk_user_relationships_user_uuid_user_profiles FOREIGN KEY (user_uuid) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE user_relationships ADD CONSTRAINT fk_user_relationships_related_user_uuid_user_profiles FOREIGN KEY (related_user_uuid) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE user_skill_confidence ADD CONSTRAINT fk_user_skill_confidence_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE workflow_executions ADD CONSTRAINT fk_workflow_executions_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE workflow_stages ADD CONSTRAINT fk_workflow_stages_execution_id_workflow_executions FOREIGN KEY (execution_id) REFERENCES workflow_executions(execution_id) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+  BEGIN
+    ALTER TABLE user_time_preferences ADD CONSTRAINT fk_user_time_preferences_user_id_user_profiles FOREIGN KEY (user_id) REFERENCES user_profiles(uuid) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END;
+END $$;
 -- Immutable wrapper functions for JSONB extraction (required for functional indexes)
 CREATE OR REPLACE FUNCTION jsonb_extract_text_immutable(data TEXT, path TEXT)
 RETURNS TEXT AS $$

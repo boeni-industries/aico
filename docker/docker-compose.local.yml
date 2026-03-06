@@ -3,16 +3,193 @@
 name: aico
 
 services:
+  nats:
+    image: nats:2.10
+    container_name: aico-nats
+    restart: unless-stopped
+    command:
+      - "-js"
+      - "-m"
+      - "8222"
+    ports:
+      - "4222:4222" # client
+      - "8222:8222" # monitoring
+    volumes:
+      - aico-natsdata:/data
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "nats"
+      com.aico.service.type: "message-bus"
+      com.aico.service.role: "nats-jetstream"
+      org.opencontainers.image.title: "AICO NATS"
+      org.opencontainers.image.description: "NATS + JetStream message bus for AICO"
+      org.opencontainers.image.vendor: "AICO"
+      com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev"
+
+  valkey:
+    image: valkey/valkey:8.0.1
+    container_name: aico-valkey
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - aico-valkeydata:/data
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "valkey"
+      com.aico.service.type: "cache"
+      com.aico.service.role: "rate-limiting-store"
+      org.opencontainers.image.title: "AICO Valkey"
+      org.opencontainers.image.description: "Valkey (Redis-compatible) store for gateway rate limiting"
+      org.opencontainers.image.vendor: "AICO"
+      com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev"
+
+  gateway:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    container_name: aico-gateway
+    restart: unless-stopped
+    environment:
+      AICO_ENV: development
+      AICO_CONFIG_DIR: /app/config
+      AICO_DATA_DIR: /var/lib/aico
+      AICO_CACHE_DIR: /var/cache/aico
+      AICO_RUNTIME_DIR: /run/aico
+      AICO_NATS_URL: nats://nats:4222
+      AICO_VALKEY_URL: redis://valkey:6379/0
+      AICO_INSTRUMENTATION_ENABLED: "true"
+      AICO_INSTRUMENTATION_MODE: "prod"
+      AICO_LOKI_URL: http://loki:3100
+      AICO_REST_HOST: 0.0.0.0
+      AICO_PG_HOST: postgres
+      AICO_TRANSPORT_ENCRYPTION_ENABLED: "true"
+      AICO_GATEWAY_ENCRYPTION_PLUGIN_ENABLED: "true"
+      AICO_GATEWAY_SECURITY_PLUGIN_ENABLED: "true"
+    secrets:
+      - pg_password
+      - api_gateway_jwt_secret
+    volumes:
+      - aico-gateway-state:/var/lib/aico
+      - aico-gateway-cache:/var/cache/aico
+      - aico-backups:/var/lib/aico/artifacts/backups
+      - /var/run/docker.sock:/var/run/docker.sock
+    tmpfs:
+      - /run/aico
+    ports:
+      - "8771:8771"
+    depends_on:
+      - postgres
+      - nats
+      - valkey
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "gateway"
+      com.aico.service.type: "application"
+      com.aico.service.role: "http-edge"
+      org.opencontainers.image.title: "AICO Gateway"
+      org.opencontainers.image.description: "AICO API Gateway (HTTP edge)"
+      org.opencontainers.image.vendor: "AICO"
+      com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev"
+
+  core:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    container_name: aico-core
+    restart: unless-stopped
+    working_dir: /app/backend
+    command: ["/app/backend/.venv/bin/python", "core_main.py"]
+    environment:
+      AICO_ENV: development
+      AICO_CONFIG_DIR: /app/config
+      AICO_DATA_DIR: /var/lib/aico
+      AICO_CACHE_DIR: /var/cache/aico
+      AICO_RUNTIME_DIR: /run/aico
+      AICO_NATS_URL: nats://nats:4222
+      AICO_VALKEY_URL: redis://valkey:6379/0
+      AICO_INSTRUMENTATION_ENABLED: "true"
+      AICO_INSTRUMENTATION_MODE: "prod"
+      AICO_LOKI_URL: http://loki:3100
+      AICO_PG_HOST: postgres
+    secrets:
+      - pg_password
+      - api_gateway_jwt_secret
+    volumes:
+      - aico-core-state:/var/lib/aico
+      - aico-core-cache:/var/cache/aico
+      - aico-backups:/var/lib/aico/artifacts/backups
+      - /var/run/docker.sock:/var/run/docker.sock
+    tmpfs:
+      - /run/aico
+    depends_on:
+      - postgres
+      - nats
+      - valkey
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "core"
+      com.aico.service.type: "application"
+      com.aico.service.role: "domain-services"
+      org.opencontainers.image.title: "AICO Core"
+      org.opencontainers.image.description: "AICO core services (no public HTTP)"
+      org.opencontainers.image.vendor: "AICO"
+      com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev"
+
+  modelservice:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.modelservice
+    container_name: aico-modelservice
+    restart: unless-stopped
+    environment:
+      AICO_ENV: development
+      AICO_CONFIG_DIR: /app/config
+      AICO_DATA_DIR: /var/lib/aico
+      AICO_CACHE_DIR: /var/cache/aico
+      AICO_RUNTIME_DIR: /run/aico
+      AICO_NATS_URL: nats://nats:4222
+      AICO_LOKI_URL: http://loki:3100
+      AICO_REST_HOST: gateway
+      HF_HOME: /var/cache/aico/huggingface
+      TRANSFORMERS_CACHE: /var/cache/aico/huggingface
+    secrets:
+      - pg_password
+    volumes:
+      - aico-modelservice-state:/var/lib/aico
+      - aico-modelservice-cache:/var/cache/aico
+    tmpfs:
+      - /run/aico
+    depends_on:
+      - gateway
+      - core
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "modelservice"
+      com.aico.service.type: "application"
+      com.aico.service.role: "model-inference"
+      org.opencontainers.image.title: "AICO Modelservice"
+      org.opencontainers.image.description: "AICO modelservice container"
+      org.opencontainers.image.vendor: "AICO"
+      com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev"
+
   postgres:
-    image: postgres:18.1
+    image: pgvector/pgvector:0.8.1-pg18
     container_name: aico-postgres
     restart: unless-stopped
     environment:
       # Non-secret parameters; safe to keep here
       POSTGRES_DB: aico
       POSTGRES_USER: postgres
-      # Secret is provided via environment (AICO_PG_PASSWORD), never hardcoded
-      POSTGRES_PASSWORD: ${AICO_PG_PASSWORD:-}
+      # Postgres official image supports *_FILE
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+    secrets:
+      - pg_password
     ports:
       # Expose to host so aico CLI / psql can connect (matches core.yaml defaults)
       - "5432:5432"
@@ -46,13 +223,15 @@ services:
       com.aico.deployment.type: "local-dev"
 
   postgres-shadow:
-    image: postgres:18.1
+    image: pgvector/pgvector:0.8.1-pg18
     container_name: aico-postgres-shadow
     restart: unless-stopped
     environment:
       POSTGRES_DB: aico
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${AICO_PG_PASSWORD:-}
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+    secrets:
+      - pg_password
     ports:
       # Shadow instance exposed on a different port to avoid clashes
       - "55432:5432"
@@ -77,40 +256,8 @@ services:
       com.aico.managed-by: "aico-cli"
       com.aico.deployment.type: "local-dev-shadow"
 
-  influxdb:
-    image: influxdb:2
-    container_name: aico-influxdb
-    restart: unless-stopped
-    environment:
-      # InfluxDB initial setup credentials (provided via environment, never hardcoded)
-      DOCKER_INFLUXDB_INIT_MODE: setup
-      DOCKER_INFLUXDB_INIT_USERNAME: aico-admin
-      DOCKER_INFLUXDB_INIT_PASSWORD: ${AICO_INFLUX_ADMIN_PASSWORD:-}
-      DOCKER_INFLUXDB_INIT_ORG: aico
-      DOCKER_INFLUXDB_INIT_BUCKET: aico_telemetry
-      DOCKER_INFLUXDB_INIT_RETENTION: 720h
-      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${AICO_INFLUX_ADMIN_TOKEN:-}
-    ports:
-      - "8086:8086"
-    volumes:
-      - aico-influxdata:/var/lib/influxdb2
-      - aico-influxconfig:/etc/influxdb2
-    labels:
-      # Project identification
-      com.aico.project: "aico"
-      com.aico.component: "influxdb"
-      com.aico.service.type: "database"
-      com.aico.service.role: "metrics-timeseries"
-      # Standard Docker labels
-      org.opencontainers.image.title: "AICO InfluxDB Time-Series Database"
-      org.opencontainers.image.description: "Time-series database for AICO metrics and telemetry"
-      org.opencontainers.image.vendor: "AICO"
-      # Management metadata
-      com.aico.managed-by: "aico-cli"
-      com.aico.deployment.type: "local-dev"
-
   loki:
-    image: grafana/loki:2.9.0
+    image: grafana/loki:3.6.7
     container_name: aico-loki
     restart: unless-stopped
     ports:
@@ -133,8 +280,81 @@ services:
       com.aico.managed-by: "aico-cli"
       com.aico.deployment.type: "local-dev"
 
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.146.1
+    container_name: aico-otel-collector
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel-collector/config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+      - "8888:8888" # Collector internal telemetry metrics
+      - "8889:8889" # Prometheus exporter (spanmetrics)
+    depends_on:
+      - tempo
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "otel-collector"
+      com.aico.service.type: "observability"
+      com.aico.service.role: "telemetry-router"
+      org.opencontainers.image.title: "AICO OpenTelemetry Collector"
+      org.opencontainers.image.description: "OTLP ingest + tail sampling + spanmetrics"
+      org.opencontainers.image.vendor: "AICO"
+      com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev"
+
+  tempo:
+    image: grafana/tempo:2.10.1
+    container_name: aico-tempo
+    restart: unless-stopped
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    ports:
+      - "3200:3200" # Tempo HTTP API
+      - "4319:4317" # Optional direct OTLP gRPC (collector uses internal tempo:4317)
+    volumes:
+      - ./tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - aico-tempodata:/var/tempo
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "tempo"
+      com.aico.service.type: "observability"
+      com.aico.service.role: "tracing"
+      org.opencontainers.image.title: "AICO Tempo"
+      org.opencontainers.image.description: "Distributed tracing backend"
+      org.opencontainers.image.vendor: "AICO"
+      com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev"
+
+  prometheus:
+    image: prom/prometheus:v3.10.0
+    container_name: aico-prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=24h"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - aico-prometheusdata:/prometheus
+    depends_on:
+      - otel-collector
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "prometheus"
+      com.aico.service.type: "observability"
+      com.aico.service.role: "metrics"
+      org.opencontainers.image.title: "AICO Prometheus"
+      org.opencontainers.image.description: "Metrics backend for spanmetrics and dashboards"
+      org.opencontainers.image.vendor: "AICO"
+      com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev"
+
   grafana:
-    image: grafana/grafana:12.1.0
+    image: grafana/grafana:12.4.0
     container_name: aico-grafana
     restart: unless-stopped
     environment:
@@ -158,6 +378,8 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
     depends_on:
       - loki
+      - tempo
+      - prometheus
     labels:
       com.aico.project: "aico"
       com.aico.component: "grafana"
@@ -169,51 +391,82 @@ services:
       com.aico.managed-by: "aico-cli"
       com.aico.deployment.type: "local-dev"
 
-volumes:
-  aico-pgdata:
-    name: aico-pgdata
+  studio:
+    build:
+      context: ../../aico-studio
+      dockerfile: docker/Dockerfile.prod
+    container_name: aico-studio
+    restart: unless-stopped
+    environment:
+      AICO_STUDIO_API_BASE_URL: /api/v1
+    ports:
+      - "3002:80"
+    depends_on:
+      - gateway
     labels:
       com.aico.project: "aico"
-      com.aico.component: "postgres"
-      com.aico.volume.type: "data"
+      com.aico.component: "studio"
+      com.aico.service.type: "application"
+      com.aico.service.role: "ui"
+      org.opencontainers.image.title: "AICO Studio"
+      org.opencontainers.image.description: "AICO Studio web UI"
+      org.opencontainers.image.vendor: "AICO"
       com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev"
+
+volumes:
+  aico-natsdata:
+    external: true
+    name: aico-natsdata
+
+  aico-valkeydata:
+    name: aico-valkeydata
+  aico-lokidata:
+    external: true
+    name: aico-lokidata
+  aico-grafanadata:
+    external: true
+    name: aico-grafanadata
+
+  aico-tempodata:
+    name: aico-tempodata
+
+  aico-prometheusdata:
+    name: aico-prometheusdata
+
+  aico-gateway-state:
+    external: true
+    name: aico-gateway-state
+  aico-gateway-cache:
+    external: true
+    name: aico-gateway-cache
+
+  aico-backups:
+    external: true
+    name: aico-backups
+  aico-core-state:
+    external: true
+    name: aico-core-state
+  aico-core-cache:
+    external: true
+    name: aico-core-cache
+  aico-modelservice-state:
+    external: true
+    name: aico-modelservice-state
+  aico-modelservice-cache:
+    external: true
+    name: aico-modelservice-cache
+
+  aico-pgdata:
+    external: true
+    name: aico-pgdata
   
   aico-pgdata-shadow:
+    external: true
     name: aico-pgdata-shadow
-    labels:
-      com.aico.project: "aico"
-      com.aico.component: "postgres-shadow"
-      com.aico.volume.type: "data"
-      com.aico.managed-by: "aico-cli"
-  
-  aico-influxdata:
-    name: aico-influxdata
-    labels:
-      com.aico.project: "aico"
-      com.aico.component: "influxdb"
-      com.aico.volume.type: "data"
-      com.aico.managed-by: "aico-cli"
-  
-  aico-influxconfig:
-    name: aico-influxconfig
-    labels:
-      com.aico.project: "aico"
-      com.aico.component: "influxdb"
-      com.aico.volume.type: "config"
-      com.aico.managed-by: "aico-cli"
-  
-  aico-lokidata:
-    name: aico-lokidata
-    labels:
-      com.aico.project: "aico"
-      com.aico.component: "loki"
-      com.aico.volume.type: "data"
-      com.aico.managed-by: "aico-cli"
-  
-  aico-grafanadata:
-    name: aico-grafanadata
-    labels:
-      com.aico.project: "aico"
-      com.aico.component: "grafana"
-      com.aico.volume.type: "data"
-      com.aico.managed-by: "aico-cli"
+
+secrets:
+  pg_password:
+    file: ./secrets/pg_password
+  api_gateway_jwt_secret:
+    file: ./secrets/api_gateway_jwt_secret

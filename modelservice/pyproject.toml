@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aico-modelservice"
+version = "1.0.0"
+description = "AICO modelservice"
+requires-python = ">=3.13"
+dependencies = [
+    "aico-shared",
+    "prometheus-client>=0.24.1",
+    "prometheus-fastapi-instrumentator>=7.1.0",
+    "opencv-python-headless>=4.13.0.92",
+    "tiktoken>=0.12.0",
+    "transformers>=4.58.0",
+    "torch>=1.12.0",
+    "gliner>=0.2.22",
+    "sentence-transformers>=5.1.1",
+    "openai>=1.0.0",
+    "coqui-tts",
+    "piper-tts>=1.2.0",
+    "kokoro-onnx>=0.4.9",
+    "fast-langdetect>=0.2.0",
+    "soundfile>=0.12.1",
+]
+
+[tool.uv.sources]
+aico-shared = { path = "../shared", editable = true }
+coqui-tts = { git = "https://github.com/idiap/coqui-ai-TTS.git", branch = "dev" }
+
+[tool.setuptools]
+packages = ["modelservice"]
+
+[tool.setuptools.package-dir]
+modelservice = "."

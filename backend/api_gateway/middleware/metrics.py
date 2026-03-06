@@ -7,6 +7,7 @@ Classifies requests by service and category for drill-down analysis.
 """
 
 import time
+import re
 from typing import Callable
 from starlette.types import ASGIApp, Receive, Send, Scope
 from starlette.requests import Request
@@ -16,6 +17,35 @@ from opentelemetry import metrics
 from aico.core.logging import get_logger
 
 logger = get_logger("backend.api_gateway.metrics")
+
+
+_UUID_RE = re.compile(
+    r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
+)
+_LONG_HEX_RE = re.compile(r"\b[0-9a-fA-F]{16,}\b")
+_INT_RE = re.compile(r"\b\d+\b")
+
+
+def _normalize_path_for_metrics(path: str) -> str:
+    if not path:
+        return "/"
+    path = path.split("?", 1)[0]
+    path = _UUID_RE.sub(":uuid", path)
+    path = _LONG_HEX_RE.sub(":hex", path)
+    path = _INT_RE.sub(":int", path)
+    return path
+
+
+def _status_code_class(status_code: int) -> str:
+    if 200 <= status_code < 300:
+        return "2xx"
+    if 300 <= status_code < 400:
+        return "3xx"
+    if 400 <= status_code < 500:
+        return "4xx"
+    if 500 <= status_code < 600:
+        return "5xx"
+    return "other"
 
 
 def classify_service(path: str) -> str:
@@ -170,15 +200,19 @@ class MetricsMiddleware:
             # Classify request
             service = classify_service(path)
             category = classify_category(path)
+
+            route = _normalize_path_for_metrics(path)
+            status_class = _status_code_class(int(status_code))
             
             # Record metrics with attributes
             attributes = {
                 "http.method": method,
-                "http.target": path,
-                "http.status_code": status_code,
+                "http.route": route,
+                "http.status_code": int(status_code),
                 "http.scheme": "REST",
                 "service": service,
-                "category": category
+                "category": category,
+                "status_code_class": status_class,
             }
             
             # Record duration histogram

@@ -1,0 +1,59 @@
+syntax = "proto3";
+import "google/protobuf/descriptor.proto";
+
+package aico.core;
+
+option go_package = "github.com/boeni-industries/aico/proto/core";
+option java_package = "industries.boeni.aico.proto.core";
+option java_multiple_files = true;
+
+import "google/protobuf/timestamp.proto";
+
+// Log entry message for AICO logging system
+message LogEntry {
+  google.protobuf.Timestamp timestamp = 1;    // When the log was created
+  LogLevel level = 2;                         // Log level
+  string subsystem = 3;                       // Subsystem (e.g., "backend", "cli")
+  string module = 4;                          // Module (e.g., "main", "auth")
+  string function = 5;                        // Function name where log originated
+  string message = 6;                         // Log message content
+  string topic = 7;                           // Message bus topic
+  map<string, string> metadata = 8;          // Additional metadata
+  
+  // Optional fields for enhanced logging
+  string file_path = 9;                       // Source file path
+  int32 line_number = 10;                     // Line number in source
+  string user_uuid = 11;                      // User UUID if applicable
+  string session_id = 12;                     // Session ID if applicable
+  string trace_id = 13;                       // Trace ID for distributed tracing
+  map<string, string> extra = 14;            // Extra contextual data
+}
+
+// Log levels matching Python logging levels
+enum LogLevel {
+  UNKNOWN = 0;
+  DEBUG = 10;
+  INFO = 20;
+  WARNING = 30;
+  ERROR = 40;
+  CRITICAL = 50;
+}
+
+// Log query request for retrieving logs
+message LogQueryRequest {
+  repeated LogLevel levels = 1;               // Filter by log levels
+  repeated string subsystems = 2;            // Filter by subsystems
+  repeated string modules = 3;               // Filter by modules
+  google.protobuf.Timestamp start_time = 4;  // Start time filter
+  google.protobuf.Timestamp end_time = 5;    // End time filter
+  int32 limit = 6;                           // Maximum number of results
+  int32 offset = 7;                          // Offset for pagination
+  string search_query = 8;                   // Text search in messages
+}
+
+// Log query response
+message LogQueryResponse {
+  repeated LogEntry entries = 1;             // Log entries
+  int32 total_count = 2;                     // Total matching entries
+  bool has_more = 3;                         // Whether more results available
+}

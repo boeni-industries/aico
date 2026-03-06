@@ -9,7 +9,7 @@ from pydantic import BaseModel
 class AuthUserCredentials(BaseModel):
     uuid: str
     user_uuid: str
-    pin_hash: str
+    password_hash: str
 
     failed_attempts: int = 0
     locked_until: Optional[datetime] = None

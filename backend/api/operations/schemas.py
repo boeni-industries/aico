@@ -11,7 +11,7 @@ from typing import Optional, List
 class DatabaseMetrics(BaseModel):
     """Metrics for a single database"""
     name: str = Field(..., description="Database name")
-    type: str = Field(..., description="Database type (postgresql, chromadb, lmdb, influxdb)")
+    type: str = Field(..., description="Database type (postgresql, influxdb)")
     size_bytes: int = Field(..., description="Database size in bytes")
     status: str = Field(..., description="Database status (healthy, degraded, critical)")
     location: str = Field(..., description="Database location (file path or connection string)")
@@ -19,12 +19,6 @@ class DatabaseMetrics(BaseModel):
     table_count: Optional[int] = Field(None, description="Number of tables (PostgreSQL)")
     connection_count: Optional[int] = Field(None, description="Active connections (PostgreSQL)")
     wal_size_bytes: Optional[int] = Field(None, description="WAL size in bytes (PostgreSQL)")
-    collection_count: Optional[int] = Field(None, description="Number of collections (ChromaDB)")
-    document_count: Optional[int] = Field(None, description="Number of documents (ChromaDB)")
-    index_size_bytes: Optional[int] = Field(None, description="Index size in bytes (ChromaDB)")
-    database_count: Optional[int] = Field(None, description="Number of databases (LMDB)")
-    key_count: Optional[int] = Field(None, description="Number of keys (LMDB)")
-    map_size_bytes: Optional[int] = Field(None, description="Map size in bytes (LMDB)")
     database_name: Optional[str] = Field(None, description="Database name (PostgreSQL)")
     host: Optional[str] = Field(None, description="Database host (PostgreSQL)")
     port: Optional[int] = Field(None, description="Database port (PostgreSQL)")
@@ -49,141 +43,17 @@ class TableInfo(BaseModel):
 
 
 class CollectionInfo(BaseModel):
-    """Information about a ChromaDB collection"""
+    """Information about a database collection"""
     name: str = Field(..., description="Collection name")
     document_count: int = Field(..., description="Number of documents")
     metadata: Optional[dict] = Field(None, description="Collection metadata")
     dimension: Optional[int] = Field(None, description="Embedding dimension")
 
 
-class LMDBDatabaseInfo(BaseModel):
-    """Information about an LMDB database"""
-    name: str = Field(..., description="Database name")
-    key_count: int = Field(..., description="Number of keys")
-    size_bytes: Optional[int] = Field(None, description="Database size")
-
-
-class LMDBKeyInfo(BaseModel):
-    """Information about an LMDB key-value pair"""
-    key: str = Field(..., description="Key name")
-    value_preview: str = Field(..., description="Preview of value (truncated)")
-    size_bytes: int = Field(..., description="Value size in bytes")
-    timestamp: Optional[str] = Field(None, description="Timestamp if available in value")
-
-
-class LMDBBrowseRequest(BaseModel):
-    """Request to browse LMDB keys"""
-    database_name: str = Field(..., description="LMDB database name (e.g., session_memory)")
-    key_prefix: Optional[str] = Field(None, description="Filter by key prefix")
-    user_id: Optional[str] = Field(None, description="Filter by user_id in value")
-    limit: int = Field(50, description="Maximum keys to return")
-    offset: int = Field(0, description="Offset for pagination")
-
-
-class LMDBBrowseResponse(BaseModel):
-    """Response for LMDB browse operation"""
-    database_name: str = Field(..., description="Database name")
-    keys: list[LMDBKeyInfo] = Field(..., description="List of keys")
-    total_count: int = Field(..., description="Total matching keys")
-    has_more: bool = Field(..., description="Whether more results exist")
-
-
-class LMDBKeyValueResponse(BaseModel):
-    """Response model for LMDB key value"""
-    key: str = Field(..., description="Key name")
-    value: dict = Field(..., description="Full value")
-    size_bytes: int = Field(..., description="Size in bytes")
-    database_name: str = Field(..., description="Database name")
-    metadata: Optional[dict] = Field(None, description="Additional metadata")
-
-
-class LMDBDeleteRequest(BaseModel):
-    """Request to delete LMDB keys"""
-    database_name: str = Field(..., description="Database name")
-    keys: list[str] = Field(..., description="Keys to delete")
-
-
-class LMDBDeleteResponse(BaseModel):
-    """Response for LMDB delete operation"""
-    deleted_count: int = Field(..., description="Number of keys deleted")
-    failed_count: int = Field(..., description="Number of keys that failed to delete")
-    failed_keys: list[str] = Field(..., description="Keys that failed to delete")
-
-
-class OrphanedEntry(BaseModel):
-    """Orphaned LMDB entry information"""
-    key: str = Field(..., description="Entry key")
-    user_id: str = Field(..., description="Referenced user ID that doesn't exist")
-    preview: str = Field(..., description="Value preview")
-
-
-class OrphanedEntriesResponse(BaseModel):
-    """Response for orphaned entries query"""
-    total_entries: int = Field(..., description="Total entries in database")
-    orphaned_count: int = Field(..., description="Number of orphaned entries")
-    orphaned_entries: list[OrphanedEntry] = Field(..., description="List of orphaned entries")
-    valid_user_count: int = Field(..., description="Number of valid users in system")
-
-
-class ChromaDBSearchRequest(BaseModel):
-    """Request to search ChromaDB"""
-    collection_name: str = Field(..., description="Collection name")
-    query_text: str = Field(..., description="Search query text")
-    user_id: Optional[str] = Field(None, description="Filter by user_id")
-    conversation_id: Optional[str] = Field(None, description="Filter by conversation_id")
-    min_similarity: float = Field(0.4, description="Minimum similarity score")
-    limit: int = Field(10, description="Maximum results to return")
-
-
-class ChromaDBDocument(BaseModel):
-    """ChromaDB document result"""
-    id: str = Field(..., description="Document ID")
-    content: str = Field(..., description="Document content")
-    metadata: dict = Field(..., description="Document metadata")
-    similarity_score: float = Field(..., description="Similarity score")
-    distance: float = Field(..., description="Vector distance")
-
-
-class ChromaDBSearchResponse(BaseModel):
-    """Response for ChromaDB search"""
-    collection_name: str = Field(..., description="Collection name")
-    documents: list[ChromaDBDocument] = Field(..., description="Matching documents")
-    total_count: int = Field(..., description="Number of results")
-
-
-class ChromaDBDeleteRequest(BaseModel):
-    """Request to delete ChromaDB documents"""
-    collection_name: str = Field(..., description="Collection name")
-    document_ids: list[str] = Field(..., description="List of document IDs to delete")
-
-
-class ChromaDBDeleteResponse(BaseModel):
-    """Response for ChromaDB delete operation"""
-    collection_name: str = Field(..., description="Collection name")
-    deleted_count: int = Field(..., description="Number of documents deleted")
-    success: bool = Field(..., description="Whether operation succeeded")
-
-
-class ChromaDBBrowseDocument(BaseModel):
-    """ChromaDB document for browsing"""
-    id: str = Field(..., description="Document ID")
-    document: str = Field(..., description="Document content")
-    metadata: dict = Field(..., description="Document metadata")
-
-
-class ChromaDBBrowseResponse(BaseModel):
-    """Response for ChromaDB browse operation"""
-    collection_name: str = Field(..., description="Collection name")
-    documents: list[ChromaDBBrowseDocument] = Field(..., description="Documents")
-    total_count: int = Field(..., description="Total documents")
-
-
 class DatabaseDetailsResponse(BaseModel):
     """Response model for database details"""
-    database_type: str = Field(..., description="Database type (postgres, chromadb, lmdb)")
+    database_type: str = Field(..., description="Database type (postgresql, influxdb)")
     tables: Optional[list[TableInfo]] = Field(None, description="Tables (PostgreSQL)")
-    collections: Optional[list[CollectionInfo]] = Field(None, description="Collections (ChromaDB)")
-    databases: Optional[list[LMDBDatabaseInfo]] = Field(None, description="Databases (LMDB)")
 
 
 class QueryResult(BaseModel):
@@ -226,7 +96,7 @@ class BackupSetInfo(BaseModel):
     backup_id: str = Field(..., description="Backup set ID")
     created_at: str = Field(..., description="Backup set creation timestamp")
     path: str = Field(..., description="Absolute path to the backup set directory on disk")
-    included: dict = Field(..., description="Component inclusion map (postgres/chromadb/lmdb/influxdb)")
+    included: dict = Field(..., description="Component inclusion map (postgres/lmdb/influxdb)")
 
 
 class BackupSetCreateResponse(BaseModel):

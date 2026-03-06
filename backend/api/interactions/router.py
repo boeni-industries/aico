@@ -14,7 +14,9 @@ from aico.core.bus import MessageBusClient
 from aico.data.interaction.models import InteractionEvent, InteractionRequest
 from aico.data.uow import UnitOfWork
 from backend.core.postgres_dependencies import get_uow
-from backend.api.conversation.dependencies import get_current_user
+from backend.api.dependencies import get_current_user
+
+from backend.api.errors import error_responses, raise_api_error
 
 from .schemas import (
     AnswerInteractionRequest,
@@ -48,57 +50,36 @@ async def get_message_bus_client(request: Request):
     """
     try:
         if not hasattr(request.app.state, 'service_container'):
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Service container not initialized"
+            raise_api_error(
+                status_code=500,
+                error_code="SERVICE_CONTAINER_NOT_INITIALIZED",
+                message="Service container not initialized",
             )
         
-        container = request.app.state.service_container
-        message_bus_plugin = container.get_service("message_bus_plugin")
-        
-        if not message_bus_plugin or not hasattr(message_bus_plugin, 'message_bus_host'):
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Message bus plugin not available"
-            )
-        
-        if not message_bus_plugin.message_bus_host:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Message bus host not initialized"
-            )
-        
-        # Use cached client to avoid re-registration warnings
+        # Use cached client to avoid repeated connections
         global _message_bus_client_cache
         if _message_bus_client_cache:
             return _message_bus_client_cache
 
-        # Best-effort registration: never block interaction transitions.
-        # If message bus registration stalls, we return None and skip notifications.
         start = time.perf_counter()
         try:
-            client = await asyncio.wait_for(
-                message_bus_plugin.register_module(
-                    "interactions_api",
-                    ["interaction.notifications.*"],
-                ),
-                timeout=0.25,
-            )
+            client = MessageBusClient("backend_interactions_api")
+            await asyncio.wait_for(client.connect(), timeout=0.25)
             _message_bus_client_cache = client
             logger.info(
-                "Message bus client registered for interactions",
+                "Message bus client connected for interactions",
                 extra={"elapsed_ms": int((time.perf_counter() - start) * 1000)},
             )
             return client
         except asyncio.TimeoutError:
             logger.warning(
-                "Message bus client registration timed out for interactions",
+                "Message bus client connect timed out for interactions",
                 extra={"timeout_s": 0.25, "elapsed_ms": int((time.perf_counter() - start) * 1000)},
             )
             return None
-        except Exception as reg_error:
+        except Exception:
             logger.exception(
-                "Message bus client registration failed for interactions",
+                "Message bus client connect failed for interactions",
                 extra={"elapsed_ms": int((time.perf_counter() - start) * 1000)},
             )
             return None
@@ -127,15 +108,15 @@ def _to_event_response(e: InteractionEvent) -> InteractionEventResponse:
 
 def _assert_not_expired(i: InteractionRequest) -> None:
     if i.expires_at is not None and i.expires_at <= _utcnow():
-        raise HTTPException(status_code=410, detail="interaction expired")
+        raise_api_error(status_code=410, error_code="INTERACTION_EXPIRED", message="interaction expired")
 
 
 def _assert_can_transition(i: InteractionRequest, to_status: str) -> None:
     if i.status in _TERMINAL_STATUSES:
-        raise HTTPException(status_code=409, detail="interaction is terminal")
+        raise_api_error(status_code=409, error_code="INTERACTION_TERMINAL", message="interaction is terminal")
 
     if to_status in _TERMINAL_STATUSES and i.status == to_status:
-        raise HTTPException(status_code=409, detail="invalid state transition")
+        raise_api_error(status_code=409, error_code="INTERACTION_INVALID_TRANSITION", message="invalid state transition")
 
 
 async def _get_owned_interaction(
@@ -146,9 +127,9 @@ async def _get_owned_interaction(
 ) -> InteractionRequest:
     interaction = await uow.interaction_requests.get_by_id(interaction_id)
     if interaction is None:
-        raise HTTPException(status_code=404, detail="interaction not found")
+        raise_api_error(status_code=404, error_code="INTERACTION_NOT_FOUND", message="interaction not found")
     if interaction.user_id != user_id:
-        raise HTTPException(status_code=403, detail="forbidden")
+        raise_api_error(status_code=403, error_code="FORBIDDEN", message="forbidden")
     _assert_not_expired(interaction)
     return interaction
 
@@ -203,10 +184,11 @@ async def _publish_interaction_notification(
     event_payload = event.model_dump(mode="json") if hasattr(event, "model_dump") else event
     payload_struct = Struct()
     payload_struct.update({"interaction": interaction_payload, "event": event_payload})
-    await bus_client.publish(
+    await bus_client.publish_durable(
         f"interaction.notifications.{user_id}",
         payload_struct,
         correlation_id=correlation_id,
+        audit_subject="audit.events.interaction",
     )
 
 
@@ -273,7 +255,11 @@ async def _publish_interaction_notification_safely(
         )
 
 
-@router.get("", response_model=InteractionListResponse)
+@router.get(
+    "",
+    response_model=InteractionListResponse,
+    responses=error_responses(401, 500),
+)
 async def list_interactions(
     status_filter: Optional[list[str]] = Query(None, alias="status"),
     interaction_type: Optional[list[str]] = Query(None, alias="interaction_type"),
@@ -308,7 +294,11 @@ async def list_interactions(
     )
 
 
-@router.get("/{interaction_id}", response_model=InteractionDetailResponse)
+@router.get(
+    "/{interaction_id}",
+    response_model=InteractionDetailResponse,
+    responses=error_responses(401, 403, 404, 410, 500),
+)
 async def get_interaction_detail(
     interaction_id: str,
     current_user=Depends(get_current_user),
@@ -324,7 +314,11 @@ async def get_interaction_detail(
     )
 
 
-@router.post("/{interaction_id}/answer", response_model=TransitionResponse)
+@router.post(
+    "/{interaction_id}/answer",
+    response_model=TransitionResponse,
+    responses=error_responses(400, 401, 403, 404, 409, 410, 422, 500),
+)
 async def answer_interaction(
     interaction_id: str,
     request: AnswerInteractionRequest,
@@ -342,10 +336,14 @@ async def answer_interaction(
     interaction = await _get_owned_interaction(uow=uow, interaction_id=interaction_id, user_id=user_id)
 
     if interaction.interaction_type not in {"question", "choice", "dialogue"}:
-        raise HTTPException(status_code=422, detail="interaction type not answerable")
+        raise_api_error(
+            status_code=422,
+            error_code="INTERACTION_NOT_ANSWERABLE",
+            message="interaction type not answerable",
+        )
 
     if request.answer_text is None and request.answer_json is None:
-        raise HTTPException(status_code=400, detail="answer required")
+        raise_api_error(status_code=400, error_code="INTERACTION_ANSWER_REQUIRED", message="answer required")
 
     interaction.answer_text = request.answer_text
     interaction.answer_json = request.answer_json
@@ -402,7 +400,11 @@ async def answer_interaction(
     return TransitionResponse(interaction=_to_interaction_response(interaction), event=_to_event_response(event))
 
 
-@router.post("/{interaction_id}/approve", response_model=TransitionResponse)
+@router.post(
+    "/{interaction_id}/approve",
+    response_model=TransitionResponse,
+    responses=error_responses(401, 403, 404, 409, 410, 422, 500),
+)
 async def approve_interaction(
     interaction_id: str,
     background_tasks: BackgroundTasks,
@@ -419,7 +421,11 @@ async def approve_interaction(
     interaction = await _get_owned_interaction(uow=uow, interaction_id=interaction_id, user_id=user_id)
 
     if interaction.interaction_type != "approval":
-        raise HTTPException(status_code=422, detail="interaction type not approvable")
+        raise_api_error(
+            status_code=422,
+            error_code="INTERACTION_NOT_APPROVABLE",
+            message="interaction type not approvable",
+        )
 
     interaction, event = await _append_event_and_update(
         uow=uow,
@@ -452,7 +458,11 @@ async def approve_interaction(
     return TransitionResponse(interaction=_to_interaction_response(interaction), event=_to_event_response(event))
 
 
-@router.post("/{interaction_id}/reject", response_model=TransitionResponse)
+@router.post(
+    "/{interaction_id}/reject",
+    response_model=TransitionResponse,
+    responses=error_responses(401, 403, 404, 409, 410, 422, 500),
+)
 async def reject_interaction(
     interaction_id: str,
     background_tasks: BackgroundTasks,
@@ -470,7 +480,11 @@ async def reject_interaction(
     interaction = await _get_owned_interaction(uow=uow, interaction_id=interaction_id, user_id=user_id)
 
     if interaction.interaction_type != "approval":
-        raise HTTPException(status_code=422, detail="interaction type not rejectable")
+        raise_api_error(
+            status_code=422,
+            error_code="INTERACTION_NOT_REJECTABLE",
+            message="interaction type not rejectable",
+        )
 
     interaction, event = await _append_event_and_update(
         uow=uow,
@@ -503,7 +517,11 @@ async def reject_interaction(
     return TransitionResponse(interaction=_to_interaction_response(interaction), event=_to_event_response(event))
 
 
-@router.post("/{interaction_id}/cancel", response_model=TransitionResponse)
+@router.post(
+    "/{interaction_id}/cancel",
+    response_model=TransitionResponse,
+    responses=error_responses(401, 403, 404, 409, 410, 500),
+)
 async def cancel_interaction(
     interaction_id: str,
     background_tasks: BackgroundTasks,

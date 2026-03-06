@@ -16,8 +16,10 @@ import json
 
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
+from aico.core.topics import AICOTopics
 from backend.api.conversation.dependencies import get_message_bus_client
-from backend.api.conversation.dependencies import get_current_user
+from backend.api.dependencies import authenticate_websocket, get_current_user
+from backend.api.errors import error_responses, raise_api_error
 from aico.proto.aico_conversation_pb2 import ConversationMessage, Message, MessageAnalysis
 from aico.proto.aico_conversation_pb2 import ConversationContext, Context, RecentHistory
 from aico.proto.aico_conversation_pb2 import ResponseRequest, ResponseParameters
@@ -29,13 +31,19 @@ from backend.api.conversation.schemas import (
     MessageSendRequest, MessageResponse,
     ConversationListResponse, MessageHistoryResponse,
     UnifiedMessageRequest, UnifiedMessageResponse,
-    HealthResponse
+    HealthResponse,
+    ConversationDetail, ConversationListItem,
+    ConversationUpdateRequest, CatchupMessage
 )
+from backend.api.pagination import PaginatedResponse
 from backend.api.conversation.exceptions import (
     ConversationNotFoundException, InvalidConversationException,
     MessageProcessingException, WebSocketAuthenticationException, MessageBusConnectionException,
     ConversationTimeoutException
 )
+
+from backend.core.postgres_dependencies import get_uow
+from aico.data.uow import UnitOfWork
 
 
 _conversation_config = None
@@ -57,13 +65,16 @@ router = APIRouter()
 logger = get_logger("backend.api.conversation")
 security = HTTPBearer()
 
-# Active WebSocket connections for real-time updates
-active_connections: Dict[str, WebSocket] = {}
+# Active WebSocket connections removed - now handled by API Gateway adapter
 
 # Unified endpoint with automatic thread management
-@router.post("/messages")
+@router.post(
+    "/messages",
+    responses=error_responses(400, 401, 403, 408, 409, 422, 500),
+)
 async def send_message_with_auto_thread(
     request: UnifiedMessageRequest,
+    raw_request: Request,
     stream: str = Query("false", description="Enable streaming response"),
     current_user = Depends(get_current_user),
     bus_client = Depends(get_message_bus_client)
@@ -73,6 +84,7 @@ async def send_message_with_auto_thread(
     try:
         logger.debug(f"🔍 [API_DEBUG] Received request with stream parameter: '{stream}' (type: {type(stream)})")
         user_id = current_user['user_uuid']
+        tenant_id = current_user["tenant_id"]
         
         # INDUSTRY STANDARD: conversation_id pattern (user_id + session)
         # This follows LangGraph, Azure AI Foundry, and OpenAI Assistant API patterns
@@ -95,6 +107,8 @@ async def send_message_with_auto_thread(
         
         message_id = str(uuid.uuid4())
         timestamp = datetime.now(UTC)
+
+        request_id = raw_request.headers.get("Idempotency-Key") or message_id
         
         # Memory processing now handled by conversation engine - no duplicate background processing needed
         logger.debug(f"Memory processing will be handled by conversation engine for {conversation_id}")
@@ -116,10 +130,25 @@ async def send_message_with_auto_thread(
         conv_message.message.text = request.message
         conv_message.message.type = conv_message.message.MessageType.USER_INPUT
         conv_message.message.conversation_id = conversation_id
-        conv_message.message.turn_number = 1  # TODO: Track actual turn numbers
+        conv_message.message.turn_number = 0  # Repository will update with actual turn number during persistence
         
         # Publish to conversation input topic (ConversationEngine will handle)
-        await bus_client.publish("conversation/user/input/v1", conv_message)
+        logger.info(
+            f"🔍 [GATEWAY_PUBLISH] Publishing user input to NATS topic={AICOTopics.CONVERSATION_USER_INPUT}, "
+            f"tenant_id={tenant_id}, message_id={message_id}, conversation_id={conversation_id}"
+        )
+        await bus_client.publish(
+            AICOTopics.CONVERSATION_USER_INPUT,
+            conv_message,
+            tenant_id=tenant_id,
+            correlation_id=message_id,
+            attributes={
+                "user_id": user_id,
+                "conversation_id": conversation_id,
+                "request_id": request_id,
+            },
+        )
+        logger.info(f"✅ [GATEWAY_PUBLISH] Successfully published to NATS")
         
         # Wait for ConversationEngine to process and get the AI response synchronously
         import asyncio
@@ -161,19 +190,22 @@ async def send_message_with_auto_thread(
         logger.debug(f"🔍 [API_STREAMING] Stream parameter: '{stream}' -> {stream_enabled} for request {message_id}")
         if stream_enabled:
             logger.debug(f"🔍 [API_STREAMING] ✅ Taking streaming path for request {message_id}")
-            
+
             # Return streaming response using event-driven approach
             async def stream_generator():
                 logger.debug(f"🔍 [API_STREAMING] 🚀 Stream generator started for {message_id}")
                 try:
-                    # Send initial metadata (unencrypted for now - fix encryption later)
+                    # Send initial metadata
                     logger.debug(f"🔍 [API_STREAMING] 📤 Yielding metadata for {message_id}")
-                    yield json.dumps({
+                    metadata = {
                         "type": "metadata",
                         "message_id": message_id,
                         "conversation_id": conversation_id,
                         "timestamp": timestamp.isoformat()
-                    }) + "\n"
+                    }
+
+                    # NOTE: Transport encryption for streaming is handled by EncryptionMiddleware.
+                    yield json.dumps(metadata) + "\n"
                     
                     # Subscribe to streaming chunks from conversation engine
                     from aico.core.topics import AICOTopics
@@ -182,17 +214,23 @@ async def send_message_with_auto_thread(
                     streaming_complete = asyncio.Event()
                     chunk_queue = asyncio.Queue()
                     
+                    logger.info(f"🔍 [API_STREAMING] 🎯 About to subscribe to {AICOTopics.CONVERSATION_STREAM} for message_id={message_id}")
+                    
                     async def handle_streaming_chunk(envelope):
                         try:
+                            logger.info(f"🔍 [API_STREAMING] 📨 Received envelope for streaming")
                             # Extract StreamingResponse from protobuf envelope
                             streaming_chunk = StreamingResponseProto()
                             envelope.any_payload.Unpack(streaming_chunk)
                             
+                            logger.info(f"🔍 [API_STREAMING] 📦 Chunk request_id={streaming_chunk.request_id}, expected={message_id}")
+                            
                             # Only process chunks for our specific request
                             if streaming_chunk.request_id != message_id:
+                                logger.info(f"🔍 [API_STREAMING] ⏭️ Skipping chunk (not for us)")
                                 return  # Not for us, continue listening
                             
-                            logger.debug(f"🔍 [API_STREAMING] 📦 Received chunk for {message_id}: '{streaming_chunk.content}' (done: {streaming_chunk.done})")
+                            logger.info(f"🔍 [API_STREAMING] 📦 Received chunk for {message_id}: '{streaming_chunk.content}' (done: {streaming_chunk.done})")
                             
                             # Put chunk in queue for immediate processing
                             await chunk_queue.put({
@@ -215,28 +253,35 @@ async def send_message_with_auto_thread(
                             streaming_complete.set()
                     
                     # Subscribe to conversation streaming topic
-                    await bus_client.subscribe(AICOTopics.CONVERSATION_STREAM, handle_streaming_chunk)
+                    await bus_client.subscribe(
+                        AICOTopics.CONVERSATION_STREAM,
+                        handle_streaming_chunk,
+                        tenant_id=tenant_id,
+                    )
                     
                     # Process chunks from queue as they arrive - truly event-driven
                     timeout_start = asyncio.get_event_loop().time()
-                    logger.debug(f"🔍 [API_STREAMING] 🎬 Starting streaming loop for {message_id}")
-                    logger.debug(f"🔍 [API_STREAMING] streaming_complete.is_set() = {streaming_complete.is_set()}")
-                    logger.debug(f"🔍 [API_STREAMING] chunk_queue.qsize() = {chunk_queue.qsize()}")
+                    logger.info(f"🔍 [API_STREAMING] 🎬 Starting streaming loop for {message_id}")
+                    logger.info(f"🔍 [API_STREAMING] streaming_complete.is_set() = {streaming_complete.is_set()}")
+                    logger.info(f"🔍 [API_STREAMING] chunk_queue.qsize() = {chunk_queue.qsize()}")
+                    timeout_seconds = float(_get_conversation_timeout_seconds())
                     
                     chunk_count = 0
                     timeout_count = 0
+                    warned_no_chunks = False
                     while not streaming_complete.is_set():
                         try:
                             # Wait for chunk with short timeout to check completion
                             chunk = await asyncio.wait_for(chunk_queue.get(), timeout=0.1)
                             chunk_count += 1
-                            logger.debug(f"🔍 [API_STREAMING] 🎯 Got chunk #{chunk_count} from queue: {chunk}")
+                            logger.info(f"🔍 [API_STREAMING] 🎯 Got chunk #{chunk_count} from queue: {chunk}")
                             
                             if "type" in chunk and chunk["type"] == "error":
-                                logger.debug(f"🔍 [API_STREAMING] ❌ Yielding error chunk")
-                                yield json.dumps(chunk) + "\n"
+                                logger.info(f"🔍 [API_STREAMING] ❌ Yielding error chunk")
+                                error_data = chunk
+                                yield json.dumps(error_data) + "\n"
                             else:
-                                logger.debug(f"🔍 [API_STREAMING] ✅ Yielding content chunk: '{chunk['content']}' (type: {chunk.get('content_type', 'response')})")
+                                logger.info(f"🔍 [API_STREAMING] ✅ Yielding content chunk: '{chunk['content'][:100]}...' (type: {chunk.get('content_type', 'response')})")
                                 chunk_data = {
                                     "type": "chunk",
                                     "content": chunk["content"],
@@ -248,17 +293,47 @@ async def send_message_with_auto_thread(
                                 if chunk["done"]:
                                     chunk_data["conversation_id"] = conversation_id
                                     chunk_data["message_id"] = message_id  # Add message_id for feedback linking
-                                    logger.debug(f"🔍 [API_STREAMING] 📤 Sending final chunk with message_id: {message_id}")
+                                    logger.info(f"🔍 [API_STREAMING] 📤 Sending final chunk with message_id: {message_id}")
+
+                                # NOTE: Transport encryption for streaming is handled by EncryptionMiddleware.
                                 yield json.dumps(chunk_data) + "\n"
                                 
                         except asyncio.TimeoutError:
                             # No chunk received, continue waiting
                             timeout_count += 1
+                            elapsed = asyncio.get_event_loop().time() - timeout_start
+
+                            # Loud early warning: if core never emits any chunks, surface it quickly.
+                            if not warned_no_chunks and chunk_count == 0 and elapsed >= 2.0:
+                                warned_no_chunks = True
+                                logger.error(
+                                    "🔍 [API_STREAMING] ❌ No streaming chunks received after 2s. "
+                                    "Likely core conversation engine not receiving input or not publishing CONVERSATION_STREAM.",
+                                    extra={
+                                        "message_id": message_id,
+                                        "conversation_id": conversation_id,
+                                        "tenant_id": tenant_id,
+                                        "topic": str(AICOTopics.CONVERSATION_STREAM),
+                                    },
+                                )
+                            if elapsed >= timeout_seconds:
+                                logger.error(
+                                    f"🔍 [API_STREAMING] ❌ TIMEOUT after {timeout_seconds}s waiting for streaming chunks for request: {message_id}"
+                                )
+                                error_data = {
+                                    "type": "error",
+                                    "error": f"Streaming timeout after {timeout_seconds}s",
+                                    "message_id": message_id,
+                                    "conversation_id": conversation_id,
+                                }
+                                yield json.dumps(error_data) + "\n"
+                                streaming_complete.set()
+                                break
                             if timeout_count % 50 == 0:  # Log every 5 seconds
-                                logger.debug(f"🔍 [API_STREAMING] ⏱️ Still waiting for chunks... (timeout #{timeout_count}, elapsed: {asyncio.get_event_loop().time() - timeout_start:.1f}s)")
+                                logger.info(f"🔍 [API_STREAMING] ⏱️ Still waiting for chunks... (timeout #{timeout_count}, elapsed: {asyncio.get_event_loop().time() - timeout_start:.1f}s)")
                     
                     # Log why loop exited
-                    logger.debug(f"🔍 [API_STREAMING] Loop exited: streaming_complete={streaming_complete.is_set()}, chunks_received={chunk_count}, timeouts={timeout_count}")
+                    logger.info(f"🔍 [API_STREAMING] Loop exited: streaming_complete={streaming_complete.is_set()}, chunks_received={chunk_count}, timeouts={timeout_count}")
                     
                     # Unsubscribe
                     try:
@@ -272,10 +347,11 @@ async def send_message_with_auto_thread(
                 except Exception as e:
                     logger.error(f"Stream generator error: {e}")
                     logger.debug(f"🔍 [API_STREAMING] ❌ Stream generator failed for {message_id}: {e}")
-                    yield json.dumps({
+                    error_data = {
                         "type": "error",
                         "error": str(e)
-                    }) + "\n"
+                    }
+                    yield json.dumps(error_data) + "\n"
             
             try:
                 response = StreamingResponse(
@@ -293,7 +369,7 @@ async def send_message_with_auto_thread(
                 raise
         else:
             # Non-streaming: Subscribe and wait for complete response
-            await bus_client.subscribe("conversation/ai/response/v1", handle_ai_response)
+            await bus_client.subscribe(AICOTopics.CONVERSATION_AI_RESPONSE, handle_ai_response)
             
             # Wait for response with timeout (allow for unoptimized LLM processing)
             try:
@@ -312,7 +388,7 @@ async def send_message_with_auto_thread(
             finally:
                 # Unsubscribe from the topic
                 try:
-                    await bus_client.unsubscribe("conversation/ai/response/v1")
+                    await bus_client.unsubscribe(AICOTopics.CONVERSATION_AI_RESPONSE)
                 except Exception as e:
                     logger.error(f"Error unsubscribing: {e}")
             
@@ -335,18 +411,27 @@ async def send_message_with_auto_thread(
         raise
     except Exception as e:
         logger.error(f"Failed to send message with auto-thread: {e}")
-        raise HTTPException(status_code=500, detail="Failed to process message")
+        raise_api_error(
+            status_code=500,
+            error_code="CONVERSATION_MESSAGE_PROCESSING_FAILED",
+            message="Failed to process message",
+        )
 
 
 # User-scoped endpoints - no thread management needed with semantic memory
 
-@router.get("/messages", response_model=MessageHistoryResponse)
+@router.get(
+    "/messages",
+    response_model=MessageHistoryResponse,
+    responses=error_responses(401, 500),
+)
 async def get_my_messages(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(50, ge=1, le=100, description="Messages per page"),
     conversation_id: Optional[str] = Query(None, description="Filter by conversation ID"),
     since: Optional[datetime] = Query(None, description="Show messages after this timestamp"),
-    current_user = Depends(get_current_user)
+    current_user = Depends(get_current_user),
+    uow: UnitOfWork = Depends(get_uow),
 ):
     """
     Get my message history (user-scoped)
@@ -355,87 +440,154 @@ async def get_my_messages(
     Messages are retrieved from working memory (LMDB) with 24-hour retention.
     """
     try:
-        user_id = current_user['user_uuid']
-        
-        # Get memory manager from AI registry
-        from aico.ai import ai_registry
-        memory_manager = ai_registry.get("memory")
-        
-        if not memory_manager:
-            logger.warning("Memory manager not available")
-            return MessageHistoryResponse(
-                success=True,
-                messages=[],
-                conversation_id=conversation_id or f"user_{user_id}",
-                total_count=0,
-                page=page,
-                page_size=page_size
-            )
-        
-        # Retrieve messages from working memory
+        user_id = current_user["user_uuid"]
+        tenant_id = current_user["tenant_id"]
+
+        limit = page_size
+        offset = (page - 1) * page_size
+
+        filters: dict[str, Any] = {
+            "tenant_id": tenant_id,
+            "user_id": user_id,
+        }
         if conversation_id:
-            # Get messages for specific conversation
-            raw_messages = await memory_manager._working_store.retrieve_conversation_history(
-                conversation_id=conversation_id,
-                limit=page_size * page  # Get all messages up to current page
-            )
-        else:
-            # Get all messages for user across conversations
-            raw_messages = await memory_manager._working_store.retrieve_user_history(
-                user_id=user_id,
-                limit=page_size * page
-            )
-        
-        # Filter by timestamp if specified
-        if since:
-            raw_messages = [
-                msg for msg in raw_messages
-                if datetime.fromisoformat(msg.get('timestamp', '').replace('Z', '')) >= since
-            ]
-        
-        # Apply pagination
-        start_idx = (page - 1) * page_size
-        end_idx = start_idx + page_size
-        paginated_messages = raw_messages[start_idx:end_idx]
-        
-        # Format messages for frontend
+            filters["conversation_id"] = conversation_id
+        if since is not None:
+            filters["created_after"] = since
+
+        # Retrieve messages from Postgres source of truth
+        messages = await uow.conversation_messages.list(filters=filters, limit=limit, offset=offset)
+        total_count = await uow.conversation_messages.count(filters=filters)
+
         formatted_messages = []
-        for msg in paginated_messages:
+        for msg in messages:
             formatted_messages.append({
-                "id": msg.get("message_id", f"{msg.get('conversation_id')}_{msg.get('timestamp')}"),
-                "conversation_id": msg.get("conversation_id"),
-                "user_id": msg.get("user_id"),
-                "content": msg.get("content", ""),
-                "role": msg.get("role", "user"),
-                "timestamp": msg.get("timestamp"),
-                "message_type": msg.get("message_type", "text")
+                "id": msg.message_id,
+                "conversation_id": msg.conversation_id,
+                "user_id": msg.user_id,
+                "content": msg.content,
+                "role": "assistant" if msg.actor_type in {"agent", "assistant"} else "user",
+                "timestamp": msg.created_at.isoformat() if msg.created_at else None,
+                "message_type": msg.message_type,
             })
-        
+
         logger.debug(f"Retrieved {len(formatted_messages)} messages for user {user_id} (page {page})")
-        
+
         return MessageHistoryResponse(
             success=True,
             messages=formatted_messages,
             conversation_id=conversation_id or f"user_{user_id}",
-            total_count=len(raw_messages),
+            total_count=total_count,
             page=page,
-            page_size=page_size
+            page_size=page_size,
         )
         
     except Exception as e:
-        logger.error(f"Failed to get user message history: {e}", extra={
-            "user_id": current_user.get('user_uuid', 'unknown'),
+        logger.error(f"Failed to get message history: {e}", extra={
+            "conversation_id": conversation_id,
             "error": str(e)
         })
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
-        raise HTTPException(
+        raise_api_error(
             status_code=500,
-            detail="Failed to retrieve message history"
+            error_code="CONVERSATION_MESSAGE_HISTORY_FAILED",
+            message="Failed to retrieve message history",
         )
 
 
-@router.get("/status")
+@router.get(
+    "/messages/catchup",
+    response_model=MessageHistoryResponse,
+    responses=error_responses(401, 404, 422, 500),
+)
+async def catchup_my_messages(
+    conversation_id: Optional[str] = Query(None, description="Filter by conversation ID"),
+    after_message_id: Optional[str] = Query(None, description="Return messages strictly after this message_id"),
+    limit: int = Query(100, ge=1, le=500, description="Maximum messages to return"),
+    current_user = Depends(get_current_user),
+    uow: UnitOfWork = Depends(get_uow),
+):
+    """Catch up on messages after reconnect using Postgres as source of truth.
+
+    Cursor semantics:
+    - If `after_message_id` is provided, we look up its `created_at` in Postgres and
+      return messages with `created_at` strictly greater than that timestamp.
+    - Results are ordered ascending (oldest first) to support incremental replay.
+    """
+    try:
+        user_id = current_user["user_uuid"]
+        tenant_id = current_user["tenant_id"]
+
+        since_ts: Optional[datetime] = None
+        if after_message_id:
+            anchor = await uow.conversation_messages.get_by_id(after_message_id)
+            if anchor is None:
+                raise_api_error(
+                    status_code=404,
+                    error_code="CONVERSATION_MESSAGE_NOT_FOUND",
+                    message="after_message_id not found",
+                )
+            if anchor.tenant_id != tenant_id or anchor.user_id != user_id:
+                raise_api_error(
+                    status_code=404,
+                    error_code="CONVERSATION_MESSAGE_NOT_FOUND",
+                    message="after_message_id not found",
+                )
+            if conversation_id and anchor.conversation_id != conversation_id:
+                raise_api_error(
+                    status_code=422,
+                    error_code="CONVERSATION_MESSAGE_CURSOR_MISMATCH",
+                    message="after_message_id does not belong to the provided conversation_id",
+                )
+            since_ts = anchor.created_at
+
+        messages = await uow.conversation_messages.list_since(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            since=since_ts,
+            limit=limit,
+        )
+
+        formatted_messages = []
+        for msg in messages:
+            formatted_messages.append(
+                {
+                    "id": msg.message_id,
+                    "conversation_id": msg.conversation_id,
+                    "user_id": msg.user_id,
+                    "content": msg.content,
+                    "role": "assistant" if msg.actor_type in {"agent", "assistant"} else "user",
+                    "timestamp": msg.created_at.isoformat() if msg.created_at else None,
+                    "message_type": msg.message_type,
+                }
+            )
+
+        return MessageHistoryResponse(
+            success=True,
+            messages=formatted_messages,
+            conversation_id=conversation_id or f"user_{user_id}",
+            total_count=len(formatted_messages),
+            page=1,
+            page_size=limit,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Failed to catch up messages: {e}",
+            extra={"conversation_id": conversation_id, "after_message_id": after_message_id},
+        )
+        raise_api_error(
+            status_code=500,
+            error_code="CONVERSATION_MESSAGE_CATCHUP_FAILED",
+            message="Failed to catch up messages",
+        )
+@router.get(
+    "/status",
+    responses=error_responses(401, 500),
+)
 async def get_my_conversation_status(
     current_user = Depends(get_current_user)
 ):
@@ -467,116 +619,15 @@ async def get_my_conversation_status(
             "user_id": current_user['user_uuid'],
             "error": str(e)
         })
-        raise HTTPException(
+        raise_api_error(
             status_code=500,
-            detail="Failed to retrieve conversation status"
+            error_code="CONVERSATION_STATUS_FAILED",
+            message="Failed to retrieve conversation status",
         )
 
 
-@router.websocket("/ws")
-async def my_conversation_websocket(websocket: WebSocket):
-    """
-    WebSocket endpoint for real-time conversation updates (user-scoped)
-    
-    Provides real-time delivery of AI responses and conversation events
-    for the authenticated user. No thread management needed.
-    """
-    # TODO: Add WebSocket authentication to get user_id
-    # For now, accept connection without auth (security risk)
-    await websocket.accept()
-    connection_id = f"user_{uuid.uuid4()}"  # User-scoped connection
-    active_connections[connection_id] = websocket
-    
-    logger.debug(f"WebSocket connection established", extra={
-        "connection_id": connection_id
-    })
-    
-    try:
-        # Create message bus client to listen for responses
-        bus_client = MessageBusClient(f"conversation_ws_{connection_id}")
-        await bus_client.connect()
-        
-        # Subscribe to conversation responses for this user
-        async def response_handler(topic: str, message: Any):
-            """Handle incoming conversation responses"""
-            try:
-                # TODO: Filter by user_id instead of conversation_id once WebSocket auth is implemented
-                if hasattr(message, 'message') and hasattr(message.message, 'text'):
-                    # Use message_id from backend if available, otherwise generate one
-                    msg_id = getattr(message, 'message_id', None) or str(uuid.uuid4())
-                    
-                    # Create structured WebSocket response
-                    ai_response = WebSocketAIResponse(
-                        conversation_id=f"user_conversation_{connection_id}",
-                        message_id=msg_id,  # Use actual message_id from backend
-                        message=message.message.text,
-                        confidence=getattr(message, 'confidence', None),
-                        processing_time_ms=getattr(message, 'processing_time_ms', None)
-                    )
-                    
-                    await websocket.send_json(ai_response.dict())
-                    
-                    logger.debug(f"Sent AI response via WebSocket", extra={
-                        "connection_id": connection_id
-                    })
-            except Exception as e:
-                logger.error(f"Error handling response: {e}", extra={
-                    "connection_id": connection_id
-                })
-                # Send error to client
-                error_response = WebSocketError(
-                    error_code="RESPONSE_PROCESSING_ERROR",
-                    error_message=str(e),
-                    conversation_id=f"user_conversation_{connection_id}"
-                )
-                try:
-                    await websocket.send_json(error_response.dict())
-                except:
-                    pass
-        
-        # Subscribe to AI responses
-        await bus_client.subscribe(AICOTopics.CONVERSATION_AI_RESPONSE, response_handler)
-        
-        # Keep connection alive and handle incoming messages
-        while True:
-            try:
-                # Wait for messages from client (heartbeat, etc.)
-                data = await websocket.receive_json()
-                
-                if data.get("type") == "heartbeat":
-                    await websocket.send_json({"type": "heartbeat_ack"})
-                    
-            except WebSocketDisconnect:
-                break
-            except Exception as e:
-                logger.error(f"WebSocket error: {e}", extra={
-                    "connection_id": connection_id
-                })
-                break
-    
-    except Exception as e:
-        logger.error(f"WebSocket connection error: {e}", extra={
-            "connection_id": connection_id
-        })
-        raise WebSocketConnectionException(
-            connection_error=str(e),
-            connection_id=connection_id
-        )
-    
-    finally:
-        # Cleanup
-        if connection_id in active_connections:
-            del active_connections[connection_id]
-        
-        try:
-            if 'bus_client' in locals():
-                await bus_client.disconnect()
-        except:
-            pass
-        
-        logger.debug(f"WebSocket connection closed", extra={
-            "connection_id": connection_id
-        })
+# WebSocket endpoint removed - now handled by API Gateway WebSocket adapter
+# Clients should connect to ws://gateway:8772/ws and subscribe to "conversation.responses"
 
 
 @router.post("/health", response_model=HealthResponse)
@@ -589,13 +640,240 @@ async def health_check():
     )
 
 
-# Legacy endpoint support (deprecated)
-@router.post("/start", response_model=UnifiedMessageResponse, deprecated=True)
-async def start_conversation_legacy(
-    request: UnifiedMessageRequest,
+# ============================================================================
+# Conversation Lifecycle Endpoints
+# ============================================================================
+
+@router.get(
+    "/conversations",
+    response_model=PaginatedResponse[ConversationListItem],
+    responses=error_responses(401, 403, 500),
+)
+async def list_conversations(
+    limit: int = Query(50, ge=1, le=100, description="Number of conversations to return"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
+    status: Optional[str] = Query(None, description="Filter by status (active, archived, deleted)"),
     current_user = Depends(get_current_user),
-    bus_client = Depends(get_message_bus_client)
+    uow: UnitOfWork = Depends(get_uow),
 ):
-    """Legacy start endpoint - redirects to unified messages endpoint"""
-    logger.warning("Using deprecated /start endpoint - use /messages instead")
-    return await send_message_with_auto_thread(request, current_user, bus_client)
+    """
+    List conversations for the authenticated user.
+    
+    Returns paginated list of conversations with metadata.
+    Supports filtering by status and pagination via limit/offset.
+    
+    Standard pagination contract:
+    - Query params: limit (1-100), offset (>=0)
+    - Response: {items: [...], total: N, limit: N, offset: N}
+    """
+    try:
+        user_id = current_user['user_uuid']
+        tenant_id = current_user["tenant_id"]
+        
+        # Query conversations from repository
+        conversations = await uow.conversations.list_by_user(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            limit=limit,
+            offset=offset,
+            status=status,
+        )
+        
+        # Get total count for pagination
+        total = await uow.conversations.count_by_user(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            status=status,
+        )
+        
+        # Get message counts for each conversation
+        items = []
+        for conv in conversations:
+            message_count = await uow.conversation_messages.count_by_conversation(
+                tenant_id=tenant_id,
+                conversation_id=conv.conversation_id,
+            )
+            items.append(
+                ConversationListItem(
+                    conversation_id=conv.conversation_id,
+                    title=conv.title,
+                    status=conv.status,
+                    created_at=conv.created_at,
+                    updated_at=conv.updated_at,
+                    message_count=message_count,
+                )
+            )
+        
+        return PaginatedResponse[ConversationListItem](
+            items=items,
+            total=total,
+            limit=limit,
+            offset=offset,
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to list conversations: {e}")
+        raise_api_error(
+            status_code=500,
+            error_code="conversation_list_failed",
+            message="Failed to retrieve conversations",
+            details={"error": str(e)}
+        )
+
+
+@router.get(
+    "/conversations/{conversation_id}",
+    response_model=ConversationDetail,
+    responses=error_responses(401, 403, 404, 500),
+)
+async def get_conversation(
+    conversation_id: str,
+    current_user = Depends(get_current_user),
+    uow: UnitOfWork = Depends(get_uow),
+):
+    """
+    Get detailed information about a specific conversation.
+    
+    Returns full conversation metadata including title, status, and timestamps.
+    """
+    try:
+        user_id = current_user['user_uuid']
+        tenant_id = current_user["tenant_id"]
+        
+        # Retrieve conversation
+        conversation = await uow.conversations.get_by_key(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+        )
+        
+        if not conversation:
+            raise_api_error(
+                status_code=404,
+                error_code="conversation_not_found",
+                message=f"Conversation {conversation_id} not found",
+            )
+        
+        # Verify user owns this conversation
+        if conversation.user_id != user_id:
+            raise_api_error(
+                status_code=403,
+                error_code="conversation_access_denied",
+                message="You do not have access to this conversation",
+            )
+        
+        return ConversationDetail(
+            tenant_id=conversation.tenant_id,
+            conversation_id=conversation.conversation_id,
+            user_id=conversation.user_id,
+            agent_id=conversation.agent_id,
+            title=conversation.title,
+            status=conversation.status,
+            created_at=conversation.created_at,
+            updated_at=conversation.updated_at,
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get conversation {conversation_id}: {e}")
+        raise_api_error(
+            status_code=500,
+            error_code="conversation_get_failed",
+            message="Failed to retrieve conversation",
+            details={"error": str(e)}
+        )
+
+
+@router.patch(
+    "/conversations/{conversation_id}",
+    response_model=ConversationDetail,
+    responses=error_responses(400, 401, 403, 404, 500),
+)
+async def update_conversation(
+    conversation_id: str,
+    request: ConversationUpdateRequest,
+    current_user = Depends(get_current_user),
+    uow: UnitOfWork = Depends(get_uow),
+):
+    """
+    Update conversation metadata (title, status).
+    
+    Allows updating conversation title and status transitions:
+    - active → archived (hide from active list)
+    - active → deleted (soft delete)
+    - archived → active (restore)
+    """
+    try:
+        user_id = current_user['user_uuid']
+        tenant_id = current_user["tenant_id"]
+        
+        # Retrieve existing conversation
+        conversation = await uow.conversations.get_by_key(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+        )
+        
+        if not conversation:
+            raise_api_error(
+                status_code=404,
+                error_code="conversation_not_found",
+                message=f"Conversation {conversation_id} not found",
+            )
+        
+        # Verify user owns this conversation
+        if conversation.user_id != user_id:
+            raise_api_error(
+                status_code=403,
+                error_code="conversation_access_denied",
+                message="You do not have access to this conversation",
+            )
+        
+        # Validate at least one field is being updated
+        if request.title is None and request.status is None:
+            raise_api_error(
+                status_code=400,
+                error_code="no_updates_provided",
+                message="At least one field (title or status) must be provided",
+            )
+        
+        # Update conversation
+        updated = await uow.conversations.touch(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            user_id=user_id,
+            title=request.title if request.title is not None else conversation.title,
+            status=request.status if request.status is not None else conversation.status,
+        )
+        
+        await uow.commit()
+        
+        logger.info(
+            f"Updated conversation {conversation_id}",
+            extra={
+                "conversation_id": conversation_id,
+                "user_id": user_id,
+                "updates": {"title": request.title, "status": request.status}
+            }
+        )
+        
+        return ConversationDetail(
+            tenant_id=updated.tenant_id,
+            conversation_id=updated.conversation_id,
+            user_id=updated.user_id,
+            agent_id=updated.agent_id,
+            title=updated.title,
+            status=updated.status,
+            created_at=updated.created_at,
+            updated_at=updated.updated_at,
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update conversation {conversation_id}: {e}")
+        raise_api_error(
+            status_code=500,
+            error_code="conversation_update_failed",
+            message="Failed to update conversation",
+            details={"error": str(e)}
+        )

@@ -2,6 +2,7 @@ apiVersion: 1
 
 datasources:
   - name: Loki
+    uid: loki
     type: loki
     access: proxy
     url: http://loki:3100
@@ -9,8 +10,3 @@ datasources:
     editable: false
     jsonData:
       maxLines: 1000
-      derivedFields:
-        - datasourceUid: loki
-          matcherRegex: "conversation_id=([\\w-]+)"
-          name: ConversationID
-          url: "$${__value.raw}"

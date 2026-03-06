@@ -170,10 +170,10 @@ class AdaptiveScoringEngine:
                 "total_reward": arm.total_reward,
                 "success_count": arm.success_count,
                 "failure_count": arm.failure_count,
-                "last_pulled": arm.last_pulled.isoformat() if arm.last_pulled else None,
+                "last_pulled": arm.last_pulled,
                 "active": True,
-                "created_at": now.isoformat(),
-                "updated_at": now.isoformat(),
+                "created_at": now,
+                "updated_at": now,
             }
             await self.agency_service.save_bandit_arm(arm_data)
         except Exception as e:

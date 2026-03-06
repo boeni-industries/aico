@@ -80,6 +80,9 @@ Thumbs.db
 site/
 frontend/assets/tts/
 
+# Docker secrets (generated locally by CLI)
+docker/secrets/
+
 # Misc
 *.bak
 *.tmp

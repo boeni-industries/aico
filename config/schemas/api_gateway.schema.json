@@ -67,9 +67,26 @@
         "enabled": {
           "type": "boolean"
         },
+        "valkey_url": {
+          "type": "string"
+        },
+        "window_seconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "default_requests_per_minute": {
+          "type": "integer",
+          "minimum": 1
+        },
         "requests_per_minute": {
           "type": "integer",
           "minimum": 1
+        },
+        "exclude_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },

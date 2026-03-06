@@ -1,0 +1,21 @@
+version: v1beta1
+
+name: buf.build/aico/aico-contracts
+
+build:
+  roots:
+    - .
+
+breaking:
+  use:
+    - FILE
+
+lint:
+  use:
+    - DEFAULT
+  except:
+    - ENUM_VALUE_PREFIX
+    - ENUM_ZERO_VALUE_SUFFIX
+    - DIRECTORY_SAME_PACKAGE
+    - PACKAGE_DIRECTORY_MATCH
+    - PACKAGE_VERSION_SUFFIX

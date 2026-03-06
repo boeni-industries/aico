@@ -25,7 +25,7 @@ class PostgresAuthUserCredentialsRepository(Repository[AuthUserCredentials]):
         stmt = auth_user_credentials.insert().values(
             uuid=entity.uuid,
             user_uuid=entity.user_uuid,
-            pin_hash=entity.pin_hash,
+            password_hash=entity.password_hash,
             failed_attempts=entity.failed_attempts,
             locked_until=entity.locked_until,
             last_login=entity.last_login,
@@ -45,7 +45,7 @@ class PostgresAuthUserCredentialsRepository(Repository[AuthUserCredentials]):
         return AuthUserCredentials(
             uuid=row.uuid,
             user_uuid=row.user_uuid,
-            pin_hash=row.pin_hash,
+            password_hash=row.password_hash,
             failed_attempts=row.failed_attempts,
             locked_until=row.locked_until,
             last_login=row.last_login,
@@ -59,7 +59,7 @@ class PostgresAuthUserCredentialsRepository(Repository[AuthUserCredentials]):
             update(auth_user_credentials)
             .where(auth_user_credentials.c.uuid == entity.uuid)
             .values(
-                pin_hash=entity.pin_hash,
+                password_hash=entity.password_hash,
                 failed_attempts=entity.failed_attempts,
                 locked_until=entity.locked_until,
                 last_login=entity.last_login,
@@ -94,7 +94,7 @@ class PostgresAuthUserCredentialsRepository(Repository[AuthUserCredentials]):
             AuthUserCredentials(
                 uuid=row.uuid,
                 user_uuid=row.user_uuid,
-                pin_hash=row.pin_hash,
+                password_hash=row.password_hash,
                 failed_attempts=row.failed_attempts,
                 locked_until=row.locked_until,
                 last_login=row.last_login,
@@ -131,7 +131,7 @@ class PostgresAuthUserCredentialsRepository(Repository[AuthUserCredentials]):
         return AuthUserCredentials(
             uuid=row.uuid,
             user_uuid=row.user_uuid,
-            pin_hash=row.pin_hash,
+            password_hash=row.password_hash,
             failed_attempts=row.failed_attempts,
             locked_until=row.locked_until,
             last_login=row.last_login,

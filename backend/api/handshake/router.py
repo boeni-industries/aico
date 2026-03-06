@@ -9,9 +9,10 @@ from fastapi.responses import JSONResponse
 from typing import Dict, Any
 import time
 from aico.core.logging import get_logger
+from backend.api.errors import raise_api_error
 
 router = APIRouter()
-logger = get_logger("api.handshake")
+logger = get_logger("backend.api.handshake")
 
 # This will be injected during app initialization
 transport_manager = None
@@ -20,6 +21,7 @@ key_manager = None
 # Removed initialize_router - using proper FastAPI dependency injection
 
 
+@router.post("")
 @router.post("/")
 async def handshake(request: Request):
     """Handle encrypted transport handshake requests"""
@@ -34,9 +36,10 @@ async def handshake(request: Request):
         
         if "handshake_request" not in request_data:
             logger.warning("Invalid handshake request format - missing handshake_request field")
-            raise HTTPException(
-                status_code=400, 
-                detail="Invalid handshake request format"
+            raise_api_error(
+                status_code=400,
+                error_code="HANDSHAKE_INVALID_REQUEST",
+                message="Invalid handshake request format",
             )
         
         handshake_request = request_data["handshake_request"]
@@ -49,23 +52,30 @@ async def handshake(request: Request):
             "has_signature": "signature" in handshake_request
         })
         
-        # Return handshake response with session establishment
-        response_data = {
-            "status": "session_established",
-            "handshake_response": {
-                "component": "aico_backend",
-                "public_key": "placeholder_server_public_key",
-                "timestamp": int(time.time()),
-                "challenge": "placeholder_challenge",
-                "signature": "placeholder_signature"
+        # Check if transport encryption is enabled
+        from aico.core.config import ConfigurationManager
+        config = ConfigurationManager()
+        encryption_enabled = config.get("security.transport.encryption.enabled", default=False)
+        
+        if not encryption_enabled:
+            # Transport encryption disabled - return bypass response
+            logger.info("Transport encryption disabled - returning bypass handshake")
+            response_data = {
+                "status": "encryption_disabled",
+                "message": "Transport encryption is disabled. Requests will be processed without encryption."
             }
-        }
-        
-        logger.info("Handshake completed successfully", extra={
-            "client_component": handshake_request.get("component", "unknown")
-        })
-        
-        return JSONResponse(content=response_data)
+            return JSONResponse(content=response_data)
+
+        encryption_middleware = getattr(request.app.state, "encryption_middleware", None)
+        if encryption_middleware is None:
+            logger.warning("Transport encryption enabled but encryption middleware not available on app.state")
+            raise_api_error(
+                status_code=503,
+                error_code="TRANSPORT_NOT_INITIALIZED",
+                message="Transport encryption is enabled but not properly initialized. Please check backend configuration.",
+            )
+
+        return await encryption_middleware._handle_handshake(request)
         
     except HTTPException:
         raise
@@ -73,7 +83,8 @@ async def handshake(request: Request):
         logger.error(f"Handshake processing failed: {e}", extra={
             "error_type": type(e).__name__
         })
-        raise HTTPException(
+        raise_api_error(
             status_code=500,
-            detail="Internal handshake processing error"
+            error_code="HANDSHAKE_PROCESSING_FAILED",
+            message="Internal handshake processing error",
         )

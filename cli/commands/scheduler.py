@@ -33,17 +33,20 @@ from cli.utils.timezone import format_timestamp_local
 shared_path = Path(__file__).parent.parent.parent / "shared"
 sys.path.insert(0, str(shared_path))
 
-# Add backend path for cron parser
-backend_path = Path(__file__).parent.parent.parent / "backend"
-sys.path.insert(0, str(backend_path))
-
 from aico.core.config import ConfigurationManager
 from aico.core.paths import AICOPaths
 from aico.security import AICOKeyManager
 from cli.utils.pg_connection import get_pg_connection
-from scheduler.cron import CronParser
 
 console = Console()
+
+
+def _dt_to_iso(value: Any) -> Any:
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return value
 
 def _describe_cron(cron_expr: str) -> str:
     """Generate natural, human-readable description of cron expression.
@@ -56,10 +59,6 @@ def _describe_cron(cron_expr: str) -> str:
         0 0 1 * *      -> "Monthly on the 1st at midnight"
     """
     try:
-        parser = CronParser()
-        if not parser.validate(cron_expr):
-            return cron_expr
-        
         fields = cron_expr.split()
         if len(fields) != 5:
             return cron_expr
@@ -212,8 +211,8 @@ def list_tasks(
                         "task_class": task['task_class'],
                         "schedule": task['schedule'],
                         "enabled": bool(task['enabled']),
-                        "created_at": task['created_at'],
-                        "updated_at": task['updated_at']
+                        "created_at": _dt_to_iso(task['created_at']),
+                        "updated_at": _dt_to_iso(task['updated_at']),
                     })
                 console.print(json.dumps(task_list, indent=2))
             else:
@@ -284,8 +283,8 @@ def show_task(
                     "schedule": task['schedule'],
                     "config": json.loads(task['config']) if task['config'] else {},
                     "enabled": bool(task['enabled']),
-                    "created_at": task['created_at'],
-                    "updated_at": task['updated_at']
+                    "created_at": _dt_to_iso(task['created_at']),
+                    "updated_at": _dt_to_iso(task['updated_at']),
                 }
                 console.print(json.dumps(task_data, indent=2))
             else:
@@ -510,14 +509,10 @@ def trigger_task(
 ):
     """Manually trigger a task to run immediately"""
     try:
-        from aico.core.paths import AICOPaths
-
-        paths = AICOPaths()
-        trigger_dir = paths.get_runtime_path() / "scheduler" / "triggers"
-        trigger_dir.mkdir(parents=True, exist_ok=True)
-
-        # Use a simple file-based trigger mechanism
-        trigger_file = trigger_dir / f"{task_id}.trigger"
+        import httpx
+        import uuid
+        from aico.core.config import ConfigurationManager
+        from aico.security.key_manager import AICOKeyManager
         
         with Progress(
             SpinnerColumn(),
@@ -526,22 +521,63 @@ def trigger_task(
         ) as progress:
             progress.add_task(description=f"Triggering task '{task_id}'...", total=None)
             
-            # Check task exists before triggering
-            with _get_database_connection() as db:
-                cursor = db.cursor()
-                cursor.execute("SELECT task_id FROM aico_core.scheduler_tasks WHERE task_id = %s", (task_id,))
-                if not cursor.fetchone():
+            # Get JWT token for authentication
+            config_manager = ConfigurationManager()
+            config_manager.initialize()
+            key_manager = AICOKeyManager(config_manager)
+            jwt_token = key_manager.get_jwt_token("api_gateway")
+            
+            if not jwt_token:
+                console.print("[red]No JWT token found. Authentication required.[/red]")
+                raise typer.Exit(1)
+            
+            # Get gateway configuration
+            gateway_config = config_manager.get("api_gateway", {})
+            rest_config = gateway_config.get("rest", {})
+            host = rest_config.get("host", "127.0.0.1")
+            port = rest_config.get("port", 8771)
+            base_url = f"http://{host}:{port}"
+            
+            # Trigger task via authenticated HTTP request
+            with httpx.Client(timeout=30.0) as client:
+                headers = {
+                    "Authorization": f"Bearer {jwt_token}",
+                    "Idempotency-Key": str(uuid.uuid4()),
+                    "Content-Type": "application/json"
+                }
+                
+                response = client.post(
+                    f"{base_url}/api/v1/scheduler/tasks/{task_id}/trigger",
+                    headers=headers,
+                    json={}
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get("success"):
+                        console.print(f"[green]Successfully triggered task '{task_id}'[/green]")
+                        console.print("[dim]Note: The task will run on the next scheduler check.[/dim]")
+                        console.print(
+                            f"[dim]Tip: To see what happened, run [cyan]aico scheduler history {task_id}[/cyan] after it executes.[/dim]"
+                        )
+                    else:
+                        error_msg = data.get("message", "Failed to trigger task")
+                        console.print(f"[red]{error_msg}[/red]")
+                        raise typer.Exit(1)
+                elif response.status_code == 401:
+                    console.print("[red]Authentication failed. Please check your credentials.[/red]")
+                    raise typer.Exit(1)
+                elif response.status_code == 404:
                     console.print(f"[red]Task not found: {task_id}[/red]")
                     raise typer.Exit(1)
-
-            # Create the trigger file
-            trigger_file.touch()
-
-        console.print(f"[green]Successfully sent trigger request for task '{task_id}'[/green]")
-        console.print("[dim]Note: The task will run on the next scheduler check.[/dim]")
-        console.print(
-            f"[dim]Tip: To see what happened, run [cyan]aico scheduler history {task_id}[/cyan] after it executes.[/dim]"
-        )
+                else:
+                    console.print(f"[red]Failed to trigger task: HTTP {response.status_code}[/red]")
+                    try:
+                        error_data = response.json()
+                        console.print(f"[red]{error_data.get('message', 'Unknown error')}[/red]")
+                    except Exception:
+                        console.print(f"[red]{response.text}[/red]")
+                    raise typer.Exit(1)
 
     except Exception as e:
         console.print(f"[red]Error triggering task: {e}[/red]")
@@ -662,8 +698,8 @@ def _show_single_execution(execution_id: str, format_output: str):
                 "execution_id": execution['execution_id'],
                 "task_id": execution['task_id'],
                 "status": execution['status'],
-                "started_at": execution['started_at'],
-                "completed_at": execution['completed_at'],
+                "started_at": _dt_to_iso(execution['started_at']),
+                "completed_at": _dt_to_iso(execution['completed_at']),
                 "result": json.loads(execution['result']) if execution['result'] else None,
                 "error_message": execution['error_message'],
                 "duration_seconds": execution['duration_seconds']
@@ -781,8 +817,8 @@ def _display_history_table(executions: List, title: str, format_output: str):
                 "execution_id": exec_data['execution_id'],
                 "task_id": exec_data['task_id'],
                 "status": exec_data['status'],
-                "started_at": exec_data['started_at'],
-                "completed_at": exec_data['completed_at'],
+                "started_at": _dt_to_iso(exec_data['started_at']),
+                "completed_at": _dt_to_iso(exec_data['completed_at']),
                 "result": json.loads(exec_data['result']) if exec_data['result'] else None,
                 "error_message": exec_data['error_message'],
                 "duration_seconds": exec_data['duration_seconds']

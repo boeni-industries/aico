@@ -122,14 +122,30 @@ class WebSocketClient {
         : WebSocketConnectionState.reconnecting);
 
     try {
-      final headers = await _buildHeaders();
-      _channel = IOWebSocketChannel.connect(_url!, headers: headers);
+      // Connect to gateway WebSocket adapter
+      _channel = IOWebSocketChannel.connect(_url!);
       await _channel!.ready;
+      
+      _setupMessageHandling();
+      
+      // Wait for welcome message
+      await Future.delayed(const Duration(milliseconds: 100));
+      
+      // Authenticate with JWT token
+      final token = await _tokenManager.getAccessToken();
+      if (token != null) {
+        sendMessage({
+          'type': 'auth',
+          'token': token,
+        });
+        
+        // Wait for auth response
+        await Future.delayed(const Duration(milliseconds: 300));
+      }
       
       _setState(WebSocketConnectionState.connected);
       _reconnectAttempts = 0;
       
-      _setupMessageHandling();
       _startHeartbeat();
       _flushMessageQueue();
       _resubscribeToTopics();
@@ -237,27 +253,6 @@ class WebSocketClient {
     }
   }
 
-  Future<Map<String, String>> _buildHeaders() async {
-    final headers = <String, String>{};
-    
-    // Add authentication token if available
-    final token = await _tokenManager.getAccessToken();
-    if (token != null) {
-      headers['Authorization'] = 'Bearer $token';
-    }
-    
-    // Add encryption capability header
-    if (_encryptionEnabled && _encryptionService.isInitialized) {
-      headers['X-Encryption-Supported'] = 'true';
-      final publicKey = _encryptionService.getPublicKey();
-      if (publicKey != null) {
-        headers['X-Public-Key'] = publicKey;
-      }
-    }
-    
-    return headers;
-  }
-  
   Map<String, dynamic> _encryptMessage(Map<String, dynamic> message) {
     if (!_encryptionService.isInitialized) {
       return message;

@@ -17,7 +17,7 @@ from aico.core.config import ConfigurationManager
 from aico.core.json_sanitizer import LLMJsonSanitizer
 
 from .models import Node, Edge, PropertyGraph
-from .modelservice_client import ModelserviceClient
+from .modelservice_client import KGModelserviceClient
 from .semantic_ranker import SemanticEntityRanker
 
 logger = get_logger("shared.ai.knowledge_graph.extractor")
@@ -724,7 +724,7 @@ class LLMRelationExtractor(ExtractionStrategy):
         self,
         modelservice_client: Any,
         config: ConfigurationManager,
-        chroma_client: Optional[Any] = None
+        uow_factory: Optional[Any] = None
     ):
         """
         Initialize with modelservice client and config.
@@ -732,11 +732,11 @@ class LLMRelationExtractor(ExtractionStrategy):
         Args:
             modelservice_client: Client for modelservice API
             config: Configuration manager
-            chroma_client: Optional ChromaDB client for semantic ranking
+            uow_factory: Optional UoW factory for pgvector semantic ranking
         """
         self.modelservice = modelservice_client
         self.config = config
-        self.chroma_client = chroma_client
+        self.uow_factory = uow_factory
         
         # Get LLM timeout from config
         kg_config = config.get("memory.semantic.knowledge_graph", {})
@@ -745,14 +745,14 @@ class LLMRelationExtractor(ExtractionStrategy):
         # Initialize JSON sanitizer for robust LLM response parsing
         self.json_sanitizer = LLMJsonSanitizer(strict=False, log_repairs=True)
         
-        # Initialize semantic ranker if ChromaDB available
+        # Initialize semantic ranker if UoW factory available
         self.semantic_ranker = None
-        if chroma_client:
+        if uow_factory:
             self.semantic_ranker = SemanticEntityRanker(
                 modelservice_client=modelservice_client,
-                chroma_client=chroma_client
+                uow_factory=uow_factory
             )
-            logger.info("🎯 [LLM_EXTRACTOR] Semantic entity ranking enabled")
+            logger.info("🎯 [LLM_EXTRACTOR] Semantic entity ranking enabled (pgvector)")
     
     async def extract(
         self,
@@ -1125,7 +1125,7 @@ class MultiPassExtractor:
         modelservice_client: Any,
         config: ConfigurationManager,
         max_gleanings: int = 0,
-        chromadb_client: Optional[Any] = None
+        uow_factory: Optional[Any] = None
     ):
         """
         Initialize multi-pass extractor.
@@ -1134,7 +1134,7 @@ class MultiPassExtractor:
             modelservice_client: Client for modelservice API
             config: Configuration manager
             max_gleanings: Maximum number of gleaning passes (0 = single pass)
-            chromadb_client: Optional ChromaDB client for semantic ranking
+            uow_factory: Optional UoW factory for pgvector semantic ranking
         """
         self.modelservice = modelservice_client
         self.config = config
@@ -1145,7 +1145,7 @@ class MultiPassExtractor:
         self.relation_extractor = LLMRelationExtractor(
             modelservice_client, 
             config,
-            chroma_client=chromadb_client  # Enable semantic ranking
+            uow_factory=uow_factory  # Enable pgvector semantic ranking
         )
         
         logger.info(f"MultiPassExtractor initialized (max_gleanings={self.max_gleanings})")

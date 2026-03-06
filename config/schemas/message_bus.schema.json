@@ -1,13 +1,13 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Message Bus Configuration",
-  "description": "ZeroMQ message broker settings",
+  "description": "NATS message bus settings",
   "type": "object",
-  "required": ["broker_address", "timeout"],
+  "required": ["nats_url", "timeout"],
   "properties": {
-    "broker_address": {
+    "nats_url": {
       "type": "string",
-      "description": "ZeroMQ broker bind address"
+      "description": "NATS server URL"
     },
     "timeout": {
       "type": "number",

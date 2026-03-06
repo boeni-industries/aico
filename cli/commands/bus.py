@@ -83,7 +83,6 @@ def _get_database_connection(force_fresh: bool = False):
 
 @app.command("test")
 def test_connection(
-    broker_address: str = typer.Option("tcp://localhost:5555", "--broker", "-b", help="Broker address"),
     client_id: str = typer.Option("cli_test", "--client", "-c", help="Client ID"),
     message_count: int = typer.Option(5, "--count", "-n", help="Number of test messages")
 ):
@@ -98,13 +97,13 @@ def test_connection(
     
     async def run_test():
         console.print(f"[cyan]Testing Message Bus Connection[/cyan]")
-        console.print(f"[dim]Broker: {broker_address}[/dim]")
+        console.print(f"[dim]Broker: NATS (from config message_bus.nats_url)[/dim]")
         console.print(f"[dim]Client: {client_id}[/dim]")
         console.print()
         
         try:
             # Create test client
-            client = await create_client(client_id, broker_address)
+            client = await create_client(client_id)
             console.print("[green]✓[/green] Connected to message bus")
             
             # Set up message counter
@@ -176,7 +175,6 @@ def test_connection(
 
 @app.command("monitor")
 def monitor_traffic(
-    broker_address: str = typer.Option("tcp://localhost:5555", "--broker", "-b", help="Broker address"),
     client_id: str = typer.Option("cli_monitor", "--client", "-c", help="Client ID"),
     topics: str = typer.Option("*", "--topics", "-t", help="Topics to monitor (comma-separated)"),
     max_messages: int = typer.Option(100, "--max", "-m", help="Maximum messages to display")
@@ -194,7 +192,7 @@ def monitor_traffic(
     
     async def run_monitor():
         console.print(f"[cyan]Monitoring Message Bus Traffic[/cyan]")
-        console.print(f"[dim]Broker: {broker_address}[/dim]")
+        console.print(f"[dim]Broker: NATS (from config message_bus.nats_url)[/dim]")
         console.print(f"[dim]Topics: {topics}[/dim]")
         console.print()
         
@@ -202,7 +200,7 @@ def monitor_traffic(
         
         try:
             # Create monitor client
-            client = await create_client(client_id, broker_address)
+            client = await create_client(client_id)
             console.print("[green]✓[/green] Connected to message bus")
             
             async def monitor_callback(message):

@@ -21,6 +21,25 @@ from aico.ai.knowledge_graph.models import Node, Edge, PropertyGraph
 logger = get_logger("backend.scheduler.tasks.kg_quality")
 
 
+def _coerce_utc_datetime(value: Any) -> Optional[datetime]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.astimezone(UTC) if value.tzinfo else value.replace(tzinfo=UTC)
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return None
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        try:
+            dt = datetime.fromisoformat(s)
+            return dt.astimezone(UTC) if dt.tzinfo else dt.replace(tzinfo=UTC)
+        except Exception:
+            return None
+    return None
+
+
 class KGQualityValidator:
     """
     Knowledge Graph quality validation and enhancement.
@@ -69,8 +88,12 @@ class KGQualityValidator:
         all_nodes = await self.memory_manager._kg_storage.get_user_nodes(user_id, current_only=True)
         
         # Get recent nodes (created in last N minutes)
-        recent_cutoff = (datetime.now(UTC) - timedelta(minutes=batch_window_minutes)).isoformat()
-        recent_nodes = [n for n in all_nodes if n.created_at >= recent_cutoff]
+        recent_cutoff_dt = datetime.now(UTC) - timedelta(minutes=batch_window_minutes)
+        recent_nodes = []
+        for n in all_nodes:
+            created_at_dt = _coerce_utc_datetime(getattr(n, "created_at", None))
+            if created_at_dt and created_at_dt >= recent_cutoff_dt:
+                recent_nodes.append(n)
         
         print(f"🔍 [KG_QUALITY] Found {len(recent_nodes)} recent nodes (last {batch_window_minutes} min)")
         print(f"🔍 [KG_QUALITY] Total nodes: {len(all_nodes)}")
@@ -145,7 +168,11 @@ class KGQualityValidator:
                         continue
                     
                     # Same entity (name + type), check if newer
-                    if new_node.created_at <= existing_node.created_at:
+                    new_created_at = _coerce_utc_datetime(getattr(new_node, "created_at", None))
+                    existing_created_at = _coerce_utc_datetime(getattr(existing_node, "created_at", None))
+                    if not new_created_at or not existing_created_at:
+                        continue
+                    if new_created_at <= existing_created_at:
                         continue
                     
                     # Check if properties changed (excluding metadata)

@@ -26,7 +26,7 @@ def _ts():
     return datetime.now().strftime("%H:%M:%S.%f")[:-3]
 
 
-class ModelserviceClient:
+class KGModelserviceClient:
     """
     ZeroMQ client for modelservice API calls.
     
@@ -156,7 +156,7 @@ class ModelserviceClient:
             logger.error(f"NER request timed out after 30s for request_id: {request_id}")
             # Don't remove from pending - response might still arrive
             return {"entities": {}}  # Return empty dict, not list
-    
+
     async def generate_embeddings(
         self,
         texts: List[str]
@@ -259,21 +259,19 @@ class ModelserviceClient:
                     logger.warning(f"Failed to unsubscribe from {response_topic}: {e}")
         
         logger.debug(f"Generated {len(embeddings)} embeddings concurrently")
-        return {"embeddings": embeddings}
-    
     async def generate_completion(
         self,
         prompt: str,
-        model: str = "eve",
-        temperature: float = 0.7,
-        max_tokens: int = 2048
+        model: str = "huihui_ai/qwen3-abliterated:8b-v2",
+        temperature: float = 0.1,
+        max_tokens: int = 512
     ) -> Dict[str, Any]:
         """
         Generate LLM completion.
         
         Args:
             prompt: Prompt text
-            model: Model name (default: "eve" = qwen3-abliterated)
+            model: Model name (default: "huihui_ai/qwen3-abliterated:8b-v2")
             temperature: Sampling temperature
             max_tokens: Maximum tokens to generate
             
@@ -350,10 +348,9 @@ class ModelserviceClient:
             return {"text": text}
             
         except asyncio.TimeoutError:
-            logger.error(f"Completions request timed out after 60s for request_id: {request_id}")
-            # Don't remove from pending - response might still arrive
-            return {"text": ""}
-    
+            logger.error(f"Completion request timed out after 60s for request_id: {request_id}")
+            return {"success": False, "error": "Timeout", "completion": ""}
+
     async def _handle_ner_response(self, envelope) -> None:
         """Handle NER response from modelservice."""
         try:

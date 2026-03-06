@@ -39,6 +39,7 @@ from aico.security.key_manager import AICOKeyManager
 
 # Import platform-aware characters
 from cli.utils.platform import get_platform_chars
+from cli.utils.docker_client import DockerClient
 
 console = Console()
 
@@ -48,7 +49,6 @@ chars = get_platform_chars()
 def _get_jwt_token() -> Optional[str]:
     """Get stored JWT token for CLI authentication from secure keyring"""
     try:
-        from aico.core.config import ConfigurationManager
         config = ConfigurationManager()
         key_manager = AICOKeyManager(config)
         return key_manager.get_jwt_token("api_gateway")
@@ -58,7 +58,6 @@ def _get_jwt_token() -> Optional[str]:
 def _store_jwt_token(token: str) -> None:
     """Store JWT token for CLI authentication in secure keyring"""
     try:
-        from aico.core.config import ConfigurationManager
         config = ConfigurationManager()
         key_manager = AICOKeyManager(config)
         key_manager.store_jwt_token("api_gateway", token)
@@ -70,50 +69,23 @@ def _store_jwt_token(token: str) -> None:
 def _is_gateway_running() -> bool:
     """Check if API Gateway is currently running"""
     try:
-        # First check via PID file
-        from pathlib import Path
-        import sys
-        
-        # Add shared module to path
-        if getattr(sys, 'frozen', False):
-            shared_path = Path(sys._MEIPASS) / 'shared'
-        else:
-            shared_path = Path(__file__).parent.parent.parent / "shared"
-        sys.path.insert(0, str(shared_path))
-        
-        from aico.core.process import ProcessManager
-        
-        process_manager = ProcessManager("gateway")
-        status = process_manager.get_service_status()
-        
-        if status["running"]:
-            # Double-check with HTTP health check
-            config = _get_gateway_config()
-            host = config.get('host', '127.0.0.1')
-            port = config.get('protocols', {}).get('rest', {}).get('port', 8771)
-            
-            try:
-                response = requests.get(f"http://{host}:{port}/api/v1/health", timeout=2)
-                return response.status_code == 200
-            except requests.exceptions.RequestException:
-                # Process running but not responding - might be starting up
+        # Docker-first: check container status
+        if DockerClient.is_docker_available() and DockerClient.is_docker_running():
+            if DockerClient.is_service_running("gateway"):
                 return True
-        
+
+        # Fallback: HTTP check (useful when running outside Docker)
+        config = _get_gateway_config()
+        host = config.get('host', '127.0.0.1')
+        port = config.get('protocols', {}).get('rest', {}).get('port', 8771)
+
+        response = requests.get(f"http://{host}:{port}/api/v1/health", timeout=2)
+        return response.status_code == 200
+
+    except requests.exceptions.RequestException:
         return False
-        
-    except Exception as e:
-        # Fallback to simple HTTP check
-        try:
-            config = _get_gateway_config()
-            host = config.get('host', '127.0.0.1')
-            port = config.get('protocols', {}).get('rest', {}).get('port', 8771)
-            
-            response = requests.get(f"http://{host}:{port}/api/v1/health", timeout=2)
-            return response.status_code == 200
-        except requests.exceptions.RequestException:
-            return False
-        except Exception:
-            return False
+    except Exception:
+        return False
 
 def _make_authenticated_request(method: str, endpoint: str, **kwargs) -> requests.Response:
     """Make authenticated request to API Gateway"""
@@ -139,9 +111,6 @@ def gateway_callback(ctx: typer.Context, help: bool = typer.Option(False, "--hel
         from cli.utils.help_formatter import format_subcommand_help
         
         subcommands = [
-            ("start", "Start the API Gateway service"),
-            ("stop", "Stop the API Gateway service"),
-            ("restart", "Restart the API Gateway service"),
             ("status", "Show API Gateway status and health"),
             ("config", "Show API Gateway configuration"),
             ("protocols", "List available protocol adapters"),
@@ -153,10 +122,10 @@ def gateway_callback(ctx: typer.Context, help: bool = typer.Option(False, "--hel
         ]
         
         examples = [
-            "aico gateway start",
             "aico gateway status",
             "aico gateway auth login",
-            "aico gateway restart"
+            "aico gateway test",
+            "aico deploy up  # Start services"
         ]
         
         format_subcommand_help(
@@ -187,333 +156,10 @@ def _get_gateway_config() -> dict:
         raise typer.Exit(1)
 
 
-@app.command("start")
-def start(
-    dev: bool = typer.Option(False, "--dev", help="Start in development mode using UV"),
-    detach: bool = typer.Option(True, "--detach/--no-detach", help="Run as background service (default: True)")
-):
-    """Start the API Gateway service"""
-    try:
-        # Use ConfigurationManager instead of direct YAML access
-        config_manager = ConfigurationManager()
-        config_manager.initialize(lightweight=True)
-        config = config_manager.get("api_gateway", {})
-        
-        console.print("[yellow]⏳ Starting API Gateway...[/yellow]")
-        
-        # Check if already running
-        if _is_gateway_running():
-            console.print(f"[yellow]{chars['warning']} API Gateway is already running[/yellow]")
-            console.print("[dim]Use 'aico gateway status' to check or 'aico gateway restart' to restart[/dim]")
-            return
-        
-        import subprocess
-        import sys
-        from pathlib import Path
-        
-        # Path to backend directory
-        current = Path(__file__).parent.parent.parent
-        backend_dir = current / "backend"
-        backend_main = backend_dir / "main.py"
-        
-        if not backend_main.exists():
-            console.print(f"[red]{chars['cross']} Backend service not found at: {backend_main}[/red]")
-            raise typer.Exit(1)
-        
-        # Get cross-platform Python executable for headless execution
-        def get_headless_python(force_visible=False):
-            """Get appropriate Python executable for headless execution per platform
-            
-            Args:
-                force_visible: If True, always return visible python (for foreground mode)
-            """
-            if force_visible or not detach:
-                # Foreground mode: Always use regular python to show output
-                return sys.executable
-            elif sys.platform == "win32":
-                # Windows background mode: Use pythonw.exe to avoid console window
-                python_dir = Path(sys.executable).parent
-                pythonw_exe = python_dir / "pythonw.exe"
-                return str(pythonw_exe) if pythonw_exe.exists() else sys.executable
-            else:
-                # macOS/Linux: Use regular python (process will be detached)
-                return sys.executable
-        
-        # Determine startup method
-        if dev:
-            # Development mode: Use UV
-            use_uv = True
-            if use_uv:
-                # For UV, use python executable name (UV will resolve the path)
-                if detach and sys.platform == "win32":
-                    headless_python = "pythonw"  # UV will find pythonw.exe
-                else:
-                    headless_python = "python"   # UV will find python.exe/python
-                cmd = ["uv", "run", "--active", headless_python, str(backend_main)]
-                console.print("[yellow]🔧 Starting in development mode (UV)[/yellow]")
-            else:
-                try:
-                    # For UV, use python executable name (UV will resolve the path)
-                    if detach and sys.platform == "win32":
-                        headless_python = "pythonw"  # UV will find pythonw.exe
-                    else:
-                        headless_python = "python"   # UV will find python.exe/python
-                    cmd = ["uv", "run", headless_python, str(backend_main)]
-                    console.print(f"[yellow]{chars['wrench']} Starting in development mode (UV)[/yellow]")
-                except FileNotFoundError:
-                    console.print(f"[red]{chars['cross']} UV not found. Install UV or use production mode[/red]")
-                    raise typer.Exit(1)
-        else:
-            # Production mode: Try UV first, fallback to pip install
-            console.print(f"[blue]{chars['rocket']} Starting in production mode[/blue]")
-            
-            # Check if UV is available for production use
-            try:
-                import subprocess
-                subprocess.run(["uv", "--version"], capture_output=True, check=True)
-                
-                # Use UV from root directory to access monorepo shared modules
-                # Run backend/main.py from the root directory where pyproject.toml is
-                if detach and sys.platform == "win32":
-                    headless_python = "pythonw"  # UV will find pythonw.exe
-                else:
-                    headless_python = "python"   # UV will find python.exe/python
-                cmd = ["uv", "run", headless_python, "backend/main.py"]
-                console.print("[dim]Using UV for dependency management[/dim]")
-                
-            except (FileNotFoundError, subprocess.CalledProcessError):
-                # Fallback: Install dependencies and use system Python
-                console.print(f"[yellow]{chars['warning']} UV not available, installing dependencies with pip[/yellow]")
-                
-                # Install backend dependencies
-                try:
-                    install_result = subprocess.run([
-                        sys.executable, "-m", "pip", "install", "-r", "requirements.txt"
-                    ], cwd=str(backend_dir), capture_output=True, text=True)
-                    
-                    if install_result.returncode != 0:
-                        console.print(f"[red]{chars['cross']} Failed to install dependencies: {install_result.stderr}[/red]")
-                        raise typer.Exit(1)
-                    
-                    console.print(f"[green]{chars['check']} Dependencies installed[/green]")
-                except Exception as e:
-                    console.print(f"[red]{chars['cross']} Failed to install dependencies: {e}[/red]")
-                    console.print(f"[yellow]{chars['lightbulb']} Try: 'aico gateway start --dev' or install UV[/yellow]")
-                    raise typer.Exit(1)
-                
-                # Use appropriate Python executable (respects detach mode)
-                headless_python = get_headless_python()
-                cmd = [headless_python, str(backend_main)]
-        
-        # Configure process options
-        env = dict(os.environ, 
-                  AICO_SERVICE_MODE="gateway",
-                  AICO_DETACH_MODE="true" if detach else "false")
-        
-        process_kwargs = {
-            "cwd": str(current),  # Run from root directory for monorepo access
-            "env": env
-        }
-        
-        if detach:
-            # Background service mode (non-blocking)
-            if sys.platform == "win32":
-                # Windows: Use STARTUPINFO with STARTF_USESHOWWINDOW to hide console
-                startupinfo = subprocess.STARTUPINFO()
-                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                startupinfo.wShowWindow = subprocess.SW_HIDE
-                
-                process_kwargs.update({
-                    "creationflags": subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
-                    "startupinfo": startupinfo,
-                    "stdout": subprocess.DEVNULL,
-                    "stderr": subprocess.DEVNULL,
-                    "stdin": subprocess.DEVNULL
-                })
-            else:
-                # Unix-like: Standard background process
-                process_kwargs.update({
-                    "stdout": subprocess.DEVNULL,
-                    "stderr": subprocess.DEVNULL,
-                    "stdin": subprocess.DEVNULL,
-                    "start_new_session": True
-                })
-            
-            process = subprocess.Popen(cmd, **process_kwargs)
-            
-            # Give it a moment to start
-            import time
-            time.sleep(3)
-            
-            # Verify it started successfully
-            if _is_gateway_running():
-                host = config.get('host', '127.0.0.1')
-                protocols = config.get('protocols', {})
-                
-                console.print(f"[green]{chars['check']} API Gateway started as background service[/green]")
-                console.print()
-                
-                # Show all enabled protocol endpoints
-                console.print(f"[bold blue]{chars['globe']} Available Endpoints:[/bold blue]")
-                
-                if protocols.get('rest', {}).get('enabled', True):
-                    rest_port = protocols.get('rest', {}).get('port', 8771)
-                    prefix = protocols.get('rest', {}).get('prefix', '/api/v1')
-                    console.print(f"  • REST API: [cyan]http://{host}:{rest_port}{prefix}[/cyan]")
-                    console.print(f"  • Health Check: [cyan]http://{host}:{rest_port}/api/v1/health[/cyan]")
-                
-                if protocols.get('websocket', {}).get('enabled', False):
-                    ws_port = protocols.get('websocket', {}).get('port', 8772)
-                    ws_path = protocols.get('websocket', {}).get('path', '/ws')
-                    console.print(f"  • WebSocket: [cyan]ws://{host}:{ws_port}{ws_path}[/cyan]")
-                
-                if protocols.get('grpc', {}).get('enabled', False):
-                    grpc_port = protocols.get('grpc', {}).get('port', 8774)
-                    console.print(f"  • gRPC: [cyan]grpc://{host}:{grpc_port}[/cyan]")
-                
-                if protocols.get('zeromq_ipc', {}).get('enabled', True):
-                    console.print(f"  • ZeroMQ IPC: [cyan]Platform-specific socket[/cyan]")
-                
-                console.print()
-                console.print(f"[dim]{chars['lightbulb']} Test connection: 'aico gateway test' or 'aico gateway status'[/dim]")
-            else:
-                console.print(f"[red]{chars['cross']} Failed to start API Gateway service[/red]")
-                console.print("[dim]Check logs with 'aico logs cat' for details[/dim]")
-                raise typer.Exit(1)
-        else:
-            # Foreground mode (blocking) - for debugging
-            console.print(f"[yellow]{chars['warning']} Running in foreground mode (blocking)[/yellow]")
-            console.print("[dim]Press Ctrl+C to stop[/dim]")
-            console.print()
-            
-            # Remove background-specific process options for foreground mode
-            fg_env = dict(os.environ, 
-                         AICO_SERVICE_MODE="gateway",
-                         AICO_DETACH_MODE="false")
-            
-            fg_process_kwargs = {
-                "cwd": str(current),  # Run from root directory for monorepo access
-                "env": fg_env
-            }
-            
-            # Show the exact command being run
-            console.print(f"[dim]Executing: {' '.join(cmd)}[/dim]")
-            console.print(f"[dim]Working directory: {current}[/dim]")
-            console.print()
-            
-            # Run in foreground (this should block and show output)
-            try:
-                console.print("[dim]Starting backend process...[/dim]")
-                
-                # Use subprocess.run without capture_output to show live output
-                # This should block until the process exits
-                result = subprocess.run(
-                    cmd, 
-                    cwd=str(current),
-                    env=fg_env,
-                    # Don't capture output - let it stream to console
-                    stdout=None,
-                    stderr=None
-                )
-                
-                console.print(f"[yellow]Backend process exited with code {result.returncode}[/yellow]")
-                
-                # On Windows, exit code 15 is SIGTERM, which is a graceful shutdown.
-                # We should not treat it as an error.
-                if result.returncode != 0 and result.returncode != 15:
-                    console.print(f"[red]{chars['cross']} Gateway exited with code {result.returncode}[/red]")
-                    raise typer.Exit(result.returncode)
-                else:
-                    console.print(f"[green]{chars['check']} Gateway stopped gracefully[/green]")
-                    
-            except FileNotFoundError as e:
-                console.print(f"[red]{chars['cross']} Command not found: {e}[/red]")
-                console.print(f"[yellow]{chars['lightbulb']} Check if UV is properly installed and backend dependencies are available[/yellow]")
-                raise typer.Exit(1)
-            except KeyboardInterrupt:
-                console.print(f"\n[yellow]Backend process exited with code 0[/yellow]")
-                console.print(f"[green]{chars['check']} Gateway stopped gracefully[/green]")
-                return  # Exit cleanly without raising exception
-            
-    except KeyboardInterrupt:
-        console.print(f"\n[yellow]{chars['warning']} Gateway startup interrupted[/yellow]")
-    except Exception as e:
-        console.print(f"[red]{chars['cross']} Failed to start gateway: {e}[/red]")
-        raise typer.Exit(1)
-
-
-@app.command("stop")
-def stop():
-    """Stop the API Gateway service"""
-    try:
-        console.print(f"[yellow]{chars['hourglass']} Stopping API Gateway...[/yellow]")
-        
-        # Use our ProcessManager for proper shutdown
-        from pathlib import Path
-        import sys
-        
-        # Add shared module to path
-        if getattr(sys, 'frozen', False):
-            shared_path = Path(sys._MEIPASS) / 'shared'
-        else:
-            shared_path = Path(__file__).parent.parent.parent / "shared"
-        sys.path.insert(0, str(shared_path))
-        
-        from aico.core.process import ProcessManager
-        
-        process_manager = ProcessManager("gateway")
-        
-        # Try graceful shutdown first
-        success = process_manager.stop_service(timeout=30)
-        
-        if success:
-            console.print(f"[green]{chars['check']} API Gateway stopped gracefully[/green]")
-        else:
-            console.print(f"[yellow]{chars['warning']} Graceful shutdown failed, trying process cleanup...[/yellow]")
-            
-            # Fallback: Find and terminate gateway processes
-            try:
-                import psutil
-                stopped_count = process_manager.cleanup_stale_processes()
-                
-                if stopped_count > 0:
-                    console.print(f"[green]{chars['check']} Stopped {stopped_count} stale process(es)[/green]")
-                else:
-                    console.print(f"[yellow]{chars['warning']} No running API Gateway processes found[/yellow]")
-                    
-            except ImportError:
-                console.print(f"[red]{chars['cross']} psutil not available. Cannot stop processes automatically.[/red]")
-                console.print("[yellow]Please stop the gateway process manually[/yellow]")
-            
-    except Exception as e:
-        console.print(f"[red]{chars['cross']} Failed to stop gateway: {e}[/red]")
-        raise typer.Exit(1)
-
-
-@app.command("restart")
-def restart():
-    """Restart the API Gateway service"""
-    console.print(f"[yellow]{chars['restart']} Restarting API Gateway...[/yellow]")
-    
-    # Stop first
-    try:
-        stop()
-    except typer.Exit:
-        pass  # Continue with start even if stop failed
-    
-    # Wait a moment
-    import time
-    time.sleep(1)
-    
-    # Start again
-    start()
-
-
 @app.command("status")
 def status():
     """Show API Gateway status and configuration"""
     try:
-        # Use ConfigurationManager instead of direct YAML access
         config_manager = ConfigurationManager()
         config_manager.initialize(lightweight=True)
         config = config_manager.get("api_gateway", {})
@@ -533,39 +179,23 @@ def status():
             # Expected when gateway is not running - status will show as OFFLINE
             # This is not a silent failure - user gets clear feedback via status display
             pass  # Expected failure when gateway not running - status display handles this gracefully
-        
-        # Enhanced status with process monitoring
-        from pathlib import Path
-        import sys
-        
-        # Add shared module to path for ProcessManager
-        if getattr(sys, 'frozen', False):
-            shared_path = Path(sys._MEIPASS) / 'shared'
-        else:
-            shared_path = Path(__file__).parent.parent.parent / "shared"
-        sys.path.insert(0, str(shared_path))
-        
-        from aico.core.process import ProcessManager
-        
-        process_manager = ProcessManager("gateway")
-        process_status = process_manager.get_service_status()
-        
-        # Primary status header with enhanced process info
+
+        container_info = None
+        if DockerClient.is_docker_available() and DockerClient.is_docker_running():
+            container_info = DockerClient.get_container_status(DockerClient.AICO_SERVICES.get("gateway", ""))
+
+        process_status: dict = {"metadata": None, "process_info": None, "stale_pid": False}
+
+        # Primary status header
         if is_running:
             console.print(f"{chars['globe']} [bold green]API Gateway Status: RUNNING[/bold green]")
-            if process_status.get("process_info"):
-                proc_info = process_status["process_info"]
-                uptime = time.time() - proc_info.get("create_time", time.time())
-                uptime_str = f"{int(uptime//3600)}h {int((uptime%3600)//60)}m" if uptime > 3600 else f"{int(uptime//60)}m {int(uptime%60)}s"
-                console.print(f"   [dim]PID {process_status['pid']} • Uptime {uptime_str} • {host}:{rest_port}[/dim]")
+            if container_info and container_info.container_id:
+                console.print(f"   [dim]Container {container_info.container_id} • {host}:{rest_port}[/dim]")
             else:
                 console.print(f"   [dim]Version {health_data.get('version', 'Unknown')} • {host}:{rest_port}[/dim]")
         else:
             enabled = config.get("enabled", False)
-            if process_status.get("stale_pid"):
-                console.print(f"{chars['globe']} [bold yellow]API Gateway Status: STALE PROCESS[/bold yellow]")
-                console.print(f"   [dim]PID file exists but process not running • {host}:{rest_port}[/dim]")
-            elif enabled:
+            if enabled:
                 console.print(f"{chars['globe']} [bold yellow]API Gateway Status: OFFLINE[/bold yellow]")
                 console.print(f"   [dim]Configured but not responding • {host}:{rest_port}[/dim]")
             else:
@@ -665,7 +295,6 @@ def status():
                 import jwt
                 from aico.security.key_manager import AICOKeyManager
                 
-                from aico.core.config import ConfigurationManager
                 config = ConfigurationManager()
                 key_manager = AICOKeyManager(config)
                 jwt_secret = key_manager.get_jwt_secret("api_gateway")
@@ -922,7 +551,7 @@ def test_gateway():
             console.print(f"[green]{chars['check']} Enabled protocols: {', '.join(enabled_protocols)}[/green]")
         
         console.print()
-        console.print(f"[green]{chars['party']} API Gateway connectivity test completed![/green]")
+        console.print(f"[green]{chars.get('party', chars['check'])} API Gateway connectivity test completed![/green]")
         
     except Exception as e:
         console.print(f"[red]{chars['cross']} Gateway test failed: {e}[/red]")
@@ -1024,7 +653,6 @@ def auth_login():
     """Generate and store JWT token for CLI authentication (zero-effort security)"""
     try:
         # Check if master password is set up first
-        from aico.core.config import ConfigurationManager
         config = ConfigurationManager()
         key_manager = AICOKeyManager(config)
         if not key_manager.has_stored_key():
@@ -1103,7 +731,6 @@ def auth_login():
 def auth_logout():
     """Remove stored JWT token"""
     try:
-        from aico.core.config import ConfigurationManager
         config = ConfigurationManager()
         key_manager = AICOKeyManager(config)
         if key_manager.remove_jwt_token("api_gateway"):
@@ -1126,7 +753,6 @@ def auth_status():
                 import jwt
                 from aico.security.key_manager import AICOKeyManager
                 
-                from aico.core.config import ConfigurationManager
                 config = ConfigurationManager()
                 key_manager = AICOKeyManager(config)
                 jwt_secret = key_manager.get_jwt_secret("api_gateway")

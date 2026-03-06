@@ -154,7 +154,7 @@ async def get_users_list(
                 locked_until = getattr(cred, "locked_until", None)
                 last_login = getattr(cred, "last_login", None)
                 credentials = UserCredentials(
-                    has_pin=bool(getattr(cred, "pin_hash", None)),
+                    has_pin=bool(getattr(cred, "password_hash", None)),
                     failed_attempts=int(getattr(cred, "failed_attempts", 0) or 0),
                     is_locked=bool(locked_until and locked_until > now),
                     locked_until=locked_until.isoformat().replace("+00:00", "Z") if locked_until else None,
@@ -243,7 +243,7 @@ async def get_user_detail(
         if cred_list:
             cred = cred_list[0]
             credentials = UserCredentials(
-                has_pin=bool(cred.pin_hash) if hasattr(cred, 'pin_hash') else False,
+                has_pin=bool(cred.password_hash) if hasattr(cred, 'password_hash') else False,
                 failed_attempts=cred.failed_attempts,
                 is_locked=bool(cred.locked_until and cred.locked_until > datetime.now(timezone.utc)) if hasattr(cred, 'locked_until') else False,
                 locked_until=cred.locked_until.isoformat() if hasattr(cred.locked_until, 'isoformat') else cred.locked_until if cred.locked_until else None,

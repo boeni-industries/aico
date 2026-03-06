@@ -113,6 +113,23 @@ class MessageResponse(BaseModel):
         }
 
 
+class CatchupMessage(BaseModel):
+    """Message in catch-up response with turn number for ordering"""
+    message_id: str = Field(..., description="Message identifier")
+    conversation_id: str = Field(..., description="Conversation identifier")
+    actor_type: str = Field(..., description="Actor type (user/assistant/system)")
+    message_type: str = Field(..., description="Message type")
+    content: str = Field(..., description="Message content")
+    turn_number: int = Field(..., description="Turn number for deterministic ordering")
+    created_at: datetime = Field(..., description="Message timestamp")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Message metadata")
+    
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+
 class ConversationStatus(BaseModel):
     """Status of a conversation"""
     conversation_id: str = Field(..., description="Conversation ID")
@@ -164,6 +181,7 @@ class UnifiedMessageRequest(BaseModel):
     conversation_id: Optional[str] = Field(None, description="Conversation ID for thread continuity")
     context: Optional[Dict[str, Any]] = Field(None, description="Optional context for thread resolution")
     metadata: Optional[Dict[str, Any]] = Field(None, description="Message metadata")
+    client_id: Optional[str] = Field(None, description="Client ID for encryption channel lookup")
 
 
 class UnifiedMessageResponse(BaseModel):
@@ -243,3 +261,53 @@ class ConversationHealthResponse(BaseModel):
     active_conversations: int = Field(0, description="Number of active conversations")
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="Health check timestamp")
     version: str = Field("1.0.0", description="API version")
+
+
+# Conversation Lifecycle Schemas
+class ConversationDetail(BaseModel):
+    """Detailed conversation information"""
+    tenant_id: str = Field(..., description="Tenant ID")
+    conversation_id: str = Field(..., description="Conversation ID")
+    user_id: str = Field(..., description="User ID")
+    agent_id: Optional[str] = Field(None, description="Agent ID")
+    title: Optional[str] = Field(None, description="Conversation title")
+    status: str = Field(..., description="Conversation status (active, archived, deleted)")
+    created_at: datetime = Field(..., description="Creation timestamp")
+    updated_at: datetime = Field(..., description="Last update timestamp")
+    
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+
+class ConversationListItem(BaseModel):
+    """Summary item for conversation list"""
+    conversation_id: str = Field(..., description="Conversation ID")
+    title: Optional[str] = Field(None, description="Conversation title")
+    status: str = Field(..., description="Conversation status")
+    created_at: datetime = Field(..., description="Creation timestamp")
+    updated_at: datetime = Field(..., description="Last update timestamp")
+    message_count: Optional[int] = Field(None, description="Number of messages")
+    
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+
+# ConversationsListResponse removed - use PaginatedResponse[ConversationListItem] instead
+
+
+class ConversationUpdateRequest(BaseModel):
+    """Request to update conversation metadata"""
+    title: Optional[str] = Field(None, description="New conversation title", max_length=255)
+    status: Optional[str] = Field(None, description="New status (active, archived, deleted)")
+    
+    @validator('status')
+    def validate_status(cls, v):
+        if v is not None:
+            valid_statuses = ['active', 'archived', 'deleted']
+            if v not in valid_statuses:
+                raise ValueError(f'Invalid status. Must be one of: {valid_statuses}')
+        return v

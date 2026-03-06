@@ -19,7 +19,6 @@ from fastapi import FastAPI
 # Import AICO modules
 sys.path.insert(0, str(Path(__file__).parent.parent / "shared"))
 from aico.core.logging import get_logger
-from aico.core.process import ServiceContext
 from aico.core.config import ConfigurationManager
 
 logger = get_logger("backend.server")
@@ -134,41 +133,28 @@ class AICOServer:
     async def _run_server_with_monitoring(self):
         """Foreground server runner with shutdown monitoring"""
         try:
-            # Use ServiceContext for PID file management
-            with ServiceContext("gateway"):
-                # Start shutdown file monitoring
-                shutdown_monitor = asyncio.create_task(self._check_shutdown_file())
-                
-                self.running = True
-                logger.info("Server is running")
-                
-                # Wait for shutdown signal or server completion
-                done, pending = await asyncio.wait(
-                    [asyncio.create_task(self.server.serve()), shutdown_monitor, asyncio.create_task(self.shutdown_event.wait())],
-                    return_when=asyncio.FIRST_COMPLETED
-                )
-                
-                # If shutdown was requested
-                if self.shutdown_event.is_set():
-                    logger.info("Shutdown requested, stopping server...")
-                    print("Graceful shutdown in progress...")
-                    
-                    # Graceful shutdown
-                    self.server.should_exit = True
-                    
-                    # Wait for server to stop gracefully
-                    try:
-                        await asyncio.wait_for(server_task, timeout=30)
-                        logger.info("Server stopped gracefully")
-                        print("Server shutdown complete")
-                    except asyncio.TimeoutError:
-                        logger.warning("Server shutdown timeout, cancelling...")
-                        print("Shutdown timeout, forcing stop...")
-                        server_task.cancel()
-                        try:
-                            await server_task
-                        except asyncio.CancelledError:
-                            pass
+            # Start shutdown file monitoring
+            shutdown_monitor = asyncio.create_task(self._check_shutdown_file())
+
+            self.running = True
+            logger.info("Server is running")
+
+            # Wait for shutdown signal or server completion
+            done, pending = await asyncio.wait(
+                [asyncio.create_task(self.server.serve()), shutdown_monitor, asyncio.create_task(self.shutdown_event.wait())],
+                return_when=asyncio.FIRST_COMPLETED
+            )
+
+            # If shutdown was requested
+            if self.shutdown_event.is_set():
+                logger.info("Shutdown requested, stopping server...")
+                print("Graceful shutdown in progress...")
+
+                # Graceful shutdown
+                self.server.should_exit = True
+
+                # Wait for server to stop gracefully
+                await asyncio.wait_for(asyncio.create_task(self.server.serve()), timeout=10)
                 
                 # Cancel any remaining tasks
                 for task in pending:

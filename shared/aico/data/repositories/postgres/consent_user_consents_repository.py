@@ -16,6 +16,35 @@ from aico.data.repositories.base import Repository
 
 class PostgresConsentUserConsentsRepository(Repository[ConsentUserConsent]):
     """PostgreSQL implementation of consent user consents repository."""
+
+    @staticmethod
+    def _normalize_dt(value):
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, str):
+            s = value.strip()
+            if s.endswith("+00"):
+                s = s + ":00"
+            return s
+        return value
+
+    @staticmethod
+    def _normalize_dt_for_db(value):
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, str):
+            s = value.strip()
+            if s.endswith("+00"):
+                s = s + ":00"
+            try:
+                return datetime.fromisoformat(s)
+            except ValueError:
+                return value
+        return value
     
     def __init__(self, session: AsyncSession):
         self.session = session
@@ -57,10 +86,10 @@ class PostgresConsentUserConsentsRepository(Repository[ConsentUserConsent]):
             granted=row.granted,
             expires_at=row.expires_at,
             inherited_from=row.inherited_from,
-            granted_at=row.granted_at,
-            revoked_at=row.revoked_at,
-            created_at=row.created_at,
-            updated_at=row.updated_at,
+            granted_at=self._normalize_dt(row.granted_at),
+            revoked_at=self._normalize_dt(row.revoked_at),
+            created_at=self._normalize_dt(row.created_at),
+            updated_at=self._normalize_dt(row.updated_at),
         )
     
     async def update(self, entity: ConsentUserConsent) -> ConsentUserConsent:
@@ -70,7 +99,7 @@ class PostgresConsentUserConsentsRepository(Repository[ConsentUserConsent]):
             .where(consent_user_consents.c.consent_id == entity.consent_id)
             .values(
                 granted=entity.granted,
-                revoked_at=entity.revoked_at,
+                revoked_at=self._normalize_dt_for_db(entity.revoked_at),
                 updated_at=datetime.now(UTC),
             )
         )
@@ -112,10 +141,10 @@ class PostgresConsentUserConsentsRepository(Repository[ConsentUserConsent]):
                 granted=row.granted,
                 expires_at=row.expires_at,
                 inherited_from=row.inherited_from,
-                granted_at=row.granted_at,
-                revoked_at=row.revoked_at,
-                created_at=row.created_at,
-                updated_at=row.updated_at,
+                granted_at=self._normalize_dt(row.granted_at),
+                revoked_at=self._normalize_dt(row.revoked_at),
+                created_at=self._normalize_dt(row.created_at),
+                updated_at=self._normalize_dt(row.updated_at),
             )
             for row in result.fetchall()
         ]
@@ -158,10 +187,10 @@ class PostgresConsentUserConsentsRepository(Repository[ConsentUserConsent]):
                 granted=row.granted,
                 expires_at=row.expires_at,
                 inherited_from=row.inherited_from,
-                granted_at=row.granted_at,
-                revoked_at=row.revoked_at,
-                created_at=row.created_at,
-                updated_at=row.updated_at,
+                granted_at=self._normalize_dt(row.granted_at),
+                revoked_at=self._normalize_dt(row.revoked_at),
+                created_at=self._normalize_dt(row.created_at),
+                updated_at=self._normalize_dt(row.updated_at),
             )
             for row in result.fetchall()
         ]

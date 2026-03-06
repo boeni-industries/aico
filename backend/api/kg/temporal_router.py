@@ -25,6 +25,8 @@ from backend.api.kg.schemas import (
 from backend.api.kg.dependencies import get_current_user
 from backend.core.postgres_dependencies import get_uow
 
+from backend.api.errors import raise_api_error
+
 router = APIRouter()
 logger = get_logger("backend.api.kg.temporal")
 
@@ -57,9 +59,10 @@ async def get_node_history(
     try:
         user_id = user.get("user_id")
         if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User ID not found in token"
+            raise_api_error(
+                status_code=401,
+                error_code="AUTH_MISSING_USER_ID",
+                message="User ID not found in token",
             )
         logger.info(f"[TEMPORAL] Fetching version history for node {node_id}, user {user_id}")
         
@@ -69,9 +72,10 @@ async def get_node_history(
         
         if not node or node.user_id != user_id:
             logger.warning(f"[TEMPORAL] Node {node_id} not found for user {user_id}")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Node {node_id} not found"
+            raise_api_error(
+                status_code=404,
+                error_code="KG_NODE_NOT_FOUND",
+                message=f"Node {node_id} not found",
             )
         
         canonical_id = node.canonical_id or node_id
@@ -131,13 +135,14 @@ async def get_node_history(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[TEMPORAL] ❌ Failed to fetch node history: {e}")
+        logger.error(f"[TEMPORAL] Error retrieving node history: {e}")
         logger.error(f"[TEMPORAL] Error type: {type(e).__name__}")
         import traceback
         logger.error(f"[TEMPORAL] Traceback: {traceback.format_exc()}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch node history: {str(e)}"
+        raise_api_error(
+            status_code=500,
+            error_code="KG_TEMPORAL_NODE_HISTORY_FAILED",
+            message="Failed to fetch node history",
         )
 
 
@@ -173,9 +178,10 @@ async def get_changes(
     try:
         user_id = user.get("user_id")
         if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User ID not found in token"
+            raise_api_error(
+                status_code=401,
+                error_code="AUTH_MISSING_USER_ID",
+                message="User ID not found in token",
             )
         logger.info(f"Fetching changes from {from_timestamp} to {to_timestamp} for user {user_id}")
         
@@ -303,9 +309,10 @@ async def get_changes(
         raise
     except Exception as e:
         logger.error(f"Failed to fetch changes: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch changes: {str(e)}"
+        raise_api_error(
+            status_code=500,
+            error_code="KG_TEMPORAL_CHANGES_FAILED",
+            message="Failed to fetch changes",
         )
 
 
@@ -338,9 +345,10 @@ async def get_temporal_graph_state(
     try:
         user_id = user.get("user_id")
         if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User ID not found in token"
+            raise_api_error(
+                status_code=401,
+                error_code="AUTH_MISSING_USER_ID",
+                message="User ID not found in token",
             )
         as_of = request.as_of
         logger.info(f"Fetching graph state as of {as_of} for user {user_id}")
@@ -431,9 +439,10 @@ async def get_temporal_graph_state(
         raise
     except Exception as e:
         logger.error(f"Failed to fetch temporal graph state: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch temporal graph state: {str(e)}"
+        raise_api_error(
+            status_code=500,
+            error_code="KG_TEMPORAL_GRAPH_STATE_FAILED",
+            message="Failed to fetch temporal graph state",
         )
 
 
@@ -466,9 +475,10 @@ async def compare_graph_states(
     try:
         user_id = user.get("user_id")
         if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User ID not found in token"
+            raise_api_error(
+                status_code=401,
+                error_code="AUTH_MISSING_USER_ID",
+                message="User ID not found in token",
             )
         from_ts = request.from_timestamp
         to_ts = request.to_timestamp
@@ -568,7 +578,8 @@ async def compare_graph_states(
         raise
     except Exception as e:
         logger.error(f"Failed to compare graph states: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to compare graph states: {str(e)}"
+        raise_api_error(
+            status_code=500,
+            error_code="KG_TEMPORAL_GRAPH_COMPARE_FAILED",
+            message="Failed to compare graph states",
         )

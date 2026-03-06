@@ -34,6 +34,10 @@ class AICOPaths:
         # Check for explicit override first
         if override := os.getenv("AICO_DATA_DIR"):
             return Path(override)
+
+        # CRITICAL: Do NOT call ConfigurationManager.initialize() here as it creates
+        # a circular dependency loop (ConfigManager -> AICOPaths -> ConfigManager)
+        # Configuration override for data_root should be set via AICO_DATA_DIR env var instead
         
         # Lazy import platformdirs only when needed
         import platformdirs

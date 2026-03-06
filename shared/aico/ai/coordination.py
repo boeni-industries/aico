@@ -10,7 +10,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Callable, Set
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 import logging
 
 from ..core.topics import AICOTopics
@@ -47,7 +47,7 @@ class AIProcessingRequest:
     dependency_components: List[str] = field(default_factory=list)
     
     # Metadata
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     requester: str = "conversation_engine"
 
 
@@ -76,7 +76,7 @@ class AIProcessingResponse:
     total_time_ms: float = 0.0
     
     # Metadata
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     responder: str = ""
 
 

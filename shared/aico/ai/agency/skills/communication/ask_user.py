@@ -134,9 +134,20 @@ class AskUserSkill(Skill):
             async with UnitOfWork(self._session_factory) as uow:
                 existing = await uow.interaction_requests.get_by_idempotency_key(user_id, idempotency_key)
                 if existing is not None:
+                    existing_context = ""
+                    try:
+                        if isinstance(existing.context_json, dict):
+                            existing_context = existing.context_json.get("context") or ""
+                    except Exception:
+                        existing_context = ""
                     return SkillResult(
                         success=True,
                         output={
+                            "question": existing.prompt,
+                            "context": existing_context,
+                            "urgency": getattr(existing, "severity", None) or urgency,
+                            "expected_answer_type": getattr(existing, "expected_answer_type", None)
+                            or expected_answer_type,
                             "status": existing.status,
                             "interaction_id": existing.interaction_id,
                             "correlation_id": existing.correlation_id,
@@ -214,10 +225,11 @@ class AskUserSkill(Skill):
                 await bus_client.connect()
                 payload_struct = Struct()
                 payload_struct.update({"interaction": interaction.model_dump(mode="json"), "event": event.model_dump(mode="json")})
-                await bus_client.publish(
+                await bus_client.publish_durable(
                     f"interaction.notifications.{user_id}",
                     payload_struct,
                     correlation_id=correlation_id,
+                    audit_subject="audit.events.interaction",
                 )
             finally:
                 try:

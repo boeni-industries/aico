@@ -1,0 +1,44 @@
+FROM python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    TOKENIZERS_PARALLELISM=false
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    git \
+    build-essential \
+    g++ \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
+
+COPY shared /app/shared
+COPY modelservice /app/modelservice
+COPY modelservice/uv.lock /app/modelservice/uv.lock
+COPY README.md VERSIONS /app/
+
+# Install deps (without installing the local project) so this layer is stable
+# across source-only changes.
+WORKDIR /app/modelservice
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project
+
+WORKDIR /app
+
+COPY backend /app/backend
+COPY cli /app/cli
+COPY proto /app/proto
+COPY config /app/config
+
+# Install the local modelservice project into the already-synced environment.
+WORKDIR /app/modelservice
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install -e .
+
+WORKDIR /app/modelservice
+
+CMD ["/app/modelservice/.venv/bin/python", "-m", "modelservice.main"]

@@ -11,7 +11,6 @@ from datetime import datetime
 from backend.scheduler.resource_monitor import ResourceMonitor, ResourceSnapshot
 
 
-@pytest.mark.asyncio
 class TestResourceMonitor:
     """Test resource monitoring functionality"""
     
@@ -156,13 +155,16 @@ class TestResourceMonitor:
             assert result is True
     
     def test_should_defer_task_high_cpu(self):
-        """Test task deferral due to high CPU"""
+        """Test task deferral due to high CPU usage"""
         # Arrange
         monitor = ResourceMonitor()
         
         # Mock a high CPU snapshot by getting real snapshot and checking
         # We can't reliably mock high CPU, so we test the logic
-        should_defer, reason = monitor.should_defer_task(cpu_threshold=0.1)  # Very low threshold
+        should_defer, reason = monitor.should_defer_task(
+            cpu_threshold=0.1,  # Very low threshold
+            memory_threshold=100.0  # Don't defer on memory
+        )
         
         # Assert
         # If CPU is above 0.1%, should defer
@@ -286,7 +288,6 @@ class TestResourceMonitor:
             assert isinstance(snapshot.on_ac_power, bool)
 
 
-@pytest.mark.asyncio
 class TestResourceMonitorWithoutPsutil:
     """Test resource monitor behavior when psutil is unavailable"""
     

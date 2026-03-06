@@ -11,12 +11,14 @@ Real-time bidirectional communication with:
 
 import asyncio
 import json
-import websockets
 from typing import Dict, Any, Optional, Set
 from dataclasses import dataclass
 import sys
 from pathlib import Path
 from google.protobuf.struct_pb2 import Struct
+
+from websockets.asyncio.server import serve, ServerConnection
+from websockets.exceptions import ConnectionClosed
 
 # Shared modules now installed via UV editable install
 
@@ -38,7 +40,7 @@ from ..middleware.validator import MessageValidator
 @dataclass
 class WebSocketConnection:
     """WebSocket connection state"""
-    websocket: websockets.WebSocketServerProtocol
+    websocket: ServerConnection
     client_id: str
     user: Optional[Any] = None
     user_uuid: Optional[str] = None
@@ -107,7 +109,7 @@ class WebSocketAdapter:
         """Start WebSocket server"""
         try:
             # Start WebSocket server
-            self.server = await websockets.serve(
+            self.server = await serve(
                 self._handle_connection,
                 host,
                 self.port,
@@ -170,7 +172,7 @@ class WebSocketAdapter:
         except Exception as e:
             self.logger.error(f"Error stopping WebSocket adapter: {e}")
     
-    async def _handle_connection(self, websocket):
+    async def _handle_connection(self, websocket: ServerConnection):
         """Handle new WebSocket connection"""
         client_id = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
         
@@ -203,7 +205,7 @@ class WebSocketAdapter:
             async for message in websocket:
                 await self._handle_message(connection, message)
                 
-        except websockets.exceptions.ConnectionClosed:
+        except ConnectionClosed:
             self.logger.debug(f"WebSocket connection closed: {client_id}")
         except Exception as e:
             self.logger.error(f"WebSocket connection error for {client_id}: {e}")
@@ -464,7 +466,7 @@ class WebSocketAdapter:
         try:
             message_json = json.dumps(message)
             await connection.websocket.send(message_json)
-        except websockets.exceptions.ConnectionClosed:
+        except ConnectionClosed:
             pass # Connection already closed - this is expected and acceptable. No action needed as the connection cleanup will be handled elsewhere
         except Exception as e:
             self.logger.error(f"Error sending WebSocket message: {e}")
@@ -598,60 +600,70 @@ class WebSocketAdapter:
         return MessageToDict(s)
 
     async def _subscribe_to_interaction_notifications(self):
-        """Subscribe to message bus for interaction notification events"""
+        """Subscribe to message bus for all real-time events (interactions, conversations, scheduler)"""
         try:
-            self.bus_client = MessageBusClient("websocket_gateway_interactions")
+            self.bus_client = MessageBusClient("websocket_gateway")
             await self.bus_client.connect()
             
-            async def handle_interaction_notification(bus_message):
-                """Handle incoming interaction notification from message bus"""
+            async def handle_event(bus_message):
+                """Handle incoming events from message bus"""
                 try:
                     topic = bus_message.metadata.message_type
-                    self.logger.info(f"WebSocket adapter received message on topic: {topic}")
+                    self.logger.debug(f"WebSocket adapter received message on topic: {topic}")
                     
-                    parts = topic.split(".")
-                    if len(parts) < 3:
-                        self.logger.warning(f"Topic has insufficient parts: {topic}")
-                        return
-
                     # Payload is a protobuf Struct that contains JSON-ish dict
                     payload_struct = Struct()
                     bus_message.any_payload.Unpack(payload_struct)
                     payload = self._struct_to_dict(payload_struct)
                     
-                    self.logger.info(f"Unpacked payload, broadcasting to connections")
-
-                    # interaction.notifications.{user_uuid}
-                    if parts[0] == "interaction" and parts[1] == "notifications" and parts[2] != "admin":
-                        user_uuid = parts[2]
-                        await self.broadcast_to_user(user_uuid, topic, payload)
-                        self.logger.info(
-                            f"Forwarded interaction notification to user {user_uuid[:8]}",
-                            extra={"user_uuid": user_uuid, "topic": topic},
-                        )
+                    # Route based on topic pattern
+                    parts = topic.split("/")
+                    
+                    # conversation/ai/response/v1 - broadcast to user
+                    if topic == "conversation/ai/response/v1":
+                        user_uuid = bus_message.metadata.attributes.get("user_uuid") if bus_message.metadata.attributes else None
+                        if user_uuid:
+                            await self.broadcast_to_user(user_uuid, "conversation.responses", payload)
+                            self.logger.debug(f"Forwarded conversation response to user {user_uuid[:8]}")
                         return
-
-                    # interaction.notifications.admin (admin-only; forward to subscribers)
-                    if parts[0] == "interaction" and parts[1] == "notifications" and parts[2] == "admin":
-                        await self.broadcast_to_subscribers(topic, payload)
-                        self.logger.info(
-                            "Forwarded interaction admin notification",
-                            extra={"topic": topic},
-                        )
+                    
+                    # conversation/stream/v1 - broadcast to user
+                    if topic == "conversation/stream/v1":
+                        # StreamingResponse protobuf has no metadata field - get user_uuid from NATS attributes
+                        user_uuid = bus_message.metadata.attributes.get("user_uuid") if bus_message.metadata.attributes else None
+                        if user_uuid:
+                            await self.broadcast_to_user(user_uuid, "conversation.stream", payload)
+                            self.logger.debug(f"Forwarded conversation stream to user {user_uuid[:8]}")
+                        return
+                    
+                    # interaction.notifications.{user_uuid}
+                    if len(parts) >= 3 and parts[0] == "interaction" and parts[1] == "notifications":
+                        if parts[2] != "admin":
+                            user_uuid = parts[2]
+                            await self.broadcast_to_user(user_uuid, topic, payload)
+                            self.logger.debug(f"Forwarded interaction notification to user {user_uuid[:8]}")
+                        else:
+                            # Admin notifications - broadcast to subscribers
+                            await self.broadcast_to_subscribers(topic, payload)
+                            self.logger.debug("Forwarded interaction admin notification")
+                        return
+                    
                 except Exception as e:
-                    self.logger.error(f"Error handling interaction notification: {e}", exc_info=True)
+                    self.logger.error(f"Error handling event: {e}", exc_info=True)
             
-            # Subscribe to all interaction notification topics (user-scoped + admin)
-            await self.bus_client.subscribe("interaction.notifications.", handle_interaction_notification)
+            # Subscribe to all relevant topics
+            await self.bus_client.subscribe("conversation/ai/response/v1", handle_event)
+            await self.bus_client.subscribe("conversation/stream/v1", handle_event)
+            await self.bus_client.subscribe("interaction.notifications.", handle_event)
             
-            self.logger.info("Subscribed to interaction notification events on message bus")
+            self.logger.info("WebSocket gateway subscribed to conversation, interaction, and scheduler events")
             
             # Keep subscription alive
             while True:
-                await asyncio.sleep(60)  # Keep alive
+                await asyncio.sleep(60)
                 
         except asyncio.CancelledError:
-            self.logger.info("Interaction notification subscription cancelled")
+            self.logger.info("WebSocket gateway subscription cancelled")
             raise
         except Exception as e:
-            self.logger.error(f"Error in interaction notification subscription: {e}")
+            self.logger.error(f"Error in WebSocket gateway subscription: {e}")

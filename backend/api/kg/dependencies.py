@@ -11,6 +11,9 @@ import jwt
 
 from aico.core.logging import get_logger
 
+from backend.api import dependencies as api_dependencies
+from backend.api.errors import raise_api_error
+
 logger = get_logger("backend.api.kg.dependencies")
 security = HTTPBearer()
 
@@ -18,9 +21,10 @@ security = HTTPBearer()
 def get_auth_manager(request: Request):
     """Get auth manager from service container via FastAPI app state."""
     if not hasattr(request.app.state, 'service_container'):
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Service container not initialized"
+        raise_api_error(
+            status_code=500,
+            error_code="SERVICE_CONTAINER_NOT_INITIALIZED",
+            message="Service container not initialized",
         )
     container = request.app.state.service_container
     security_plugin = container.get_service("security_plugin")
@@ -44,51 +48,7 @@ def get_current_user(
     Raises:
         HTTPException: If authentication fails
     """
-    try:
-        token = credentials.credentials
-        
-        # Decode and validate JWT token
-        try:
-            payload = jwt.decode(
-                token,
-                auth_manager._get_jwt_secret(),
-                algorithms=["HS256"],
-                options={"verify_aud": False}  # Skip audience validation for CLI compatibility
-            )
-            
-            user_id = payload.get("sub")
-            if not user_id:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid token: missing user ID"
-                )
-            
-            return {
-                "user_id": user_id,
-                "username": payload.get("username"),
-                "role": payload.get("role", "user")
-            }
-            
-        except jwt.ExpiredSignatureError:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token has expired"
-            )
-        except jwt.InvalidTokenError as e:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"Invalid token: {str(e)}"
-            )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Authentication failed: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    return api_dependencies.get_current_user(credentials=credentials, auth_manager=auth_manager)
 
 
 def get_kg_storage(request: Request):
@@ -103,9 +63,10 @@ def get_kg_storage(request: Request):
     """
     try:
         if not hasattr(request.app.state, 'service_container'):
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Service container not initialized"
+            raise_api_error(
+                status_code=500,
+                error_code="SERVICE_CONTAINER_NOT_INITIALIZED",
+                message="Service container not initialized",
             )
         
         container = request.app.state.service_container
@@ -113,14 +74,9 @@ def get_kg_storage(request: Request):
         # Get database connection
         db_connection = container.get_service("database")
         
-        # Get shared ChromaDB client from service container
-        # This ensures all services use the same ChromaDB instance (singleton pattern)
-        chromadb_client = container.get_service("chromadb_client")
-        logger.debug("Retrieved shared ChromaDB client from service container")
-        
-        # Create storage instance
+        # Create storage instance with PostgreSQL + pgvector only
         from aico.ai.knowledge_graph import PropertyGraphStorage
-        storage = PropertyGraphStorage(db_connection, chromadb_client, None)
+        storage = PropertyGraphStorage(db_connection, None, None)
         
         return storage
         
@@ -128,9 +84,10 @@ def get_kg_storage(request: Request):
         raise
     except Exception as e:
         logger.error(f"Failed to get KG storage: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Knowledge graph storage unavailable"
+        raise_api_error(
+            status_code=500,
+            error_code="KG_STORAGE_UNAVAILABLE",
+            message="Knowledge graph storage unavailable",
         )
 
 
@@ -146,9 +103,10 @@ def get_db_connection(request: Request):
     """
     try:
         if not hasattr(request.app.state, 'service_container'):
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Service container not initialized"
+            raise_api_error(
+                status_code=500,
+                error_code="SERVICE_CONTAINER_NOT_INITIALIZED",
+                message="Service container not initialized",
             )
         
         container = request.app.state.service_container
@@ -157,7 +115,8 @@ def get_db_connection(request: Request):
         raise
     except Exception as e:
         logger.error(f"Failed to get database connection: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database connection unavailable"
+        raise_api_error(
+            status_code=500,
+            error_code="DATABASE_UNAVAILABLE",
+            message="Database connection unavailable",
         )

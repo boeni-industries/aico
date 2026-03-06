@@ -30,6 +30,28 @@
       "title": "\ud83d\udd0e Raw Logs",
       "type": "link",
       "url": "/d/aico-raw-logs"
+    },
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": false,
+      "title": "\ud83d\udd0e Traces",
+      "type": "link",
+      "url": "/d/aico-traces-drilldown"
+    },
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": false,
+      "title": "\ud83d\udd0e Rate Limit Offenders",
+      "type": "link",
+      "url": "/d/aico-rate-limit-offenders"
     }
   ],
   "liveNow": false,
@@ -37,7 +59,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -60,7 +82,7 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
+        "w": 5,
         "x": 0,
         "y": 6
       },
@@ -86,10 +108,10 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({service=~\"$service\", level=~\"$level\"} |~ \"$search\" [$__range]))",
+          "expr": "sum(count_over_time({service=~\"$service\", level=~\"$level\"} |~ \"$search\" [$__range])) or vector(0)",
           "queryType": "instant",
           "refId": "A"
         }
@@ -100,7 +122,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -131,8 +153,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 6,
+        "w": 5,
+        "x": 10,
         "y": 6
       },
       "id": 3,
@@ -157,10 +179,10 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({service=~\"$service\", level=\"ERROR\"} |~ \"$search\" [$__range]))",
+          "expr": "sum(count_over_time({service=~\"$service\", level=\"ERROR\"} |~ \"$search\" [$__range])) or vector(0)",
           "queryType": "instant",
           "refId": "A"
         }
@@ -171,7 +193,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -202,8 +224,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 12,
+        "w": 5,
+        "x": 5,
         "y": 6
       },
       "id": 4,
@@ -228,10 +250,10 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({service=~\"$service\", level=\"CRITICAL\"} |~ \"$search\" [$__range]))",
+          "expr": "sum(count_over_time({service=~\"$service\", level=\"CRITICAL\"} |~ \"$search\" [$__range])) or vector(0)",
           "queryType": "instant",
           "refId": "A"
         }
@@ -242,7 +264,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -265,8 +287,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 18,
+        "w": 5,
+        "x": 15,
         "y": 6
       },
       "id": 5,
@@ -291,10 +313,10 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({service=~\"$service\", level=\"WARNING\"} |~ \"$search\" [$__range]))",
+          "expr": "sum(count_over_time({service=~\"$service\", level=\"WARNING\"} |~ \"$search\" [$__range])) or vector(0)",
           "queryType": "instant",
           "refId": "A"
         }
@@ -305,7 +327,70 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 6
+      },
+      "id": 15,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.4.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({service=~\"$service\"} |= \"rate_limiter.rate_limited\" [$__range])) or vector(0)",
+          "queryType": "instant",
+          "refId": "A"
+        }
+      ],
+      "title": "🚦 Rate Limiting Hits",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -446,7 +531,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "sum by(level) (count_over_time({service=~\"$service\", level=~\"$level\"} |~ \"$search\" [1m]))",
@@ -464,7 +549,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -522,7 +607,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "sum by(service) (count_over_time({service=~\".+\", level=~\"$level\"} |~ \"$search\" [$__range]))",
@@ -539,7 +624,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -658,10 +743,10 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum by(level) (count_over_time({service=~\".+\", level=~\"$level\"} |~ \"$search\" [$__range]))",
+          "expr": "sum by(level) (count_over_time({service=~\".+\"} |~ \"$search\" [$__range]))",
           "legendFormat": "{{level}}",
           "queryType": "instant",
           "refId": "A",
@@ -675,7 +760,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -755,7 +840,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "sum by(service) (count_over_time({service=~\"$service\", level=~\"$level\"} |~ \"$search\" [1m]))",
@@ -773,7 +858,107 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 30,
+            "gradientMode": "opacity",
+            "hideFrom": {
+              "tooltip": false,
+              "viz": false,
+              "legend": false
+            },
+            "insertNulls": true,
+            "lineInterpolation": "smooth",
+            "lineWidth": 3,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 34
+      },
+      "id": 14,
+      "interval": "1m",
+      "intervalFactor": 1,
+      "options": {
+        "legend": {
+          "calcs": [
+            "sum",
+            "max",
+            "last"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({service=~\"$service\"} |= \"rate_limiter.rate_limited\" [1m])) or vector(0)",
+          "legendFormat": "rate_limited",
+          "interval": "1m",
+          "intervalMs": 60000,
+          "maxDataPoints": 60,
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "🚦 Rate Limit Hits (HTTP 429)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -831,8 +1016,8 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 24,
-        "x": 0,
+        "w": 12,
+        "x": 12,
         "y": 34
       },
       "id": 11,
@@ -858,7 +1043,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "sum(count_over_time({service=~\"$service\", level=~\"ERROR|CRITICAL\"} |~ \"$search\" [1m])) or vector(0)",
@@ -876,7 +1061,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 8,
@@ -899,7 +1084,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "{service=~\"$service\", level=~\"ERROR|CRITICAL\"} |~ \"$search\" | json | line_format \"{{ if .msg }}{{ .msg }}{{ else }}{{ __line__ }}{{ end }}\"",
@@ -914,7 +1099,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 8,
@@ -937,7 +1122,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "{service=\"backend\"} |~ \"Slow request\" |~ \"$search\" | json | line_format \"{{ if .msg }}{{ .msg }}{{ else }}{{ __line__ }}{{ end }}\"",
@@ -971,7 +1156,7 @@
         },
         "datasource": {
           "type": "loki",
-          "uid": "P8E80F9AEF21F6940"
+          "uid": "loki"
         },
         "definition": "label_values(service)",
         "hide": 0,

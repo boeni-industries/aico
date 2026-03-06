@@ -12,7 +12,6 @@ from backend.scheduler.priority_queue import PriorityTaskQueue, PrioritizedTask
 from backend.scheduler.tasks.base import TaskPriority, TaskQueue
 
 
-@pytest.mark.asyncio
 class TestPriorityTaskQueue:
     """Test priority queue operations"""
     

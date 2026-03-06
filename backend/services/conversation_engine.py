@@ -26,6 +26,9 @@ from aico.proto.aico_core_envelope_pb2 import AicoMessage
 from aico.proto.aico_conversation_pb2 import ConversationMessage, Message, MessageAnalysis
 from aico.proto.aico_modelservice_pb2 import CompletionsResponse, CompletionsRequest, ConversationMessage as ModelConversationMessage
 from aico.ai import ProcessingContext, ai_registry
+from aico.ai.llm.factory import LLMClientFactory
+from aico.ai.characters import CharacterManager
+from aico.data.uow import UnitOfWork
 from backend.core.ai_plugin_base import ProcessingRequest
 from backend.core.service_container import BaseService
 from google.protobuf.timestamp_pb2 import Timestamp
@@ -84,6 +87,12 @@ class ConversationEngine(BaseService):
         # Message bus client
         self.bus_client: Optional[MessageBusClient] = None
 
+        # LLM client (vLLM)
+        self.llm_client = None
+        
+        # Character manager
+        self.character_manager = None
+
         # Optional agency plugin (wired via feature flag and service container)
         self.agency_plugin = None
         
@@ -120,29 +129,32 @@ class ConversationEngine(BaseService):
         self.response_timeout = engine_config.get("response_timeout_seconds", 15.0)
         self.default_response_mode = ResponseMode(engine_config.get("default_response_mode", "text_only"))
         
-        # Load conversation model name from configuration
-        # NO FALLBACK - fail loudly if model configuration is missing or invalid
-        modelservice_config = self.container.config.get("modelservice.ollama")
-        if not modelservice_config:
-            raise ValueError("CRITICAL: Missing modelservice.ollama configuration")
+        # Initialize LLM client (vLLM)
+        try:
+            llm_config = self.container.config.get("llm")
+            if not llm_config:
+                raise ValueError("CRITICAL: Missing llm configuration")
+            
+            self.llm_client = LLMClientFactory.create(llm_config)
+            self.logger.info("✅ vLLM client initialized")
+        except Exception as e:
+            raise ValueError(f"CRITICAL: Failed to initialize vLLM client: {e}")
         
-        default_models = modelservice_config.get("default_models")
-        if not default_models:
-            raise ValueError("CRITICAL: Missing modelservice.ollama.default_models configuration")
-        
-        conversation_model_config = default_models.get("conversation")
-        if not conversation_model_config:
-            raise ValueError("CRITICAL: Missing modelservice.ollama.default_models.conversation configuration")
-        
-        self.model_name = conversation_model_config.get("name")
-        if not self.model_name:
-            raise ValueError("CRITICAL: Missing modelservice.ollama.default_models.conversation.name - model name must be explicitly configured")
-
-        self.character_name = conversation_model_config.get("character_name")
-        if not self.character_name and self.model_name:
-            model_base = self.model_name.split(":", 1)[0]
-            model_base = model_base.rsplit("/", 1)[-1]
-            self.character_name = model_base.strip().capitalize() if model_base else None
+        # Initialize character manager
+        try:
+            self.character_manager = CharacterManager(self.container.config)
+            
+            # Get default character from config
+            vllm_config = self.container.config.get("llm.vllm", {})
+            self.character_name = vllm_config.get("default_character", "eve")
+            
+            # Load character configuration
+            character_config = self.character_manager.get_character(self.character_name)
+            self.model_name = character_config.get("base_model")
+            
+            self.logger.info(f"✅ Character manager initialized: {self.character_name} ({self.model_name})")
+        except Exception as e:
+            raise ValueError(f"CRITICAL: Failed to initialize character manager: {e}")
         
         self.logger.debug(f"Conversation engine using model: {self.model_name}")
 
@@ -217,10 +229,17 @@ class ConversationEngine(BaseService):
     async def _setup_subscriptions(self) -> None:
         """Set up message bus subscriptions based on enabled features"""
         # Core conversation input
+        # IMPORTANT: MessageBusClient.publish() tenant-scopes subjects as:
+        #   aico.<tenant_id>.<topic.replace('/', '.')>
+        # Core runs multi-tenant, so it must subscribe with a wildcard tenant prefix.
+        topic_subject = AICOTopics.CONVERSATION_USER_INPUT.replace("/", ".")
+        wildcard_pattern = f"aico.*.{topic_subject}"
+        self.logger.info(f"🔍 [SUBSCRIPTION] Subscribing to wildcard pattern: {wildcard_pattern}")
         await self.bus_client.subscribe(
-            AICOTopics.CONVERSATION_USER_INPUT,
-            self._handle_user_input
+            wildcard_pattern,
+            self._handle_user_input,
         )
+        self.logger.info(f"✅ [SUBSCRIPTION] Successfully subscribed to: {wildcard_pattern}")
         
         # Note: LLM response subscriptions are now dynamic per-request
         # Each request subscribes to its own response topic: modelservice/chat/response/v1/conversation_engine/{request_id}
@@ -250,7 +269,11 @@ class ConversationEngine(BaseService):
     # ============================================================================
     
     async def _handle_user_input(self, message) -> None:
-        """Handle incoming user input message"""
+        """Handle incoming user input message from conversation API"""
+        self.logger.info(
+            f"🔍 [CORE_RECEIVE] ConversationEngine received user input message! "
+            f"message_id={message.metadata.message_id if message.metadata else 'unknown'}"
+        )
         try:
             # The message is an AicoMessage envelope, need to unpack the ConversationMessage
             from aico.proto.aico_conversation_pb2 import ConversationMessage
@@ -259,34 +282,112 @@ class ConversationEngine(BaseService):
             conv_message = ConversationMessage()
             message.any_payload.Unpack(conv_message)
             
+            # DEBUG: Log the received message structure
+            self.logger.info(
+                f"🔍 [DEBUG] Received ConversationMessage: turn_number={conv_message.message.turn_number}, "
+                f"text='{conv_message.message.text[:50]}...', conversation_id={conv_message.message.conversation_id}"
+            )
+
+            tenant_id = None
+            request_id = None
+            try:
+                tenant_id = message.metadata.attributes.get("tenant_id")
+                request_id = message.metadata.attributes.get("request_id")
+            except Exception:
+                tenant_id = None
+                request_id = None
+            
             # Extract user information from the message
             # Use user_id field (actual user UUID), not source (which is just "conversation_api")
             user_id = conv_message.user_id if conv_message.user_id else conv_message.source
             conversation_id = conv_message.message.conversation_id
             
-            self.logger.debug(f"[DEBUG] ConversationEngine: Received user input.", extra={
-                "conversation_id": conversation_id,
-                "user_id": user_id,
-                "message_type": conv_message.message.type
-            })
+            self.logger.debug(
+                "[DEBUG] ConversationEngine: Received user input.",
+                extra={
+                    "conversation_id": conversation_id,
+                    "user_id": user_id,
+                    "message_type": conv_message.message.type,
+                },
+            )
             
             # Get user context (simplified)
             user_context = await self._get_or_create_user_context(user_id)
-            
+
+            # Persist conversation + user message (REQUIRED - Postgres is the source of truth)
+            if not tenant_id:
+                self.logger.error(
+                    "[CRITICAL] Missing tenant_id in envelope metadata; cannot persist or process conversation.",
+                    extra={
+                        "request_id": conv_message.message_id,
+                        "conversation_id": conversation_id,
+                        "user_id": user_id,
+                        "envelope_attributes": dict(getattr(message.metadata, "attributes", {}) or {}),
+                    },
+                )
+                await self._publish_persistence_error(
+                    request_id=conv_message.message_id,
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    error=f"Missing tenant_id in envelope metadata",
+                )
+                return
+            if not request_id:
+                self.logger.error(
+                    "[CRITICAL] Missing request_id in envelope metadata; cannot correlate persistence/response.",
+                    extra={
+                        "request_id": conv_message.message_id,
+                        "conversation_id": conversation_id,
+                        "user_id": user_id,
+                        "envelope_attributes": dict(getattr(message.metadata, "attributes", {}) or {}),
+                    },
+                )
+                await self._publish_persistence_error(
+                    request_id=conv_message.message_id,
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    error=f"Missing request_id in envelope metadata",
+                )
+                return
+
+            try:
+                await self._persist_user_message(
+                    tenant_id=tenant_id,
+                    request_id=request_id,
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    content=conv_message.message.text,
+                )
+            except Exception as e:
+                self.logger.error(f"Failed to persist user message (aborting processing): {e}")
+                await self._publish_persistence_error(
+                    request_id=conv_message.message_id,
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    error=f"Failed to persist user message: {e}",
+                )
+                return
+
             # Generate response using semantic memory approach
-            await self._generate_response(user_context, conv_message)
-            
+            # IMPORTANT: tenant_id + http_request_id must be available for assistant persistence
+            # before any LLM generation/finalization occurs.
+            await self._generate_response(
+                user_context,
+                conv_message,
+                tenant_id=tenant_id,
+                http_request_id=request_id,
+            )
+
             # Phase 6: Async goal extraction (fire-and-forget, no blocking)
             if self.enable_agency and self.agency_plugin:
                 try:
                     message_text = conv_message.message.text
-                    import asyncio
                     asyncio.create_task(
                         self._extract_user_goal_async(
                             user_id=user_id,
                             message_id=conv_message.message_id,
                             message_text=message_text,
-                            conversation_id=conversation_id
+                            conversation_id=conversation_id,
                         )
                     )
                 except Exception as task_error:
@@ -296,6 +397,93 @@ class ConversationEngine(BaseService):
             self.logger.error(f"Error handling user input: {e}", extra={
                 "error": str(e)
             })
+
+    async def _publish_persistence_error(
+        self,
+        *,
+        request_id: str | None,
+        user_id: str,
+        conversation_id: str,
+        error: str,
+    ) -> None:
+        """Publish an explicit error response and terminate any streaming for this request.
+
+        This prevents API callers from hanging/timeouting when persistence fails.
+        """
+        try:
+            if not self.bus_client:
+                return
+
+            from aico.core.topics import AICOTopics
+
+            rid = request_id or str(uuid.uuid4())
+
+            # Terminate streaming with an error marker (if the client is streaming)
+            try:
+                from aico.proto.aico_conversation_pb2 import StreamingResponse as StreamingResponseProto
+
+                error_chunk = StreamingResponseProto(
+                    request_id=rid,
+                    content=error,
+                    accumulated_content=error,
+                    done=True,
+                    content_type="error",
+                )
+                # Get user context for routing
+                pending_data = self.pending_responses.get(rid, {})
+                user_context = pending_data.get("user_context")
+                tenant_id = pending_data.get("tenant_id")
+                
+                attributes = {}
+                if user_context:
+                    attributes["user_uuid"] = user_context.user_id
+                
+                await self.bus_client.publish(
+                    AICOTopics.CONVERSATION_STREAM,
+                    error_chunk,
+                    tenant_id=tenant_id,
+                    correlation_id=rid,
+                    attributes=attributes if attributes else None,
+                )
+            except Exception:
+                # Streaming termination is best-effort; the HTTP API should still get an error response.
+                pass
+
+            # Also publish a normal final response message (non-streaming path)
+            from aico.proto.aico_conversation_pb2 import ConversationMessage, Message
+            from google.protobuf.timestamp_pb2 import Timestamp
+            import time
+
+            ai_message = Message()
+            ai_message.conversation_id = conversation_id
+            ai_message.type = Message.MessageType.SYSTEM_RESPONSE
+            ai_message.text = error
+            # turn_number assigned automatically by repository
+
+            conv_message = ConversationMessage()
+            conv_message.message_id = rid
+            conv_message.user_id = user_id
+            conv_message.source = "conversation_engine"
+
+            ts = Timestamp()
+            ts.FromSeconds(int(time.time()))
+            conv_message.timestamp.CopyFrom(ts)
+            conv_message.message.CopyFrom(ai_message)
+
+            await self.bus_client.publish(
+                AICOTopics.CONVERSATION_RESPONSE,
+                conv_message,
+                tenant_id=tenant_id,
+                correlation_id=rid,
+            )
+            await self.bus_client.publish(
+                "conversation/ai/response/v1",
+                conv_message,
+                tenant_id=tenant_id,
+                correlation_id=rid,
+            )
+        except Exception as e:
+            self.logger.error(f"Failed to publish persistence error response: {e}")
     
     # ============================================================================
     # USER & THREAD MANAGEMENT
@@ -360,7 +548,14 @@ class ConversationEngine(BaseService):
     
     # Message analysis removed - semantic memory handles context automatically
     
-    async def _generate_response(self, user_context: UserContext, user_message: ConversationMessage) -> None:
+    async def _generate_response(
+        self,
+        user_context: UserContext,
+        user_message: ConversationMessage,
+        *,
+        tenant_id: str,
+        http_request_id: str,
+    ) -> None:
         """Generate and deliver response based on enabled features"""
         try:
             # Use the message_id from the API Gateway as request_id for proper correlation
@@ -370,6 +565,9 @@ class ConversationEngine(BaseService):
             self.pending_responses[request_id] = {
                 "user_context": user_context,
                 "user_message": user_message,
+                # Required for Postgres source-of-truth persistence
+                "tenant_id": tenant_id,
+                "http_request_id": http_request_id,
                 "components_needed": [],
                 "components_ready": {},
                 "started_at": datetime.now(UTC)
@@ -624,14 +822,21 @@ class ConversationEngine(BaseService):
                 recent_context = memory_data.get("recent_context", [])
                 self.logger.debug(f"Context: {len(user_facts)} facts, {len(recent_context)} messages")
             
-            system_prompt = self._build_system_prompt(user_context, memory_context, selected_skill_id, user_message)
-            if system_prompt:
-                self.logger.debug(f"System prompt: {len(system_prompt)} chars")
+            # Build system message with character personality + memory context
+            memory_facts = None
+            if memory_context:
+                memory_data = memory_context.get("memory_context", {})
+                user_facts = memory_data.get("user_facts", [])
+                if user_facts:
+                    memory_facts = {"facts": [f.get("content", "") for f in user_facts]}
+            
+            system_message = self.character_manager.build_system_message(
+                self.character_name,
+                memory_context=memory_facts
+            )
             
             # Build messages for LLM
-            messages = []
-            if system_prompt and system_prompt.strip():
-                messages.append(ModelConversationMessage(role="system", content=system_prompt))
+            messages = [system_message]
             
             # Add conversation history as actual messages (not just in system prompt)
             history_message_count = 0
@@ -689,7 +894,7 @@ class ConversationEngine(BaseService):
             if current_content:
                 messages.append(ModelConversationMessage(role="user", content=current_content))
 
-            system_chars = len(system_prompt) if system_prompt else 0
+            system_chars = len(system_message.get("content", "")) if system_message else 0
             history_chars = history_chars_total if memory_context else 0
             self.logger.info(
                 "🧠 [LLM_CONTEXT] request_id=%s model=%s messages=%s system_chars=%s history_msgs=%s history_chars=%s history_trunc=%s user_chars=%s",
@@ -703,48 +908,207 @@ class ConversationEngine(BaseService):
                 current_user_chars,
             )
             
-            # Create and publish LLM request
-            # CRITICAL: Do NOT override Modelfile parameters (temperature, max_tokens, etc.)
-            # The Modelfile defines character-specific settings that should be respected
-            completions_request = CompletionsRequest(
-                model=self.model_name,
-                messages=messages,
-                stream=True
-            )
-
+            # Get character parameters
+            character_params = self.character_manager.get_parameters(self.character_name)
+            
+            # Convert messages to dict format for LLM client
+            llm_messages = []
+            for msg in messages:
+                if isinstance(msg, dict):
+                    llm_messages.append(msg)
+                else:
+                    llm_messages.append({"role": msg.role, "content": msg.content})
+            
+            # Call vLLM directly (async streaming)
             try:
-                conversation_id = getattr(user_message.message, "conversation_id", "")
-                _ = conversation_id
-            except Exception:
-                pass
-            
-            # Build request-specific response topic for targeted delivery
-            response_topic = AICOTopics.build_response_topic(
-                AICOTopics.MODELSERVICE_CHAT_RESPONSE,
-                "conversation_engine",
-                request_id
-            )
-            
-            # Subscribe to our specific response topic before sending request
-            await self.bus_client.subscribe(response_topic, self._handle_llm_response)
+                self.logger.info(f"🚀 [vLLM] Calling vLLM with {len(llm_messages)} messages, model={self.model_name}")
 
-            # Subscribe once to the global streaming topic and route chunks by request_id.
-            # Subscribing per-request creates an ever-growing list of callbacks and can
-            # degrade performance until requests time out.
-            if not self._modelservice_stream_subscribed:
-                await self.bus_client.subscribe(AICOTopics.MODELSERVICE_COMPLETIONS_STREAM, self._handle_modelservice_stream_chunk)
-                self._modelservice_stream_subscribed = True
-            
-            await self.bus_client.publish(
-                AICOTopics.MODELSERVICE_CHAT_REQUEST,
-                completions_request,
-                correlation_id=request_id,
-                reply_to=response_topic  # Tell modelservice where to send response
-            )
-            
-            # Mark request sent and start streaming handler
-            self.pending_responses[request_id]["llm_request_sent"] = True
-            self.pending_responses[request_id]["response_topic"] = response_topic  # Track for cleanup
+                # True streaming from vLLM (OpenAI-compatible stream)
+                stream_iter = await self.llm_client.chat_completion(
+                    messages=llm_messages,
+                    model=self.model_name,
+                    stream=True,
+                    **character_params,
+                )
+
+                from aico.proto.aico_conversation_pb2 import StreamingResponse as StreamingResponseProto
+                from aico.core.topics import AICOTopics
+
+                # Split stream into two channels:
+                # - content_type="thinking": content inside <think>...</think>
+                # - content_type="response": content outside tags
+                accumulated_response = ""
+                accumulated_thinking = ""
+                chunk_count = 0
+
+                in_think = False
+                parse_buffer = ""
+                open_tag = "<think>"
+                close_tag = "</think>"
+                
+                # Define attributes for NATS publishing (used in _publish_delta and final chunk)
+                pending_data = self.pending_responses.get(request_id, {})
+                tenant_id_for_attrs = pending_data.get("tenant_id")
+                attributes = {"user_uuid": user_context.user_id}
+
+                def _emit_safe_non_tag_suffix(buf: str, tag: str) -> tuple[str, str]:
+                    """Return (emit_text, keep_suffix) keeping at most len(tag)-1 chars to handle split tags."""
+                    keep_len = max(0, len(tag) - 1)
+                    if keep_len == 0 or len(buf) <= keep_len:
+                        return "", buf
+                    return buf[:-keep_len], buf[-keep_len:]
+
+                async def _publish_delta(delta_text: str, *, content_type: str) -> None:
+                    nonlocal accumulated_response, accumulated_thinking
+                    if not delta_text:
+                        return
+
+                    if content_type == "thinking":
+                        accumulated_thinking += delta_text
+                        accumulated_for_type = accumulated_thinking
+                    else:
+                        accumulated_response += delta_text
+                        accumulated_for_type = accumulated_response
+
+                    streaming_chunk = StreamingResponseProto(
+                        request_id=request_id,
+                        content=delta_text,
+                        accumulated_content=accumulated_for_type,
+                        done=False,
+                        content_type=content_type,
+                    )
+
+                    await self.bus_client.publish(
+                        AICOTopics.CONVERSATION_STREAM,
+                        streaming_chunk,
+                        tenant_id=tenant_id_for_attrs,
+                        correlation_id=request_id,
+                        attributes=attributes,
+                    )
+
+                async for chunk in stream_iter:
+                    try:
+                        # openai-python streaming chunk object
+                        if not getattr(chunk, "choices", None):
+                            continue
+                        choice0 = chunk.choices[0]
+                        delta = getattr(choice0, "delta", None)
+
+                        # vLLM/OpenAI-compatible servers may expose reasoning/thinking separately
+                        # (e.g., delta.reasoning or delta.reasoning_content). If present, stream it
+                        # as content_type="thinking" so the Flutter right drawer can display it.
+                        delta_reasoning = None
+                        if delta is not None:
+                            delta_reasoning = getattr(delta, "reasoning", None)
+                            if not delta_reasoning:
+                                delta_reasoning = getattr(delta, "reasoning_content", None)
+
+                        if delta_reasoning:
+                            chunk_count += 1
+                            await _publish_delta(str(delta_reasoning), content_type="thinking")
+                            if chunk_count == 1:
+                                self.logger.info(f"📤 [vLLM] Published first streaming delta")
+
+                        delta_content = getattr(delta, "content", None) if delta else None
+                        if not delta_content:
+                            # can be role/tool_calls/etc.
+                            continue
+
+                        chunk_count += 1
+
+                        parse_buffer += delta_content
+
+                        # Incrementally parse think tags, even if tags are split across deltas.
+                        while True:
+                            if not in_think:
+                                idx = parse_buffer.find(open_tag)
+                                if idx == -1:
+                                    emit_text, keep_suffix = _emit_safe_non_tag_suffix(parse_buffer, open_tag)
+                                    if emit_text:
+                                        await _publish_delta(emit_text, content_type="response")
+                                    parse_buffer = keep_suffix
+                                    break
+
+                                # Emit response text before <think>
+                                before = parse_buffer[:idx]
+                                if before:
+                                    await _publish_delta(before, content_type="response")
+
+                                # Consume the open tag
+                                parse_buffer = parse_buffer[idx + len(open_tag):]
+                                in_think = True
+                                continue
+
+                            # in_think
+                            idx = parse_buffer.find(close_tag)
+                            if idx == -1:
+                                emit_text, keep_suffix = _emit_safe_non_tag_suffix(parse_buffer, close_tag)
+                                if emit_text:
+                                    await _publish_delta(emit_text, content_type="thinking")
+                                parse_buffer = keep_suffix
+                                break
+
+                            before = parse_buffer[:idx]
+                            if before:
+                                await _publish_delta(before, content_type="thinking")
+
+                            parse_buffer = parse_buffer[idx + len(close_tag):]
+                            in_think = False
+                            continue
+
+                        if chunk_count == 1:
+                            self.logger.info(f"📤 [vLLM] Published first streaming delta")
+
+                    except Exception as e:
+                        self.logger.error(f"❌ [vLLM] Error processing streaming delta: {e}")
+
+                # Flush remaining parse buffer after stream ends
+                if parse_buffer:
+                    if in_think:
+                        await _publish_delta(parse_buffer, content_type="thinking")
+                    else:
+                        await _publish_delta(parse_buffer, content_type="response")
+                    parse_buffer = ""
+
+                assistant_content = accumulated_response
+                self.logger.info(
+                    f"✅ [vLLM] Streaming complete ({chunk_count} deltas, response_chars={len(accumulated_response)}, thinking_chars={len(accumulated_thinking)})"
+                )
+
+                # Store response for delivery
+                self.pending_responses[request_id]["llm_response"] = assistant_content
+
+                # Final done=True marker chunk
+                self.logger.info(f"🏁 [STREAMING] About to publish final done=True chunk for request_id={request_id}")
+                final_chunk = StreamingResponseProto(
+                    request_id=request_id,
+                    content="",
+                    accumulated_content=assistant_content,
+                    done=True,
+                    content_type="response",
+                )
+                await self.bus_client.publish(
+                    AICOTopics.CONVERSATION_STREAM,
+                    final_chunk,
+                    tenant_id=tenant_id_for_attrs,
+                    correlation_id=request_id,
+                    attributes=attributes,
+                )
+                self.logger.info(f"✅ [STREAMING] Published final done=True chunk for request_id={request_id}")
+
+                self.logger.info(f"📤 [vLLM] Delivering response to user via _finalize_streaming_response")
+
+                # Deliver final response to user
+                await self._finalize_streaming_response(request_id, assistant_content)
+
+                self.logger.info(f"✅ [vLLM] Response delivered successfully")
+                
+            except Exception as e:
+                self.logger.error(f"❌ [vLLM] vLLM call failed: {e}", exc_info=True)
+                # Clean up and re-raise - no fallback to Ollama/modelservice
+                if request_id in self.pending_responses:
+                    await self._cleanup_request(request_id)
+                raise
             # Streaming chunks are handled by the shared subscription handler
             # (_handle_modelservice_stream_chunk)
             
@@ -780,10 +1144,21 @@ class ConversationEngine(BaseService):
             streaming_response.timestamp = int(time.time() * 1000)
             streaming_response.content_type = content_type
 
+            # Get user context for routing
+            pending_data = self.pending_responses.get(request_id, {})
+            user_context = pending_data.get("user_context")
+            tenant_id = pending_data.get("tenant_id")
+            
+            attributes = {}
+            if user_context:
+                attributes["user_uuid"] = user_context.user_id
+            
             await self.bus_client.publish(
                 AICOTopics.CONVERSATION_STREAM,
                 streaming_response,
+                tenant_id=tenant_id,
                 correlation_id=request_id,
+                attributes=attributes if attributes else None,
             )
 
             if is_done:
@@ -816,6 +1191,8 @@ class ConversationEngine(BaseService):
     async def _finalize_streaming_response(self, request_id: str, final_content: str, thinking_content: str = "") -> None:
         """Finalize streaming response and deliver to user (semantic memory approach)"""
         try:
+            self.logger.info(f"🔍 [FINALIZE] Starting finalization for request_id={request_id}")
+            
             if request_id not in self.pending_responses:
                 self.logger.warning(f"Request {request_id} not found in pending responses")
                 return
@@ -826,6 +1203,47 @@ class ConversationEngine(BaseService):
             # Extract user info from the original message
             user_id = user_message.user_id
             conversation_id = user_message.message.conversation_id
+
+            tenant_id = request_data.get("tenant_id")
+            http_request_id = request_data.get("http_request_id")
+            
+            self.logger.info(f"🔍 [FINALIZE] user_id={user_id}, conversation_id={conversation_id}")
+
+            # Persist assistant message (REQUIRED - Postgres is the source of truth)
+            if not tenant_id:
+                await self._publish_persistence_error(
+                    request_id=request_id,
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    error="Missing tenant_id for request",
+                )
+                return
+            if not http_request_id:
+                await self._publish_persistence_error(
+                    request_id=request_id,
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    error="Missing http_request_id for request",
+                )
+                return
+
+            try:
+                await self._persist_assistant_message(
+                    tenant_id=tenant_id,
+                    request_id=http_request_id,
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    content=final_content,
+                )
+            except Exception as e:
+                self.logger.error(f"Failed to persist assistant message (aborting delivery): {e}")
+                await self._publish_persistence_error(
+                    request_id=request_id,
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    error=f"Failed to persist assistant message: {e}",
+                )
+                return
             
             # NOTE: AI response storage happens in streaming handler (line ~895)
             # to avoid duplicate storage
@@ -836,7 +1254,7 @@ class ConversationEngine(BaseService):
             ai_message.conversation_id = conversation_id
             ai_message.type = Message.MessageType.SYSTEM_RESPONSE
             ai_message.text = final_content
-            ai_message.turn_number = 1  # Simple turn tracking
+            # turn_number assigned automatically by repository
             
             # NOTE: Thinking is already delivered via streaming chunks with content_type="thinking"
             # No need to store it in the final message - frontend handles it during streaming
@@ -860,18 +1278,38 @@ class ConversationEngine(BaseService):
             conv_message.message.CopyFrom(ai_message)
             
             # Publish final response to both topics for compatibility
-            await self.bus_client.publish(
-                AICOTopics.CONVERSATION_RESPONSE,
-                conv_message,
-                correlation_id=request_id
-            )
-            
-            # Also publish to AI response topic for API layer
-            await self.bus_client.publish(
-                "conversation/ai/response/v1",
-                conv_message,
-                correlation_id=request_id
-            )
+            try:
+                self.logger.info(f"🔍 [FINALIZE] Publishing to NATS topic: {AICOTopics.CONVERSATION_RESPONSE}")
+                await self.bus_client.publish_durable(
+                    AICOTopics.CONVERSATION_RESPONSE,
+                    conv_message,
+                    correlation_id=request_id,
+                    audit_subject="audit.events.conversation.final",
+                )
+                self.logger.info(f"✅ [FINALIZE] Published to {AICOTopics.CONVERSATION_RESPONSE}")
+
+                # Also publish to AI response topic for API layer with user_uuid for WS routing
+                self.logger.info(f"🔍 [FINALIZE] Publishing to NATS topic: conversation/ai/response/v1")
+                await self.bus_client.publish_durable(
+                    "conversation/ai/response/v1",
+                    conv_message,
+                    tenant_id=tenant_id,
+                    correlation_id=request_id,
+                    audit_subject="audit.events.conversation.final",
+                    attributes={"user_uuid": user_id},
+                )
+                self.logger.info(f"✅ [FINALIZE] Published to conversation/ai/response/v1")
+            except Exception as publish_error:
+                self.logger.error(f"❌ [FINALIZE] Final response publish failed; enqueueing outbox fallback: {publish_error}")
+                try:
+                    await self._enqueue_outbox_fallback(
+                        tenant_id=tenant_id,
+                        topics=[AICOTopics.CONVERSATION_RESPONSE, "conversation/ai/response/v1"],
+                        payload_envelope=conv_message,
+                        correlation_id=request_id,
+                    )
+                except Exception as outbox_error:
+                    self.logger.error(f"❌ [FINALIZE] Outbox enqueue failed after publish failure: {outbox_error}")
             
             # Phase 3: Log trajectory for behavioral learning
             if request_id in self.pending_responses:
@@ -896,6 +1334,174 @@ class ConversationEngine(BaseService):
             
         except Exception as e:
             self.logger.error(f"Error finalizing streaming response for {request_id}: {e}")
+
+    async def _enqueue_outbox_fallback(
+        self,
+        *,
+        tenant_id: str,
+        topics: list[str],
+        payload_envelope: Any,
+        correlation_id: str,
+    ) -> None:
+        """Enqueue an outbox event for later publication.
+
+        This is a fallback path used only when inline publish fails.
+        It must never be used for streaming chunks.
+        """
+        if not self.bus_client:
+            raise RuntimeError("bus_client not available")
+
+        from aico.data.outbox.models import OutboxEvent
+        from aico.data.postgres.connection import get_session_factory
+
+        # We enqueue the raw NATS payload bytes (protobuf envelope) so the outbox publisher
+        # can publish without needing protobuf types.
+        if self.bus_client._nats is None:  # type: ignore[attr-defined]
+            raise RuntimeError("NATS client not connected")
+
+        # Rebuild the exact bytes that MessageBusClient.publish() would send.
+        from aico.proto.aico_core_envelope_pb2 import AicoMessage
+        from google.protobuf.any_pb2 import Any as ProtoAny
+        from aico.core.bus import _create_message_metadata
+
+        now = datetime.now(UTC)
+        session_factory = await get_session_factory()
+
+        async with UnitOfWork(session_factory) as uow:
+            for topic in topics:
+                metadata = _create_message_metadata(
+                    message_id=str(uuid.uuid4()),
+                    source="conversation_engine",
+                    message_type=topic,
+                )
+                metadata.attributes["correlation_id"] = correlation_id
+
+                envelope = AicoMessage()
+                envelope.metadata.CopyFrom(metadata)
+                any_payload = ProtoAny()
+                any_payload.Pack(payload_envelope)
+                envelope.any_payload.CopyFrom(any_payload)
+                payload_bytes = envelope.SerializeToString()
+
+                event = OutboxEvent(
+                    event_id=str(uuid.uuid4()),
+                    tenant_id=tenant_id,
+                    subject=topic.replace("/", "."),
+                    payload_bytes=payload_bytes,
+                    status="pending",
+                    attempts=0,
+                    available_at=now,
+                    created_at=now,
+                    sent_at=None,
+                )
+                await uow.outbox_events.enqueue(event)
+
+    async def _persist_user_message(
+        self,
+        *,
+        tenant_id: str,
+        request_id: str,
+        user_id: str,
+        conversation_id: str,
+        content: str,
+    ) -> None:
+        from aico.data.postgres.connection import get_session_factory
+        from aico.data.uow import UnitOfWork
+        from aico.data.conversation.models import ConversationMessage
+
+        now = datetime.now(UTC)
+        session_factory = await get_session_factory()
+        async with UnitOfWork(session_factory) as uow:
+            await uow.conversations.touch(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                user_id=user_id,
+                status="active",
+            )
+            await uow.conversation_messages.create_idempotent(
+                ConversationMessage(
+                    message_id=str(uuid.uuid4()),
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                    user_id=user_id,
+                    actor_type="user",
+                    actor_id=user_id,
+                    message_type="user_input",
+                    content=content,
+                    correlation_id=request_id,
+                    request_id=request_id,
+                    turn_number=0,  # Repository assigns actual sequential turn number
+                    created_at=now,
+                )
+            )
+
+        # Best-effort working-memory population (UI uses this for "Working" stats).
+        # Keep this decoupled from persistence: failures must not affect the golden path.
+        try:
+            memory_manager = ai_registry.get("memory")
+            if memory_manager:
+                await memory_manager.store_message(
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    content=content,
+                    role="user",
+                )
+        except Exception as e:
+            self.logger.warning(f"Failed to store user message in working memory: {e}")
+
+    async def _persist_assistant_message(
+        self,
+        *,
+        tenant_id: str,
+        request_id: str,
+        user_id: str,
+        conversation_id: str,
+        content: str,
+    ) -> None:
+        from aico.data.postgres.connection import get_session_factory
+        from aico.data.uow import UnitOfWork
+        from aico.data.conversation.models import ConversationMessage
+
+        now = datetime.now(UTC)
+        session_factory = await get_session_factory()
+        async with UnitOfWork(session_factory) as uow:
+            await uow.conversations.touch(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                user_id=user_id,
+                agent_id=getattr(self, "character_name", None),
+                status="active",
+            )
+            await uow.conversation_messages.create_idempotent(
+                ConversationMessage(
+                    message_id=str(uuid.uuid4()),
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                    user_id=user_id,
+                    agent_id=getattr(self, "character_name", None),
+                    actor_type="agent",
+                    actor_id=getattr(self, "character_name", None),
+                    message_type="ai_response",
+                    content=content,
+                    correlation_id=request_id,
+                    request_id=request_id,
+                    turn_number=0,  # Repository assigns actual sequential turn number
+                    created_at=now,
+                )
+            )
+
+        # Best-effort working-memory population (UI uses this for "Working" stats).
+        try:
+            memory_manager = ai_registry.get("memory")
+            if memory_manager:
+                await memory_manager.store_message(
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    content=content,
+                    role="assistant",
+                )
+        except Exception as e:
+            self.logger.warning(f"Failed to store assistant message in working memory: {e}")
     
     def _build_system_prompt(self, user_context: UserContext, memory_context: Optional[Dict[str, Any]], skill_id: Optional[str] = None, user_message: Optional[ConversationMessage] = None) -> str:
         """Build system prompt with memory context and optional skill template
@@ -1099,7 +1705,7 @@ class ConversationEngine(BaseService):
                 prompt_parts.append(f"Additional facts:\n{facts_text}")
                 self.logger.debug(f"Added {len(user_facts)} user facts to system prompt")
             else:
-                # NOTE: Empty system prompt is OK - conversation history is in messages array (Ollama standard)
+                # NOTE: Empty system prompt is OK - conversation history is in messages array (vLLM standard)
                 self.logger.debug(f"No user facts - system prompt empty (history in messages array)")
         else:
             self.logger.warning(f"⚠️ [PROMPT_BUILD] NO memory_context provided")

@@ -70,10 +70,10 @@ From the **project root**, run:
 
 ```sh
 # macOS/Linux
-protoc -I=proto -I=.venv/lib/python3.13/site-packages --python_out=shared/aico/proto proto/*.proto
+protoc -I=proto -I=<path-to-site-packages> --python_out=shared/aico/proto proto/*.proto
 
 # Windows
-protoc -I=proto -I=.venv/Lib/site-packages --python_out=shared/aico/proto proto/*.proto
+protoc -I=proto -I=<path-to-site-packages> --python_out=shared/aico/proto proto/*.proto
 ```
 
 - If you use a different venv location or OS, adjust the `-I` path accordingly.

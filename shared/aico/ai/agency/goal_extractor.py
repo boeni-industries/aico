@@ -72,8 +72,9 @@ class UserGoalExtractor:
                 config_manager = ConfigurationManager()
                 self._modelservice_client = ModelServiceClient(config_manager)
                 
-                # Get conversation model name from config
-                self._llm_model = config_manager.get("modelservice.ollama.default_models.conversation.name", "huihui_ai/qwen3-abliterated:8b-v2")
+                # Get conversation model name from llm config (vLLM)
+                vllm_config = config_manager.get("llm.vllm", {})
+                self._llm_model = vllm_config.get("model", "huihui_ai/qwen3-abliterated:8b-v2")
                 logger.debug(f"[GOAL_EXTRACTOR] ModelService client initialized with model: {self._llm_model}")
             except Exception as e:
                 logger.error(f"[GOAL_EXTRACTOR] Failed to initialize ModelService client: {e}")

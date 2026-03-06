@@ -8,7 +8,7 @@ via message bus, including processing contexts, results, and base processor clas
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Union
-from datetime import datetime
+from datetime import datetime, UTC
 import uuid
 
 
@@ -38,7 +38,7 @@ class ProcessingContext:
     conversation_style: str = "friendly"
     
     # Processing metadata
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     processing_priority: str = "normal"  # low, normal, high, urgent
     timeout_ms: int = 5000
     
@@ -81,7 +81,7 @@ class ProcessingResult:
     next_components: List[str] = field(default_factory=list)
     
     # Metadata
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     version: str = "v1"
 
 

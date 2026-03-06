@@ -169,7 +169,7 @@ def extract(
     async def _extract():
         from aico.core.config import ConfigurationManager
         from aico.ai.knowledge_graph import MultiPassExtractor
-        from aico.ai.knowledge_graph.modelservice_client import ModelserviceClient
+        from aico.ai.knowledge_graph.modelservice_client import KGModelserviceClient
         import time
         
         try:
@@ -181,9 +181,9 @@ def extract(
             
             # Connect to modelservice via message bus
             console.print("[dim]Connecting to message bus...[/dim]")
-            console.print(f"[dim]DEBUG: Creating ModelserviceClient instance...[/dim]")
-            modelservice = ModelserviceClient()
-            console.print(f"[dim]DEBUG: ModelserviceClient created: {modelservice}[/dim]")
+            console.print(f"[dim]DEBUG: Creating KGModelserviceClient instance...[/dim]")
+            modelservice = KGModelserviceClient()
+            console.print(f"[dim]DEBUG: KGModelserviceClient created: {modelservice}[/dim]")
             
             try:
                 console.print(f"[dim]DEBUG: Calling connect() with 10s timeout...[/dim]")
@@ -657,7 +657,7 @@ def deduplicate(
         from aico.core.paths import AICOPaths
         from aico.ai.knowledge_graph import PropertyGraphStorage
         from aico.ai.knowledge_graph.entity_resolution import EntityResolver
-        from aico.ai.knowledge_graph.modelservice_client import ModelserviceClient
+        from aico.ai.knowledge_graph.modelservice_client import KGModelserviceClient
         import chromadb
         from chromadb.config import Settings
         
@@ -678,7 +678,7 @@ def deduplicate(
             )
             
             storage = PropertyGraphStorage(db_connection, chromadb_client)
-            modelservice = ModelserviceClient()
+            modelservice = KGModelserviceClient()
             await modelservice.connect()
             
             # Get config

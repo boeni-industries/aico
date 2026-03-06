@@ -168,6 +168,9 @@ def initialize_logging(
         try:
             # Auto-detect config if not provided
             if not loki_url:
+                loki_url = os.getenv("AICO_LOKI_URL") or loki_url
+
+            if not loki_url:
                 import importlib
                 
                 config_module = importlib.import_module('aico.core.config')

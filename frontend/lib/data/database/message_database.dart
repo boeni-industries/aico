@@ -101,6 +101,15 @@ class MessageDatabase extends _$MessageDatabase {
         syncedAt: Value(DateTime.now()),
       ));
   }
+
+  Future<void> clearMessages({String conversationId = ''}) async {
+    if (conversationId.trim().isEmpty) {
+      await delete(messages).go();
+      return;
+    }
+
+    await (delete(messages)..where((t) => t.conversationId.equals(conversationId.trim()))).go();
+  }
 }
 
 LazyDatabase _openConnection() {

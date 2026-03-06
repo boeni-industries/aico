@@ -81,6 +81,7 @@ class UnitOfWork:
         self._feedback_repository = None
         self._scheduler_tasks_repository = None
         self._scheduler_task_executions_repository = None
+        self._scheduler_run_ledger_repository = None
         self._task_execution_repository = None
         self._workflow_executions_repository = None
         self._workflow_stages_repository = None
@@ -92,6 +93,11 @@ class UnitOfWork:
         self._emotion_history_repository = None
         self._interaction_requests_repository = None
         self._interaction_events_repository = None
+        self._conversations_repository = None
+        self._conversation_messages_repository = None
+        self._outbox_events_repository = None
+        self._tenants_repository = None
+        self._tenant_memberships_repository = None
         self._user_feedback_requests_repository = None
         self._ethics_decisions_cache_repository = None
         self._ethics_gate_audit_repository = None
@@ -150,6 +156,15 @@ class UnitOfWork:
         """Flush pending changes without committing."""
         if self._session:
             await self._session.flush()
+
+    @property
+    def session(self) -> Optional[AsyncSession]:
+        """Access the underlying SQLAlchemy session.
+
+        NOTE: Prefer repository properties where possible. This exists for
+        low-level SQL access in a few infrastructure components.
+        """
+        return self._session
     
     # ========================================================================
     # Repository Properties (Lazy-loaded)
@@ -474,6 +489,14 @@ class UnitOfWork:
             from .repositories.postgres.scheduler_task_executions_repository import PostgresSchedulerTaskExecutionsRepository
             self._scheduler_task_executions_repository = PostgresSchedulerTaskExecutionsRepository(self._session)
         return self._scheduler_task_executions_repository
+
+    @property
+    def scheduler_run_ledger(self):
+        """Get SchedulerRunLedgerRepository instance."""
+        if self._scheduler_run_ledger_repository is None:
+            from .repositories.postgres.scheduler_run_ledger_repository import PostgresSchedulerRunLedgerRepository
+            self._scheduler_run_ledger_repository = PostgresSchedulerRunLedgerRepository(self._session)
+        return self._scheduler_run_ledger_repository
     
     @property
     def conversation_initiations(self):
@@ -486,6 +509,46 @@ class UnitOfWork:
             from .repositories.postgres.interaction_requests_repository import PostgresInteractionRequestsRepository
             self._interaction_requests_repository = PostgresInteractionRequestsRepository(self._session)
         return self._interaction_requests_repository
+
+    @property
+    def conversations(self):
+        """Get ConversationsRepository instance."""
+        if self._conversations_repository is None:
+            from .repositories.postgres.conversations_repository import PostgresConversationsRepository
+            self._conversations_repository = PostgresConversationsRepository(self._session)
+        return self._conversations_repository
+
+    @property
+    def conversation_messages(self):
+        """Get ConversationMessagesRepository instance."""
+        if self._conversation_messages_repository is None:
+            from .repositories.postgres.conversation_messages_repository import PostgresConversationMessagesRepository
+            self._conversation_messages_repository = PostgresConversationMessagesRepository(self._session)
+        return self._conversation_messages_repository
+
+    @property
+    def outbox_events(self):
+        """Get OutboxEventsRepository instance."""
+        if self._outbox_events_repository is None:
+            from .repositories.postgres.outbox_events_repository import PostgresOutboxEventsRepository
+            self._outbox_events_repository = PostgresOutboxEventsRepository(self._session)
+        return self._outbox_events_repository
+
+    @property
+    def tenants(self):
+        """Get TenantsRepository instance."""
+        if self._tenants_repository is None:
+            from .repositories.postgres.tenants_repository import PostgresTenantsRepository
+            self._tenants_repository = PostgresTenantsRepository(self._session)
+        return self._tenants_repository
+
+    @property
+    def tenant_memberships(self):
+        """Get TenantMembershipsRepository instance."""
+        if self._tenant_memberships_repository is None:
+            from .repositories.postgres.tenant_memberships_repository import PostgresTenantMembershipsRepository
+            self._tenant_memberships_repository = PostgresTenantMembershipsRepository(self._session)
+        return self._tenant_memberships_repository
 
     @property
     def interaction_events(self):

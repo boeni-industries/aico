@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
+from pydantic.config import ConfigDict
 
 
 ConfigFormat = Literal["yaml", "json"]
@@ -33,8 +34,9 @@ class DomainConfigResponse(BaseModel):
 
 
 class SchemaResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
     domain: str
-    schema: Dict[str, Any]
+    schema_definition: Dict[str, Any] = Field(alias="schema")
     meta: Dict[str, Any]
 
 

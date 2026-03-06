@@ -7,13 +7,14 @@ Provides access to current emotional state and history.
 
 from typing import Annotated, Optional
 from datetime import datetime, timedelta, UTC
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, Depends, Query
 import os
 from aico.core.logging import get_logger
 from .schemas import EmotionStateResponse, EmotionHistoryResponse, EmotionHistoryItem
 from .dependencies import get_current_user, get_emotion_engine
 from backend.core.postgres_dependencies import get_uow
 from aico.data.uow import UnitOfWork
+from backend.api.errors import raise_api_error
 
 logger = get_logger("aico.api.emotion.router")
 
@@ -22,8 +23,7 @@ router = APIRouter()
 
 @router.get("/current", response_model=EmotionStateResponse)
 async def get_current_emotion(
-    user: Annotated[dict, Depends(get_current_user)],
-    emotion_engine: Annotated[object, Depends(get_emotion_engine)]
+    user: Annotated[dict, Depends(get_current_user)]
 ):
     """
     Get AICO's current emotional state.
@@ -37,34 +37,29 @@ async def get_current_emotion(
     per-user emotional states for personalized interactions.
     """
     try:
-        # Get current emotional state from engine
-        current_state = emotion_engine.current_state
+        from backend.api_gateway.core.nats_client import get_gateway_nats_client
         
-        if current_state is None:
-            raise HTTPException(status_code=404, detail="No emotional state available")
+        # Request current emotion from core via NATS
+        nats_client = get_gateway_nats_client()
+        emotion_data = await nats_client.request_current_emotion()
         
-        # Convert to response format
-        return EmotionStateResponse(
-            timestamp=current_state.timestamp.isoformat() + "Z",
-            primary=current_state.subjective_feeling.value,
-            confidence=current_state.intensity,
-            valence=current_state.mood_valence,
-            arousal=current_state.mood_arousal,
-            dominance=0.5  # Default neutral dominance (not yet implemented in CPM)
-        )
+        return EmotionStateResponse(**emotion_data)
         
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"Error retrieving current emotion: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve emotional state: {str(e)}")
+        logger.error(f"Error retrieving current emotion via NATS: {e}")
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error_code": "EMOTION_STATE_FETCH_FAILED",
+                "message": "Failed to retrieve emotional state"
+            }
+        )
 
 
 @router.get("/history", response_model=EmotionHistoryResponse)
 async def get_emotion_history(
     user: Annotated[dict, Depends(get_current_user)],
-    emotion_engine: Annotated[object, Depends(get_emotion_engine)],
-    uow: Annotated[UnitOfWork, Depends(get_uow)],
     limit: int = Query(50, ge=1, le=1000, description="Maximum number of records to return"),
     hours: Optional[int] = Query(None, ge=1, description="Only return emotions from last N hours"),
     days: Optional[int] = Query(None, ge=1, description="Only return emotions from last N days"),
@@ -102,58 +97,30 @@ async def get_emotion_history(
         feeling: Filter by specific emotion label
     """
     try:
-        # Build filters for repository query
-        filters = {}
+        from backend.api_gateway.core.nats_client import get_gateway_nats_client
         
-        # Time-based filters
-        if since:
-            try:
-                # Validate ISO timestamp
-                since_dt = datetime.fromisoformat(since.replace('Z', '+00:00'))
-                filters["timestamp_gte"] = since_dt
-            except ValueError:
-                raise HTTPException(status_code=400, detail="Invalid 'since' timestamp format. Use ISO 8601 format.")
-        elif hours:
-            cutoff = datetime.now(UTC) - timedelta(hours=hours)
-            filters["timestamp_gte"] = cutoff
-        elif days:
-            cutoff = datetime.now(UTC) - timedelta(days=days)
-            filters["timestamp_gte"] = cutoff
+        # Calculate hours from days if provided
+        if days:
+            hours = days * 24
+        elif not hours:
+            hours = 24
         
-        # Emotion filter
-        if feeling:
-            filters["feeling"] = feeling
-        
-        # Get emotion history from repository
-        emotion_records = await uow.emotion_history.list(filters=filters, limit=limit)
-        
-        # Sort by timestamp DESC (most recent first)
-        emotion_records.sort(key=lambda e: e.timestamp if e.timestamp else datetime.min, reverse=True)
-        
-        if not emotion_records:
-            return EmotionHistoryResponse(count=0, history=[])
-        
-        # Convert to response format
-        history_items = [
-            EmotionHistoryItem(
-                timestamp=record.timestamp.isoformat() if hasattr(record.timestamp, 'isoformat') else record.timestamp,
-                feeling=record.feeling,
-                valence=record.valence,
-                arousal=record.arousal,
-                intensity=record.intensity
-            )
-            for record in emotion_records
-        ]
-
-        # Emotion history ranges removed to reduce log noise
-        
-        return EmotionHistoryResponse(
-            count=len(history_items),
-            history=history_items
+        # Request emotion history from core via NATS
+        nats_client = get_gateway_nats_client()
+        history_data = await nats_client.request_emotion_history(
+            limit=limit,
+            hours=hours
         )
         
-    except HTTPException:
-        raise
+        return EmotionHistoryResponse(**history_data)
     except Exception as e:
-        logger.error(f"Error retrieving emotion history: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve emotion history: {str(e)}")
+        logger.error(f"Error retrieving emotion history via NATS: {e}")
+        # Return JSONResponse directly to avoid double-response issue with encryption middleware
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error_code": "EMOTION_ENGINE_UNAVAILABLE",
+                "message": "Emotion engine unavailable"
+            }
+        )

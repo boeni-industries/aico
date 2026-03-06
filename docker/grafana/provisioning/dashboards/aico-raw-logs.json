@@ -30,6 +30,28 @@
       "title": "\ud83d\udcca Overview",
       "type": "link",
       "url": "/d/aico-logs-overview"
+    },
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": false,
+      "title": "\ud83d\udd0e Traces",
+      "type": "link",
+      "url": "/d/aico-traces-drilldown"
+    },
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": false,
+      "title": "\ud83d\udd0e Rate Limit Offenders",
+      "type": "link",
+      "url": "/d/aico-rate-limit-offenders"
     }
   ],
   "liveNow": false,
@@ -37,7 +59,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 24,
@@ -60,7 +82,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "{service=~\"$service\", level=~\"$level\"} |~ \"$search\" | json | line_format \"{{.level}} {{.service}} {{.logger_prefix}} | {{ if .msg }}{{ .msg }}{{ else }}{{ __line__ }}{{ end }}\"",
@@ -95,7 +117,7 @@
         "allValue": ".+",
         "datasource": {
           "type": "loki",
-          "uid": "P8E80F9AEF21F6940"
+          "uid": "loki"
         },
         "definition": "label_values(service)",
         "hide": 0,

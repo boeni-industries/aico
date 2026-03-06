@@ -91,24 +91,6 @@ class Node:
         """Convert to dictionary for serialization."""
         return asdict(self)
     
-    def to_chromadb_document(self) -> Dict[str, Any]:
-        """Convert to ChromaDB document format."""
-        # Combine all text fields for embedding
-        text_content = f"{self.label}: {json.dumps(self.properties, sort_keys=True)} | {self.source_text}"
-        
-        return {
-            "id": self.id,
-            "document": text_content,
-            "metadata": {
-                "user_id": self.user_id,
-                "label": self.label,
-                "confidence": self.confidence,
-                "created_at": self.created_at,
-                "is_current": int(self.is_current),
-                "canonical_id": self.canonical_id or self.id
-            }
-        }
-    
     def to_postgres_tuple(self) -> tuple:
         """Convert to tuple for PostgreSQL insertion."""
         return (
@@ -127,6 +109,20 @@ class Node:
             self.canonical_id,
             json.dumps(self.aliases, sort_keys=True) if self.aliases else None
         )
+    
+    def to_document(self) -> Dict[str, Any]:
+        """Convert to document format for embedding generation."""
+        props_str = ", ".join(f"{k}: {v}" for k, v in self.properties.items())
+        document = f"{self.label}: {props_str}"
+        return {
+            "id": self.id,
+            "document": document,
+            "metadata": {
+                "user_id": self.user_id,
+                "label": self.label,
+                "is_current": self.is_current
+            }
+        }
 
 
 @dataclass
@@ -202,25 +198,6 @@ class Edge:
         """Convert to dictionary for serialization."""
         return asdict(self)
     
-    def to_chromadb_document(self) -> Dict[str, Any]:
-        """Convert to ChromaDB document format."""
-        # Combine all text fields for embedding
-        text_content = f"{self.relation_type}: {json.dumps(self.properties, sort_keys=True)} | {self.source_text}"
-        
-        return {
-            "id": self.id,
-            "document": text_content,
-            "metadata": {
-                "user_id": self.user_id,
-                "source_id": self.source_id,
-                "target_id": self.target_id,
-                "relation_type": self.relation_type,
-                "confidence": self.confidence,
-                "created_at": self.created_at,
-                "is_current": int(self.is_current)
-            }
-        }
-    
     def to_postgres_tuple(self) -> tuple:
         """Convert to tuple for PostgreSQL insertion."""
         return (
@@ -238,6 +215,20 @@ class Edge:
             self.valid_until,
             self.is_current
         )
+    
+    def to_document(self) -> Dict[str, Any]:
+        """Convert to document format for embedding generation."""
+        props_str = ", ".join(f"{k}: {v}" for k, v in self.properties.items()) if self.properties else ""
+        document = f"{self.relation_type}: {props_str}" if props_str else self.relation_type
+        return {
+            "id": self.id,
+            "document": document,
+            "metadata": {
+                "user_id": self.user_id,
+                "relation_type": self.relation_type,
+                "is_current": self.is_current
+            }
+        }
 
 
 @dataclass

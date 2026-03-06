@@ -31,9 +31,9 @@ _SYSTEM_BLOCK_RE = re.compile(r'\bSYSTEM\s+"""(.*?)"""', re.DOTALL)
 def get_active_conversation_model_name() -> str:
     config = ConfigurationManager()
     config.initialize(lightweight=True)
-    value = config.get("modelservice.ollama.default_models.conversation.name")
+    value = config.get("llm.vllm.model")
     if not isinstance(value, str) or not value.strip():
-        raise ValueError("Missing config key: modelservice.ollama.default_models.conversation.name")
+        raise ValueError("Missing config key: llm.vllm.model")
     return value.strip()
 
 

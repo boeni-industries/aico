@@ -124,18 +124,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
           AicoTextField(
             controller: _pinController,
-            label: 'PIN',
-            hint: 'Enter your PIN',
+            label: 'Password',
+            hint: 'Enter your password',
             obscureText: true,
-            keyboardType: TextInputType.number,
+            keyboardType: TextInputType.visiblePassword,
             textInputAction: TextInputAction.done,
             onSubmitted: (_) => _handleLogin(),
             validator: (value) {
               if (value?.trim().isEmpty ?? true) {
-                return 'Please enter your PIN';
+                return 'Please enter your password';
               }
-              if (value!.length < 4) {
-                return 'PIN must be at least 4 digits';
+              if (value!.length < 12) {
+                return 'Password must be at least 12 characters';
               }
               return null;
             },

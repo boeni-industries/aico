@@ -10,6 +10,8 @@ from typing import Dict, Any
 import jwt
 from aico.core.logging import get_logger
 
+from backend.api.errors import raise_api_error
+
 security = HTTPBearer()
 logger = get_logger("api.admin_dependencies")
 
@@ -64,16 +66,16 @@ def verify_admin_token(
                 token,
                 auth_manager._get_jwt_secret(),
                 algorithms=[auth_manager.jwt_algorithm],
-                options={"verify_aud": False}
+                options={"verify_aud": False},
             )
         except jwt.ExpiredSignatureError:
-            raise HTTPException(status_code=401, detail="Token has expired")
+            raise_api_error(status_code=401, error_code="AUTH_TOKEN_EXPIRED", message="Token has expired")
         except jwt.InvalidTokenError:
-            raise HTTPException(status_code=401, detail="Invalid token")
+            raise_api_error(status_code=401, error_code="AUTH_TOKEN_INVALID", message="Invalid token")
         
         # Check if token is revoked
         if token in auth_manager.revoked_tokens:
-            raise HTTPException(status_code=401, detail="Token has been revoked")
+            raise_api_error(status_code=401, error_code="AUTH_TOKEN_REVOKED", message="Token has been revoked")
         
         # Extract user information
         user_uuid = payload.get("user_uuid", payload.get("sub"))
@@ -82,7 +84,7 @@ def verify_admin_token(
         
         # Verify admin role
         if "admin" not in roles:
-            raise HTTPException(status_code=403, detail="Admin access required")
+            raise_api_error(status_code=403, error_code="ADMIN_REQUIRED", message="Admin access required")
         
         return {
             "user_uuid": user_uuid,
@@ -95,7 +97,7 @@ def verify_admin_token(
         raise
     except Exception as e:
         logger.error(f"Admin token verification failed: {e}")
-        raise HTTPException(status_code=401, detail="Authentication failed")
+        raise_api_error(status_code=401, error_code="AUTH_FAILED", message="Authentication failed")
 
 # Removed create_admin_auth_dependency - using proper FastAPI DI
 

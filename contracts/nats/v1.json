@@ -1,0 +1,1027 @@
+{
+  "nats": {
+    "envelope": {
+      "notes": "Attributes are enforced by the gateway perimeter; core treats them as required invariants.",
+      "protobuf": "aico.proto.aico_core_envelope.AicoMessage",
+      "required_metadata_attributes": [
+        "correlation_id",
+        "reply_to",
+        "tenant_id",
+        "user_id",
+        "request_id",
+        "idempotency_key"
+      ]
+    },
+    "request_reply": [
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "agency.decision.request.v1",
+        "request_topic": "agency/decision/request/v1",
+        "response_subject": "agency.decision.response.v1",
+        "response_topic": "agency/decision/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "ai.embodiment.avatar.request.v1",
+        "request_topic": "ai/embodiment/avatar/request/v1",
+        "response_subject": "ai.embodiment.avatar.response.v1",
+        "response_topic": "ai/embodiment/avatar/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "ai.embodiment.voice.request.v1",
+        "request_topic": "ai/embodiment/voice/request/v1",
+        "response_subject": "ai.embodiment.voice.response.v1",
+        "response_topic": "ai/embodiment/voice/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "ai.emotion.analysis.request.v1",
+        "request_topic": "ai/emotion/analysis/request/v1",
+        "response_subject": "ai.emotion.analysis.response.v1",
+        "response_topic": "ai/emotion/analysis/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "ai.memory.retrieval.request.v1",
+        "request_topic": "ai/memory/retrieval/request/v1",
+        "response_subject": "ai.memory.retrieval.response.v1",
+        "response_topic": "ai/memory/retrieval/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "ai.memory.storage.request.v1",
+        "request_topic": "ai/memory/storage/request/v1",
+        "response_subject": "ai.memory.storage.response.v1",
+        "response_topic": "ai/memory/storage/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "ai.personality.expression.request.v1",
+        "request_topic": "ai/personality/expression/request/v1",
+        "response_subject": "ai.personality.expression.response.v1",
+        "response_topic": "ai/personality/expression/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "llm.inference.request.v1",
+        "request_topic": "llm/inference/request/v1",
+        "response_subject": "llm.inference.response.v1",
+        "response_topic": "llm/inference/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "llm.prompt.conditioning.request.v1",
+        "request_topic": "llm/prompt/conditioning/request/v1",
+        "response_subject": "llm.prompt.conditioning.response.v1",
+        "response_topic": "llm/prompt/conditioning/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "memory.retrieve.request.v1",
+        "request_topic": "memory/retrieve/request/v1",
+        "response_subject": "memory.retrieve.response.v1",
+        "response_topic": "memory/retrieve/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "memory.store.request.v1",
+        "request_topic": "memory/store/request/v1",
+        "response_subject": "memory.store.response.v1",
+        "response_topic": "memory/store/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "modelservice.chat.request.v1",
+        "request_topic": "modelservice/chat/request/v1",
+        "response_subject": "modelservice.chat.response.v1",
+        "response_topic": "modelservice/chat/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "modelservice.completions.request.v1",
+        "request_topic": "modelservice/completions/request/v1",
+        "response_subject": "modelservice.completions.response.v1",
+        "response_topic": "modelservice/completions/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "modelservice.coreference.request.v1",
+        "request_topic": "modelservice/coreference/request/v1",
+        "response_subject": "modelservice.coreference.response.v1",
+        "response_topic": "modelservice/coreference/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "modelservice.embeddings.request.v1",
+        "request_topic": "modelservice/embeddings/request/v1",
+        "response_subject": "modelservice.embeddings.response.v1",
+        "response_topic": "modelservice/embeddings/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "modelservice.health.request.v1",
+        "request_topic": "modelservice/health/request/v1",
+        "response_subject": "modelservice.health.response.v1",
+        "response_topic": "modelservice/health/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "modelservice.intent.request.v1",
+        "request_topic": "modelservice/intent/request/v1",
+        "response_subject": "modelservice.intent.response.v1",
+        "response_topic": "modelservice/intent/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "modelservice.model.info.request.v1",
+        "request_topic": "modelservice/model/info/request/v1",
+        "response_subject": "modelservice.model.info.response.v1",
+        "response_topic": "modelservice/model/info/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "modelservice.models.request.v1",
+        "request_topic": "modelservice/models/request/v1",
+        "response_subject": "modelservice.models.response.v1",
+        "response_topic": "modelservice/models/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "modelservice.ner.request.v1",
+        "request_topic": "modelservice/ner/request/v1",
+        "response_subject": "modelservice.ner.response.v1",
+        "response_topic": "modelservice/ner/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "modelservice.sentiment.request.v1",
+        "request_topic": "modelservice/sentiment/request/v1",
+        "response_subject": "modelservice.sentiment.response.v1",
+        "response_topic": "modelservice/sentiment/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "modelservice.status.request.v1",
+        "request_topic": "modelservice/status/request/v1",
+        "response_subject": "modelservice.status.response.v1",
+        "response_topic": "modelservice/status/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "ollama.install.request.v1",
+        "request_topic": "ollama/install/request/v1",
+        "response_subject": "ollama.install.response.v1",
+        "response_topic": "ollama/install/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "ollama.logs.request.v1",
+        "request_topic": "ollama/logs/request/v1",
+        "response_subject": "ollama.logs.response.v1",
+        "response_topic": "ollama/logs/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "ollama.models.pull.request.v1",
+        "request_topic": "ollama/models/pull/request/v1",
+        "response_subject": "ollama.models.pull.response.v1",
+        "response_topic": "ollama/models/pull/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "ollama.models.remove.request.v1",
+        "request_topic": "ollama/models/remove/request/v1",
+        "response_subject": "ollama.models.remove.response.v1",
+        "response_topic": "ollama/models/remove/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "ollama.models.request.v1",
+        "request_topic": "ollama/models/request/v1",
+        "response_subject": "ollama.models.response.v1",
+        "response_topic": "ollama/models/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "ollama.models.running.request.v1",
+        "request_topic": "ollama/models/running/request/v1",
+        "response_subject": "ollama.models.running.response.v1",
+        "response_topic": "ollama/models/running/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "ollama.models.start.request.v1",
+        "request_topic": "ollama/models/start/request/v1",
+        "response_subject": "ollama.models.start.response.v1",
+        "response_topic": "ollama/models/start/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "ollama.models.stop.request.v1",
+        "request_topic": "ollama/models/stop/request/v1",
+        "response_subject": "ollama.models.stop.response.v1",
+        "response_topic": "ollama/models/stop/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "ollama.serve.request.v1",
+        "request_topic": "ollama/serve/request/v1",
+        "response_subject": "ollama.serve.response.v1",
+        "response_topic": "ollama/serve/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "ollama.shutdown.request.v1",
+        "request_topic": "ollama/shutdown/request/v1",
+        "response_subject": "ollama.shutdown.response.v1",
+        "response_topic": "ollama/shutdown/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "ollama.status.request.v1",
+        "request_topic": "ollama/status/request/v1",
+        "response_subject": "ollama.status.response.v1",
+        "response_topic": "ollama/status/response/v1"
+      },
+      {
+        "notes": "inferred from /request/ -> /response/ convention",
+        "request_subject": "system.health.request.v1",
+        "request_topic": "system/health/request/v1",
+        "response_subject": "system.health.response.v1",
+        "response_topic": "system/health/response/v1"
+      }
+    ],
+    "subject_policy": {
+      "example": {
+        "subject": "conversation.user.input.v1",
+        "topic": "conversation/user/input/v1"
+      },
+      "mapping": "topic.replace('/', '.')",
+      "source": "shared.aico.core.topics.AICOTopics"
+    },
+    "subjects": [
+      {
+        "name": "AGENCY_DECISION_REQUEST",
+        "subject": "agency.decision.request.v1",
+        "topic": "agency/decision/request/v1"
+      },
+      {
+        "name": "AGENCY_DECISION_RESPONSE",
+        "subject": "agency.decision.response.v1",
+        "topic": "agency/decision/response/v1"
+      },
+      {
+        "name": "AGENCY_GOALS_CURRENT",
+        "subject": "agency.goals.current.v1",
+        "topic": "agency/goals/current/v1"
+      },
+      {
+        "name": "AGENCY_GOALS_UPDATE",
+        "subject": "agency.goals.update.v1",
+        "topic": "agency/goals/update/v1"
+      },
+      {
+        "name": "AGENCY_INITIATIVE_START",
+        "subject": "agency.initiative.start.v1",
+        "topic": "agency/initiative/start/v1"
+      },
+      {
+        "name": "AI_AGENCY_GOAL_GENERATION",
+        "subject": "ai.agency.goal.generation.v1",
+        "topic": "ai/agency/goal/generation/v1"
+      },
+      {
+        "name": "AI_AGENCY_OPPORTUNITY_DETECTION",
+        "subject": "ai.agency.opportunity.detection.v1",
+        "topic": "ai/agency/opportunity/detection/v1"
+      },
+      {
+        "name": "AI_AGENCY_PROACTIVE_TRIGGER",
+        "subject": "ai.agency.proactive.trigger.v1",
+        "topic": "ai/agency/proactive/trigger/v1"
+      },
+      {
+        "name": "AI_ANALYTICS_INTERACTION_DATA",
+        "subject": "ai.analytics.interaction.data.v1",
+        "topic": "ai/analytics/interaction/data/v1"
+      },
+      {
+        "name": "AI_CONTEXT_SHARED_STATE",
+        "subject": "ai.context.shared.state.v1",
+        "topic": "ai/context/shared/state/v1"
+      },
+      {
+        "name": "AI_CONTEXT_THREAD_UPDATE",
+        "subject": "ai.context.thread.update.v1",
+        "topic": "ai/context/thread/update/v1"
+      },
+      {
+        "name": "AI_CONTEXT_USER_UPDATE",
+        "subject": "ai.context.user.update.v1",
+        "topic": "ai/context/user/update/v1"
+      },
+      {
+        "name": "AI_EMBODIMENT_AVATAR_REQUEST",
+        "subject": "ai.embodiment.avatar.request.v1",
+        "topic": "ai/embodiment/avatar/request/v1"
+      },
+      {
+        "name": "AI_EMBODIMENT_AVATAR_RESPONSE",
+        "subject": "ai.embodiment.avatar.response.v1",
+        "topic": "ai/embodiment/avatar/response/v1"
+      },
+      {
+        "name": "AI_EMBODIMENT_VOICE_REQUEST",
+        "subject": "ai.embodiment.voice.request.v1",
+        "topic": "ai/embodiment/voice/request/v1"
+      },
+      {
+        "name": "AI_EMBODIMENT_VOICE_RESPONSE",
+        "subject": "ai.embodiment.voice.response.v1",
+        "topic": "ai/embodiment/voice/response/v1"
+      },
+      {
+        "name": "AI_EMOTION_ANALYSIS_REQUEST",
+        "subject": "ai.emotion.analysis.request.v1",
+        "topic": "ai/emotion/analysis/request/v1"
+      },
+      {
+        "name": "AI_EMOTION_ANALYSIS_RESPONSE",
+        "subject": "ai.emotion.analysis.response.v1",
+        "topic": "ai/emotion/analysis/response/v1"
+      },
+      {
+        "name": "AI_EMOTION_DEEP_ANALYSIS",
+        "subject": "ai.emotion.deep.analyze.v1",
+        "topic": "ai/emotion/deep/analyze/v1"
+      },
+      {
+        "name": "AI_EMOTION_FAST_ANALYSIS",
+        "subject": "ai.emotion.fast.analyze.v1",
+        "topic": "ai/emotion/fast/analyze/v1"
+      },
+      {
+        "name": "AI_LEARNING_PERSONALITY_UPDATE",
+        "subject": "ai.learning.personality.update.v1",
+        "topic": "ai/learning/personality/update/v1"
+      },
+      {
+        "name": "AI_LEARNING_USER_PATTERN_UPDATE",
+        "subject": "ai.learning.user_pattern.update.v1",
+        "topic": "ai/learning/user_pattern/update/v1"
+      },
+      {
+        "name": "AI_MEMORY_RETRIEVAL_REQUEST",
+        "subject": "ai.memory.retrieval.request.v1",
+        "topic": "ai/memory/retrieval/request/v1"
+      },
+      {
+        "name": "AI_MEMORY_RETRIEVAL_RESPONSE",
+        "subject": "ai.memory.retrieval.response.v1",
+        "topic": "ai/memory/retrieval/response/v1"
+      },
+      {
+        "name": "AI_MEMORY_STORAGE_REQUEST",
+        "subject": "ai.memory.storage.request.v1",
+        "topic": "ai/memory/storage/request/v1"
+      },
+      {
+        "name": "AI_MEMORY_STORAGE_RESPONSE",
+        "subject": "ai.memory.storage.response.v1",
+        "topic": "ai/memory/storage/response/v1"
+      },
+      {
+        "name": "AI_PERSONALITY_BEHAVIOR_ANALYSIS",
+        "subject": "ai.personality.behavior.analyze.v1",
+        "topic": "ai/personality/behavior/analyze/v1"
+      },
+      {
+        "name": "AI_PERSONALITY_EXPRESSION_REQUEST",
+        "subject": "ai.personality.expression.request.v1",
+        "topic": "ai/personality/expression/request/v1"
+      },
+      {
+        "name": "AI_PERSONALITY_EXPRESSION_RESPONSE",
+        "subject": "ai.personality.expression.response.v1",
+        "topic": "ai/personality/expression/response/v1"
+      },
+      {
+        "name": "AI_PERSONALITY_TRAIT_ANALYSIS",
+        "subject": "ai.personality.trait.analyze.v1",
+        "topic": "ai/personality/trait/analyze/v1"
+      },
+      {
+        "name": "APP_INITIALIZATION",
+        "subject": "app.initialization.v1",
+        "topic": "app/initialization/v1"
+      },
+      {
+        "name": "APP_STARTUP",
+        "subject": "app.startup.v1",
+        "topic": "app/startup/v1"
+      },
+      {
+        "name": "APP_THEME_CHANGE",
+        "subject": "app.theme.change.v1",
+        "topic": "app/theme/change/v1"
+      },
+      {
+        "name": "AUTH_AUTO_LOGIN_ATTEMPT",
+        "subject": "auth.auto_login.attempt.v1",
+        "topic": "auth/auto_login/attempt/v1"
+      },
+      {
+        "name": "AUTH_AUTO_LOGIN_CONCURRENT",
+        "subject": "auth.auto_login.concurrent.v1",
+        "topic": "auth/auto_login/concurrent/v1"
+      },
+      {
+        "name": "AUTH_AUTO_LOGIN_FAILURE",
+        "subject": "auth.auto_login.failure.v1",
+        "topic": "auth/auto_login/failure/v1"
+      },
+      {
+        "name": "AUTH_AUTO_LOGIN_NO_CREDENTIALS",
+        "subject": "auth.auto_login.no_credentials.v1",
+        "topic": "auth/auto_login/no_credentials/v1"
+      },
+      {
+        "name": "AUTH_AUTO_LOGIN_SUCCESS",
+        "subject": "auth.auto_login.success.v1",
+        "topic": "auth/auto_login/success/v1"
+      },
+      {
+        "name": "AUTH_LOGIN_ATTEMPT",
+        "subject": "auth.login.attempt.v1",
+        "topic": "auth/login/attempt/v1"
+      },
+      {
+        "name": "AUTH_LOGIN_CONCURRENT",
+        "subject": "auth.login.concurrent.v1",
+        "topic": "auth/login/concurrent/v1"
+      },
+      {
+        "name": "AUTH_LOGIN_ERROR",
+        "subject": "auth.login.error.v1",
+        "topic": "auth/login/error/v1"
+      },
+      {
+        "name": "AUTH_LOGIN_FAILURE",
+        "subject": "auth.login.failure.v1",
+        "topic": "auth/login/failure/v1"
+      },
+      {
+        "name": "AUTH_LOGIN_SUCCESS",
+        "subject": "auth.login.success.v1",
+        "topic": "auth/login/success/v1"
+      },
+      {
+        "name": "AUTH_LOGOUT_ATTEMPT",
+        "subject": "auth.logout.attempt.v1",
+        "topic": "auth/logout/attempt/v1"
+      },
+      {
+        "name": "AUTH_LOGOUT_ERROR",
+        "subject": "auth.logout.error.v1",
+        "topic": "auth/logout/error/v1"
+      },
+      {
+        "name": "AUTH_LOGOUT_SUCCESS",
+        "subject": "auth.logout.success.v1",
+        "topic": "auth/logout/success/v1"
+      },
+      {
+        "name": "CONVERSATION_AI_RESPONSE",
+        "subject": "conversation.ai.response.v1",
+        "topic": "conversation/ai/response/v1"
+      },
+      {
+        "name": "CONVERSATION_CONTEXT_CURRENT",
+        "subject": "conversation.context.current.v1",
+        "topic": "conversation/context/current/v1"
+      },
+      {
+        "name": "CONVERSATION_CONTEXT_UPDATE",
+        "subject": "conversation.context.update.v1",
+        "topic": "conversation/context/update/v1"
+      },
+      {
+        "name": "CONVERSATION_HISTORY_ADD",
+        "subject": "conversation.history.add.v1",
+        "topic": "conversation/history/add/v1"
+      },
+      {
+        "name": "CONVERSATION_INTENT_DETECTED",
+        "subject": "conversation.intent.detected.v1",
+        "topic": "conversation/intent/detected/v1"
+      },
+      {
+        "name": "CONVERSATION_RESPONSE",
+        "subject": "conversation.response.v1",
+        "topic": "conversation/response/v1"
+      },
+      {
+        "name": "CONVERSATION_STREAM",
+        "subject": "conversation.stream.v1",
+        "topic": "conversation/stream/v1"
+      },
+      {
+        "name": "CONVERSATION_USER_INPUT",
+        "subject": "conversation.user.input.v1",
+        "topic": "conversation/user/input/v1"
+      },
+      {
+        "name": "CRISIS_DETECTION_ALERT",
+        "subject": "crisis.detection.alert.v1",
+        "topic": "crisis/detection/alert/v1"
+      },
+      {
+        "name": "CRISIS_RESPONSE_COMPLETE",
+        "subject": "crisis.response.complete.v1",
+        "topic": "crisis/response/complete/v1"
+      },
+      {
+        "name": "CRISIS_RESPONSE_START",
+        "subject": "crisis.response.start.v1",
+        "topic": "crisis/response/start/v1"
+      },
+      {
+        "name": "EMOTION_APPRAISAL_EVENT",
+        "subject": "emotion.appraisal.event.v1",
+        "topic": "emotion/appraisal/event/v1"
+      },
+      {
+        "name": "EMOTION_MOOD_UPDATE",
+        "subject": "emotion.mood.update.v1",
+        "topic": "emotion/mood/update/v1"
+      },
+      {
+        "name": "EMOTION_STATE_CURRENT",
+        "subject": "emotion.state.current.v1",
+        "topic": "emotion/state/current/v1"
+      },
+      {
+        "name": "EMOTION_STATE_UPDATE",
+        "subject": "emotion.state.update.v1",
+        "topic": "emotion/state/update/v1"
+      },
+      {
+        "name": "EXPRESSION_COORDINATION_REQUEST",
+        "subject": "expression.coordination.request.v1",
+        "topic": "expression/coordination/request/v1"
+      },
+      {
+        "name": "EXPRESSION_FEEDBACK_UPDATE",
+        "subject": "expression.feedback.update.v1",
+        "topic": "expression/feedback/update/v1"
+      },
+      {
+        "name": "LEARNING_COORDINATION_START",
+        "subject": "learning.coordination.start.v1",
+        "topic": "learning/coordination/start/v1"
+      },
+      {
+        "name": "LEARNING_FEEDBACK_UPDATE",
+        "subject": "learning.feedback.update.v1",
+        "topic": "learning/feedback/update/v1"
+      },
+      {
+        "name": "LLM_CONVERSATION_EVENTS",
+        "subject": "llm.conversation.events.v1",
+        "topic": "llm/conversation/events/v1"
+      },
+      {
+        "name": "LLM_INFERENCE_REQUEST",
+        "subject": "llm.inference.request.v1",
+        "topic": "llm/inference/request/v1"
+      },
+      {
+        "name": "LLM_INFERENCE_RESPONSE",
+        "subject": "llm.inference.response.v1",
+        "topic": "llm/inference/response/v1"
+      },
+      {
+        "name": "LLM_MODEL_STATUS",
+        "subject": "llm.model.status.v1",
+        "topic": "llm/model/status/v1"
+      },
+      {
+        "name": "LLM_PROMPT_CONDITIONING_REQUEST",
+        "subject": "llm.prompt.conditioning.request.v1",
+        "topic": "llm/prompt/conditioning/request/v1"
+      },
+      {
+        "name": "LLM_PROMPT_CONDITIONING_RESPONSE",
+        "subject": "llm.prompt.conditioning.response.v1",
+        "topic": "llm/prompt/conditioning/response/v1"
+      },
+      {
+        "name": "LOGS_BATCH",
+        "subject": "logs.batch.v1",
+        "topic": "logs/batch/v1"
+      },
+      {
+        "name": "LOGS_ENTRY",
+        "subject": "logs.entry.v1",
+        "topic": "logs/entry/v1"
+      },
+      {
+        "name": "LOGS_RETENTION_CLEANUP",
+        "subject": "logs.retention.cleanup.v1",
+        "topic": "logs/retention/cleanup/v1"
+      },
+      {
+        "name": "MEMORY_CONSOLIDATION_COMPLETE",
+        "subject": "memory.consolidation.complete.v1",
+        "topic": "memory/consolidation/complete/v1"
+      },
+      {
+        "name": "Memory_CONSOLIDATION_START",
+        "subject": "memory.consolidation.start.v1",
+        "topic": "memory/consolidation/start/v1"
+      },
+      {
+        "name": "Memory_RETRIEVE_REQUEST",
+        "subject": "memory.retrieve.request.v1",
+        "topic": "memory/retrieve/request/v1"
+      },
+      {
+        "name": "Memory_RETRIEVE_RESPONSE",
+        "subject": "memory.retrieve.response.v1",
+        "topic": "memory/retrieve/response/v1"
+      },
+      {
+        "name": "Memory_STORE_REQUEST",
+        "subject": "memory.store.request.v1",
+        "topic": "memory/store/request/v1"
+      },
+      {
+        "name": "Memory_STORE_RESPONSE",
+        "subject": "memory.store.response.v1",
+        "topic": "memory/store/response/v1"
+      },
+      {
+        "name": "MODELSERVICE_CHAT_REQUEST",
+        "subject": "modelservice.chat.request.v1",
+        "topic": "modelservice/chat/request/v1"
+      },
+      {
+        "name": "MODELSERVICE_CHAT_RESPONSE",
+        "subject": "modelservice.chat.response.v1",
+        "topic": "modelservice/chat/response/v1"
+      },
+      {
+        "name": "MODELSERVICE_CHAT_STREAM",
+        "subject": "modelservice.chat.stream.v1",
+        "topic": "modelservice/chat/stream/v1"
+      },
+      {
+        "name": "MODELSERVICE_COMPLETIONS_REQUEST",
+        "subject": "modelservice.completions.request.v1",
+        "topic": "modelservice/completions/request/v1"
+      },
+      {
+        "name": "MODELSERVICE_COMPLETIONS_RESPONSE",
+        "subject": "modelservice.completions.response.v1",
+        "topic": "modelservice/completions/response/v1"
+      },
+      {
+        "name": "MODELSERVICE_COMPLETIONS_STREAM",
+        "subject": "modelservice.completions.stream.v1",
+        "topic": "modelservice/completions/stream/v1"
+      },
+      {
+        "name": "MODELSERVICE_COREFERENCE_REQUEST",
+        "subject": "modelservice.coreference.request.v1",
+        "topic": "modelservice/coreference/request/v1"
+      },
+      {
+        "name": "MODELSERVICE_COREFERENCE_RESPONSE",
+        "subject": "modelservice.coreference.response.v1",
+        "topic": "modelservice/coreference/response/v1"
+      },
+      {
+        "name": "MODELSERVICE_EMBEDDINGS_REQUEST",
+        "subject": "modelservice.embeddings.request.v1",
+        "topic": "modelservice/embeddings/request/v1"
+      },
+      {
+        "name": "MODELSERVICE_EMBEDDINGS_RESPONSE",
+        "subject": "modelservice.embeddings.response.v1",
+        "topic": "modelservice/embeddings/response/v1"
+      },
+      {
+        "name": "MODELSERVICE_HEALTH_REQUEST",
+        "subject": "modelservice.health.request.v1",
+        "topic": "modelservice/health/request/v1"
+      },
+      {
+        "name": "MODELSERVICE_HEALTH_RESPONSE",
+        "subject": "modelservice.health.response.v1",
+        "topic": "modelservice/health/response/v1"
+      },
+      {
+        "name": "MODELSERVICE_INTENT_REQUEST",
+        "subject": "modelservice.intent.request.v1",
+        "topic": "modelservice/intent/request/v1"
+      },
+      {
+        "name": "MODELSERVICE_INTENT_RESPONSE",
+        "subject": "modelservice.intent.response.v1",
+        "topic": "modelservice/intent/response/v1"
+      },
+      {
+        "name": "MODELSERVICE_MODEL_INFO_REQUEST",
+        "subject": "modelservice.model.info.request.v1",
+        "topic": "modelservice/model/info/request/v1"
+      },
+      {
+        "name": "MODELSERVICE_MODEL_INFO_RESPONSE",
+        "subject": "modelservice.model.info.response.v1",
+        "topic": "modelservice/model/info/response/v1"
+      },
+      {
+        "name": "MODELSERVICE_MODELS_REQUEST",
+        "subject": "modelservice.models.request.v1",
+        "topic": "modelservice/models/request/v1"
+      },
+      {
+        "name": "MODELSERVICE_MODELS_RESPONSE",
+        "subject": "modelservice.models.response.v1",
+        "topic": "modelservice/models/response/v1"
+      },
+      {
+        "name": "MODELSERVICE_NER_REQUEST",
+        "subject": "modelservice.ner.request.v1",
+        "topic": "modelservice/ner/request/v1"
+      },
+      {
+        "name": "MODELSERVICE_NER_RESPONSE",
+        "subject": "modelservice.ner.response.v1",
+        "topic": "modelservice/ner/response/v1"
+      },
+      {
+        "name": "MODELSERVICE_SENTIMENT_REQUEST",
+        "subject": "modelservice.sentiment.request.v1",
+        "topic": "modelservice/sentiment/request/v1"
+      },
+      {
+        "name": "MODELSERVICE_SENTIMENT_RESPONSE",
+        "subject": "modelservice.sentiment.response.v1",
+        "topic": "modelservice/sentiment/response/v1"
+      },
+      {
+        "name": "MODELSERVICE_STATUS_REQUEST",
+        "subject": "modelservice.status.request.v1",
+        "topic": "modelservice/status/request/v1"
+      },
+      {
+        "name": "MODELSERVICE_STATUS_RESPONSE",
+        "subject": "modelservice.status.response.v1",
+        "topic": "modelservice/status/response/v1"
+      },
+      {
+        "name": "MODELSERVICE_TTS_REQUEST",
+        "subject": "modelservice.tts.request.v1",
+        "topic": "modelservice/tts/request/v1"
+      },
+      {
+        "name": "MODELSERVICE_TTS_STREAM",
+        "subject": "modelservice.tts.stream.v1",
+        "topic": "modelservice/tts/stream/v1"
+      },
+      {
+        "name": "OLLAMA_INSTALL_REQUEST",
+        "subject": "ollama.install.request.v1",
+        "topic": "ollama/install/request/v1"
+      },
+      {
+        "name": "OLLAMA_INSTALL_RESPONSE",
+        "subject": "ollama.install.response.v1",
+        "topic": "ollama/install/response/v1"
+      },
+      {
+        "name": "OLLAMA_LOGS_REQUEST",
+        "subject": "ollama.logs.request.v1",
+        "topic": "ollama/logs/request/v1"
+      },
+      {
+        "name": "OLLAMA_LOGS_RESPONSE",
+        "subject": "ollama.logs.response.v1",
+        "topic": "ollama/logs/response/v1"
+      },
+      {
+        "name": "OLLAMA_MODELS_PULL_REQUEST",
+        "subject": "ollama.models.pull.request.v1",
+        "topic": "ollama/models/pull/request/v1"
+      },
+      {
+        "name": "OLLAMA_MODELS_PULL_RESPONSE",
+        "subject": "ollama.models.pull.response.v1",
+        "topic": "ollama/models/pull/response/v1"
+      },
+      {
+        "name": "OLLAMA_MODELS_REMOVE_REQUEST",
+        "subject": "ollama.models.remove.request.v1",
+        "topic": "ollama/models/remove/request/v1"
+      },
+      {
+        "name": "OLLAMA_MODELS_REMOVE_RESPONSE",
+        "subject": "ollama.models.remove.response.v1",
+        "topic": "ollama/models/remove/response/v1"
+      },
+      {
+        "name": "OLLAMA_MODELS_REQUEST",
+        "subject": "ollama.models.request.v1",
+        "topic": "ollama/models/request/v1"
+      },
+      {
+        "name": "OLLAMA_MODELS_RESPONSE",
+        "subject": "ollama.models.response.v1",
+        "topic": "ollama/models/response/v1"
+      },
+      {
+        "name": "OLLAMA_MODELS_RUNNING_REQUEST",
+        "subject": "ollama.models.running.request.v1",
+        "topic": "ollama/models/running/request/v1"
+      },
+      {
+        "name": "OLLAMA_MODELS_RUNNING_RESPONSE",
+        "subject": "ollama.models.running.response.v1",
+        "topic": "ollama/models/running/response/v1"
+      },
+      {
+        "name": "OLLAMA_MODELS_START_REQUEST",
+        "subject": "ollama.models.start.request.v1",
+        "topic": "ollama/models/start/request/v1"
+      },
+      {
+        "name": "OLLAMA_MODELS_START_RESPONSE",
+        "subject": "ollama.models.start.response.v1",
+        "topic": "ollama/models/start/response/v1"
+      },
+      {
+        "name": "OLLAMA_MODELS_STOP_REQUEST",
+        "subject": "ollama.models.stop.request.v1",
+        "topic": "ollama/models/stop/request/v1"
+      },
+      {
+        "name": "OLLAMA_MODELS_STOP_RESPONSE",
+        "subject": "ollama.models.stop.response.v1",
+        "topic": "ollama/models/stop/response/v1"
+      },
+      {
+        "name": "OLLAMA_SERVE_REQUEST",
+        "subject": "ollama.serve.request.v1",
+        "topic": "ollama/serve/request/v1"
+      },
+      {
+        "name": "OLLAMA_SERVE_RESPONSE",
+        "subject": "ollama.serve.response.v1",
+        "topic": "ollama/serve/response/v1"
+      },
+      {
+        "name": "OLLAMA_SHUTDOWN_REQUEST",
+        "subject": "ollama.shutdown.request.v1",
+        "topic": "ollama/shutdown/request/v1"
+      },
+      {
+        "name": "OLLAMA_SHUTDOWN_RESPONSE",
+        "subject": "ollama.shutdown.response.v1",
+        "topic": "ollama/shutdown/response/v1"
+      },
+      {
+        "name": "OLLAMA_STATUS_REQUEST",
+        "subject": "ollama.status.request.v1",
+        "topic": "ollama/status/request/v1"
+      },
+      {
+        "name": "OLLAMA_STATUS_RESPONSE",
+        "subject": "ollama.status.response.v1",
+        "topic": "ollama/status/response/v1"
+      },
+      {
+        "name": "PERSONALITY_EXPRESSION_COMMUNICATION",
+        "subject": "personality.expression.communication.v1",
+        "topic": "personality/expression/communication/v1"
+      },
+      {
+        "name": "PERSONALITY_EXPRESSION_DECISION",
+        "subject": "personality.expression.decision.v1",
+        "topic": "personality/expression/decision/v1"
+      },
+      {
+        "name": "PERSONALITY_EXPRESSION_EMOTIONAL",
+        "subject": "personality.expression.emotional.v1",
+        "topic": "personality/expression/emotional/v1"
+      },
+      {
+        "name": "PERSONALITY_STATE_CURRENT",
+        "subject": "personality.state.current.v1",
+        "topic": "personality/state/current/v1"
+      },
+      {
+        "name": "PERSONALITY_TRAIT_UPDATE",
+        "subject": "personality.trait.update.v1",
+        "topic": "personality/trait/update/v1"
+      },
+      {
+        "name": "SYSTEM_BUS_STARTED",
+        "subject": "system.bus.started.v1",
+        "topic": "system/bus/started/v1"
+      },
+      {
+        "name": "SYSTEM_BUS_STOPPING",
+        "subject": "system.bus.stopping.v1",
+        "topic": "system/bus/stopping/v1"
+      },
+      {
+        "name": "SYSTEM_HEALTH_CHECK",
+        "subject": "system.health.check.v1",
+        "topic": "system/health/check/v1"
+      },
+      {
+        "name": "SYSTEM_HEALTH_REQUEST",
+        "subject": "system.health.request.v1",
+        "topic": "system/health/request/v1"
+      },
+      {
+        "name": "SYSTEM_HEALTH_RESPONSE",
+        "subject": "system.health.response.v1",
+        "topic": "system/health/response/v1"
+      },
+      {
+        "name": "SYSTEM_MODULE_REGISTERED",
+        "subject": "system.module.registered.v1",
+        "topic": "system/module/registered/v1"
+      },
+      {
+        "name": "SYSTEM_MODULE_UNREGISTERED",
+        "subject": "system.module.unregistered.v1",
+        "topic": "system/module/unregistered/v1"
+      },
+      {
+        "name": "SYSTEM_STATUS_UPDATE",
+        "subject": "system.status.update.v1",
+        "topic": "system/status/update/v1"
+      },
+      {
+        "name": "UI_COMMAND_EXECUTE",
+        "subject": "ui.command.execute.v1",
+        "topic": "ui/command/execute/v1"
+      },
+      {
+        "name": "UI_CONNECTION_STATUS",
+        "subject": "ui.connection.status.v1",
+        "topic": "ui/connection/status/v1"
+      },
+      {
+        "name": "UI_INTERACTION_EVENT",
+        "subject": "ui.interaction.event.v1",
+        "topic": "ui/interaction/event/v1"
+      },
+      {
+        "name": "UI_NOTIFICATION_SHOW",
+        "subject": "ui.notification.show.v1",
+        "topic": "ui/notification/show/v1"
+      },
+      {
+        "name": "UI_PREFERENCES_UPDATE",
+        "subject": "ui.preferences.update.v1",
+        "topic": "ui/preferences/update/v1"
+      },
+      {
+        "name": "UI_STATE_UPDATE",
+        "subject": "ui.state.update.v1",
+        "topic": "ui/state/update/v1"
+      },
+      {
+        "name": "USER_FEEDBACK_EXPLICIT",
+        "subject": "user.feedback.explicit.v1",
+        "topic": "user/feedback/explicit/v1"
+      },
+      {
+        "name": "USER_FEEDBACK_IMPLICIT",
+        "subject": "user.feedback.implicit.v1",
+        "topic": "user/feedback/implicit/v1"
+      },
+      {
+        "name": "USER_INTERACTION_HISTORY",
+        "subject": "user.interaction.history.v1",
+        "topic": "user/interaction/history/v1"
+      },
+      {
+        "name": "USER_PRESENCE_UPDATE",
+        "subject": "user.presence.update.v1",
+        "topic": "user/presence/update/v1"
+      },
+      {
+        "name": "USER_STATE_UPDATE",
+        "subject": "user.state.update.v1",
+        "topic": "user/state/update/v1"
+      }
+    ]
+  },
+  "version": "v1"
+}

@@ -16,6 +16,38 @@ from aico.data.repositories.base import Repository
 
 class PostgresArbiterABTestsRepository(Repository[ArbiterABTest]):
     """PostgreSQL implementation of arbiter A/B tests repository."""
+
+    @staticmethod
+    def _normalize_dt(value):
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, str):
+            s = value.strip()
+            if s.endswith("+00"):
+                s = s + ":00"
+            try:
+                return datetime.fromisoformat(s)
+            except ValueError:
+                return value
+        return value
+
+    @staticmethod
+    def _normalize_dt_for_db(value):
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, str):
+            s = value.strip()
+            if s.endswith("+00"):
+                s = s + ":00"
+            try:
+                return datetime.fromisoformat(s)
+            except ValueError:
+                return value
+        return value
     
     def __init__(self, session: AsyncSession):
         self.session = session
@@ -27,8 +59,8 @@ class PostgresArbiterABTestsRepository(Repository[ArbiterABTest]):
             test_name=entity.test_name,
             arm_a_id=entity.arm_a_id,
             arm_b_id=entity.arm_b_id,
-            start_date=entity.start_date,
-            end_date=entity.end_date,
+            start_date=self._normalize_dt_for_db(entity.start_date),
+            end_date=self._normalize_dt_for_db(entity.end_date),
             status=entity.status,
             winner_arm_id=entity.winner_arm_id,
             confidence_score=entity.confidence_score,
@@ -53,14 +85,14 @@ class PostgresArbiterABTestsRepository(Repository[ArbiterABTest]):
             test_name=row.test_name,
             arm_a_id=row.arm_a_id,
             arm_b_id=row.arm_b_id,
-            start_date=row.start_date,
-            end_date=row.end_date,
+            start_date=self._normalize_dt(row.start_date),
+            end_date=self._normalize_dt(row.end_date),
             status=row.status,
             winner_arm_id=row.winner_arm_id,
             confidence_score=row.confidence_score,
             notes=row.notes,
-            created_at=row.created_at,
-            updated_at=row.updated_at,
+            created_at=self._normalize_dt(row.created_at),
+            updated_at=self._normalize_dt(row.updated_at),
         )
     
     async def update(self, entity: ArbiterABTest) -> ArbiterABTest:
@@ -106,14 +138,14 @@ class PostgresArbiterABTestsRepository(Repository[ArbiterABTest]):
                 test_name=row.test_name,
                 arm_a_id=row.arm_a_id,
                 arm_b_id=row.arm_b_id,
-                start_date=row.start_date,
-                end_date=row.end_date,
+                start_date=self._normalize_dt(row.start_date),
+                end_date=self._normalize_dt(row.end_date),
                 status=row.status,
                 winner_arm_id=row.winner_arm_id,
                 confidence_score=row.confidence_score,
                 notes=row.notes,
-                created_at=row.created_at,
-                updated_at=row.updated_at,
+                created_at=self._normalize_dt(row.created_at),
+                updated_at=self._normalize_dt(row.updated_at),
             )
             for row in result.fetchall()
         ]
@@ -147,14 +179,14 @@ class PostgresArbiterABTestsRepository(Repository[ArbiterABTest]):
                 test_name=row.test_name,
                 arm_a_id=row.arm_a_id,
                 arm_b_id=row.arm_b_id,
-                start_date=row.start_date,
-                end_date=row.end_date,
+                start_date=self._normalize_dt(row.start_date),
+                end_date=self._normalize_dt(row.end_date),
                 status=row.status,
                 winner_arm_id=row.winner_arm_id,
                 confidence_score=row.confidence_score,
                 notes=row.notes,
-                created_at=row.created_at,
-                updated_at=row.updated_at,
+                created_at=self._normalize_dt(row.created_at),
+                updated_at=self._normalize_dt(row.updated_at),
             )
             for row in result.fetchall()
         ]

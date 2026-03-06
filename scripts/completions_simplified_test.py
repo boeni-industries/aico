@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Completions Test Script - ZMQ Version
+Completions Test Script - NATS Version
 
-Tests the modelservice completions via ZeroMQ message bus with CurveZMQ encryption.
-This script sends a simple "hello world" request to test the complete ZMQ flow.
+Tests the modelservice completions via NATS message bus with TLS encryption.
+This script sends a simple "hello world" request to test the complete NATS flow.
 """
 
 import asyncio
@@ -39,7 +39,7 @@ logger = get_logger("test.completions")
 
 
 async def test_modelservice_health() -> bool:
-    """Test modelservice health check via ZMQ."""
+    """Test modelservice health check via NATS."""
     try:
         import time
         
@@ -177,7 +177,7 @@ async def test_modelservice_health() -> bool:
 
 
 async def test_modelservice_completions() -> bool:
-    """Test modelservice completions via ZMQ."""
+    """Test modelservice completions via NATS."""
     try:
         import time
         
@@ -336,7 +336,7 @@ async def main():
     """Main test function."""
     import time
     
-    print("🧪 AICO Modelservice ZMQ Test Suite")
+    print("🧪 AICO Modelservice NATS Test Suite")
     print("=" * 60)
     
     # Start overall timing

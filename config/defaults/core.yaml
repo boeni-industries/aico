@@ -7,7 +7,7 @@ services:
   # Message bus service configuration
   message_bus:
     enabled: true
-    bind_address: "tcp://*:5555"
+    nats_url: "nats://localhost:4222"
     timeout: 120.0
   
   # Task scheduler service configuration  
@@ -32,11 +32,6 @@ services:
     enabled: true
     memory_integration: true
     emotion_integration: true
-    
-  # Rate limiting service configuration
-  rate_limiting:
-    enabled: true
-    default_requests_per_minute: 100
     
   # Validation service configuration
   validation:

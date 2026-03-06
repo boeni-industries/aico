@@ -81,11 +81,18 @@ class UserService:
                 # Create authentication record if PIN provided
                 if pin:
                     auth_uuid = str(uuid.uuid4())
-                    pin_hash = self.pwd_context.hash(pin)
+                    # Truncate PIN to 72 bytes to comply with bcrypt limits
+                    # Must truncate bytes, not characters, for proper UTF-8 handling
+                    pin_bytes = pin.encode('utf-8')
+                    if len(pin_bytes) > 72:
+                        pin_to_hash = pin_bytes[:72].decode('utf-8', errors='ignore')
+                    else:
+                        pin_to_hash = pin
+                    pin_hash = self.pwd_context.hash(pin_to_hash)
                     
                     await self.db.execute("""
                         INSERT INTO auth_user_credentials 
-                        (uuid, user_uuid, pin_hash, failed_attempts, created_at, updated_at)
+                        (uuid, user_uuid, password_hash, failed_attempts, created_at, updated_at)
                         VALUES ($1, $2, $3, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                     """, auth_uuid, user_uuid, pin_hash)
                 
@@ -330,15 +337,15 @@ class UserService:
                 
                 # Check if user already has authentication data
                 auth_data = await self.db.fetchrow("""
-                    SELECT pin_hash FROM auth_user_credentials WHERE user_uuid = $1
+                    SELECT password_hash FROM auth_user_credentials WHERE user_uuid = $1
                 """, user_uuid)
                 
                 # If user has existing PIN, verify old PIN
-                if auth_data and auth_data['pin_hash']:
+                if auth_data and auth_data['password_hash']:
                     if not old_pin:
                         raise ValueError("Old PIN required to update existing PIN")
                     
-                    if not self.pwd_context.verify(old_pin, auth_data['pin_hash']):
+                    if not self.pwd_context.verify(old_pin, auth_data['password_hash']):
                         self.logger.warning("Failed PIN update attempt", extra={
                             "subsystem": "user_service",
                             "function": "set_pin",
@@ -350,19 +357,25 @@ class UserService:
                         return False
                 
                 # Hash new PIN
-                pin_hash = self.pwd_context.hash(new_pin)
+                # Truncate PIN to 72 bytes to comply with bcrypt limits
+                pin_bytes = new_pin.encode('utf-8')
+                if len(pin_bytes) > 72:
+                    pin_to_hash = pin_bytes[:72].decode('utf-8', errors='ignore')
+                else:
+                    pin_to_hash = new_pin
+                pin_hash = self.pwd_context.hash(pin_to_hash)
                 
                 # Update or insert authentication data
                 if auth_data:
                     await self.db.execute("""
                         UPDATE auth_user_credentials 
-                        SET pin_hash = $1, updated_at = CURRENT_TIMESTAMP
+                        SET password_hash = $1, updated_at = CURRENT_TIMESTAMP
                         WHERE user_uuid = $2
                     """, pin_hash, user_uuid)
                 else:
                     auth_uuid = str(uuid.uuid4())
                     await self.db.execute("""
-                        INSERT INTO auth_user_credentials (uuid, user_uuid, pin_hash, failed_attempts, created_at, updated_at)
+                        INSERT INTO auth_user_credentials (uuid, user_uuid, password_hash, failed_attempts, created_at, updated_at)
                         VALUES ($1, $2, $3, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                     """, auth_uuid, user_uuid, pin_hash)
                 
@@ -408,24 +421,30 @@ class UserService:
                     raise ValueError(f"User not found: {user_uuid}")
                 
                 # Hash new PIN
-                pin_hash = self.pwd_context.hash(new_pin)
+                # Truncate PIN to 72 bytes to comply with bcrypt limits
+                pin_bytes = new_pin.encode('utf-8')
+                if len(pin_bytes) > 72:
+                    pin_to_hash = pin_bytes[:72].decode('utf-8', errors='ignore')
+                else:
+                    pin_to_hash = new_pin
+                pin_hash = self.pwd_context.hash(pin_to_hash)
                 
                 # Check if user already has authentication data
                 auth_data = await self.db.fetchrow("""
-                    SELECT pin_hash FROM auth_user_credentials WHERE user_uuid = $1
+                    SELECT password_hash FROM auth_user_credentials WHERE user_uuid = $1
                 """, user_uuid)
                 
                 # Update or insert authentication data
                 if auth_data:
                     await self.db.execute("""
                         UPDATE auth_user_credentials 
-                        SET pin_hash = $1, updated_at = CURRENT_TIMESTAMP
+                        SET password_hash = $1, updated_at = CURRENT_TIMESTAMP
                         WHERE user_uuid = $2
                     """, pin_hash, user_uuid)
                 else:
                     auth_uuid = str(uuid.uuid4())
                     await self.db.execute("""
-                        INSERT INTO auth_user_credentials (uuid, user_uuid, pin_hash, failed_attempts, created_at, updated_at)
+                        INSERT INTO auth_user_credentials (uuid, user_uuid, password_hash, failed_attempts, created_at, updated_at)
                         VALUES ($1, $2, $3, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                     """, auth_uuid, user_uuid, pin_hash)
                 
@@ -545,7 +564,7 @@ class UserService:
                 return {"success": False, "error": "User not found"}
             
             auth_data = await self.db.fetchrow("""
-                SELECT uuid, pin_hash, failed_attempts, locked_until, last_login
+                SELECT uuid, password_hash, failed_attempts, locked_until, last_login
                 FROM auth_user_credentials WHERE user_uuid = $1
             """, user_uuid)
             
@@ -563,7 +582,7 @@ class UserService:
                     }
             
             # Verify PIN
-            if not self.pwd_context.verify(pin, auth_data['pin_hash']):
+            if not self.pwd_context.verify(pin, auth_data['password_hash']):
                 # Increment failed attempts
                 failed_attempts = auth_data['failed_attempts'] + 1
                 locked_until = None
@@ -643,7 +662,13 @@ class UserService:
             if not user:
                 return False
             
-            pin_hash = self.pwd_context.hash(new_pin)
+            # Truncate PIN to 72 bytes to comply with bcrypt limits
+            pin_bytes = new_pin.encode('utf-8')
+            if len(pin_bytes) > 72:
+                pin_to_hash = pin_bytes[:72].decode('utf-8', errors='ignore')
+            else:
+                pin_to_hash = new_pin
+            pin_hash = self.pwd_context.hash(pin_to_hash)
             
             async with self.db.transaction():
                 # Check if authentication record exists
@@ -655,7 +680,7 @@ class UserService:
                     # Update existing
                     await self.db.execute("""
                         UPDATE auth_user_credentials 
-                        SET pin_hash = $1, failed_attempts = 0, locked_until = NULL, updated_at = CURRENT_TIMESTAMP
+                        SET password_hash = $1, failed_attempts = 0, locked_until = NULL, updated_at = CURRENT_TIMESTAMP
                         WHERE user_uuid = $2
                     """, pin_hash, user_uuid)
                 else:
@@ -663,7 +688,7 @@ class UserService:
                     auth_uuid = str(uuid.uuid4())
                     await self.db.execute("""
                         INSERT INTO auth_user_credentials 
-                        (uuid, user_uuid, pin_hash, failed_attempts, created_at, updated_at)
+                        (uuid, user_uuid, password_hash, failed_attempts, created_at, updated_at)
                         VALUES ($1, $2, $3, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                     """, auth_uuid, user_uuid, pin_hash)
                 
@@ -790,7 +815,7 @@ class UserService:
         """
         try:
             result = await self.db.fetchrow("""
-                SELECT pin_hash, failed_attempts, locked_until, last_login, created_at, updated_at
+                SELECT password_hash, failed_attempts, locked_until, last_login, created_at, updated_at
                 FROM auth_user_credentials WHERE user_uuid = $1
             """, user_uuid)
             
@@ -798,7 +823,7 @@ class UserService:
                 return None
                 
             return {
-                'has_pin': bool(result['pin_hash']),
+                'has_pin': bool(result['password_hash']),
                 'is_locked': bool(result['locked_until'] and datetime.fromisoformat(result['locked_until']) > datetime.now()),
                 'failed_attempts': result['failed_attempts'],
                 'last_login': result['last_login'],

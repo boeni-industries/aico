@@ -74,8 +74,8 @@ class ValueProfile(BaseModel):
     curiosity_intensity: float = 0.5  # 0.0-1.0
     autonomy_level: AutonomyLevel  # No default - must be set explicitly from config
     storage_preferences: Dict[str, Any] = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class PolicyRule(BaseModel):
@@ -91,8 +91,8 @@ class PolicyRule(BaseModel):
     enabled: bool = True
     scope: PolicyScope = PolicyScope.GLOBAL
     scope_id: Optional[str] = None  # user_id for user-specific rules
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class Consent(BaseModel):
@@ -103,7 +103,7 @@ class Consent(BaseModel):
     consent_scope: Dict[str, Any]  # What was consented to
     decision: ConsentDecision
     context: Dict[str, Any] = Field(default_factory=dict)
-    granted_at: datetime = Field(default_factory=datetime.utcnow)
+    granted_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     expires_at: Optional[datetime] = None
 
 
@@ -129,7 +129,8 @@ class ValuesEthicsService:
     against configured policies and user preferences.
     """
     
-    def __init__(self, logger=None):
+    def __init__(self, config=None, logger=None):
+        self.config = config
         self.logger = logger
         
         # Cache for loaded policies and profiles
@@ -421,9 +422,13 @@ class ValuesEthicsService:
             return profile
         else:
             # Create default profile - read autonomy level from configuration
-            from aico.core.config import ConfigurationManager
-            config = ConfigurationManager()
-            default_autonomy = config.get("agency.safety_control.autonomy_level", "balanced")
+            if self.config is None:
+                from aico.core.config import ConfigurationManager
+                cfg = ConfigurationManager()
+                cfg.initialize(lightweight=True)
+                default_autonomy = cfg.get("agency.safety_control.autonomy_level", "balanced")
+            else:
+                default_autonomy = self.config.get("agency.safety_control.autonomy_level", "balanced")
             
             profile = ValueProfile(
                 user_id=user_id,

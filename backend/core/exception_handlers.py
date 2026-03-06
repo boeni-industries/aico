@@ -3,6 +3,7 @@
 Global exception handlers for FastAPI application.
 
 Ensures all exceptions are properly logged at appropriate levels with full context.
+Uses standardized APIErrorResponse format for all non-2xx responses.
 """
 
 import time
@@ -13,11 +14,27 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from aico.core.logging import get_logger
+from backend.api.errors import APIErrorResponse
 
 logger = get_logger("backend.core.exception_handlers")
 
 _validation_error_log_cache = {}
 _VALIDATION_ERROR_LOG_TTL_SECONDS = 10
+
+
+def _get_request_id(request: Request) -> str | None:
+    return request.headers.get("x-request-id")
+
+
+def _error_payload(*, request: Request, error_code: str, message: str, details: object | None = None) -> dict:
+    payload = {
+        "error_code": error_code,
+        "message": message,
+        "request_id": _get_request_id(request),
+    }
+    if details is not None:
+        payload["details"] = details
+    return payload
 
 
 async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
@@ -53,10 +70,23 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
             }
         )
     
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"detail": exc.detail}
-    )
+    detail = exc.detail
+    if isinstance(detail, dict) and "error_code" in detail and "message" in detail:
+        content = {
+            "error_code": detail.get("error_code"),
+            "message": detail.get("message"),
+            "request_id": _get_request_id(request),
+        }
+        if detail.get("details") is not None:
+            content["details"] = detail.get("details")
+    else:
+        content = _error_payload(
+            request=request,
+            error_code=f"HTTP_{exc.status_code}",
+            message=str(detail),
+        )
+
+    return JSONResponse(status_code=exc.status_code, content=content)
 
 
 async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -83,7 +113,12 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={"detail": exc.errors()}
+        content=_error_payload(
+            request=request,
+            error_code="VALIDATION_ERROR",
+            message="Request validation failed",
+            details={"errors": exc.errors()},
+        ),
     )
 
 
@@ -107,12 +142,15 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     )
     
     # Return generic 500 error to client (don't leak internal details)
+    message = str(exc) if logger.level <= 10 else "An unexpected error occurred"
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={
-            "detail": f"Internal server error: {type(exc).__name__}",
-            "message": str(exc) if logger.level <= 10 else "An unexpected error occurred"  # Show details in DEBUG mode
-        }
+        content=_error_payload(
+            request=request,
+            error_code="INTERNAL_SERVER_ERROR",
+            message=message,
+            details={"exception_type": type(exc).__name__} if logger.level <= 10 else None,
+        ),
     )
 
 

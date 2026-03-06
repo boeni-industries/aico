@@ -1,8 +1,7 @@
 """
-Modelservice main application entry point - ZMQ Message Bus Implementation.
+Modelservice main application entry point - NATS Message Bus Implementation.
 
-This module implements a pure ZeroMQ message bus service that replaces the
-FastAPI/uvicorn HTTP server. All communication is via ZMQ with encryption.
+This module implements a pure NATS message bus service.
 """
 
 import sys
@@ -19,7 +18,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 # These are from jsonlines, pysbd (used by Coqui TTS) - not our code
 warnings.filterwarnings('ignore', category=SyntaxWarning)
 
-# Fix Windows asyncio event loop compatibility with ZMQ
+# Fix Windows asyncio event loop compatibility
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
@@ -27,6 +26,7 @@ if sys.platform == "win32":
 from aico.core.config import ConfigurationManager
 from aico.core.config_validation import validate_startup_config, print_config_summary
 from aico.core.logging import get_logger
+from aico.core.fs_guard import enable_fs_guard
 config_manager = ConfigurationManager()
 # Use lightweight initialization in modelservice to avoid starting file watchers.
 # IMPORTANT: This means modelservice no longer hot-reloads configuration files.
@@ -37,7 +37,7 @@ config_manager = ConfigurationManager()
 config_manager.initialize(lightweight=True)
 # Logging will be initialized service-specifically in initialize_modelservice()
 from aico.core.version import get_modelservice_version
-from .core.zmq_service import ModelserviceZMQService
+from .core.nats_service import ModelserviceNATSService
 
 # Get version from VERSIONS file
 __version__ = get_modelservice_version()
@@ -45,7 +45,7 @@ __version__ = get_modelservice_version()
 # Logger will be initialized after logging setup in initialize_modelservice()
 
 # Global service instance for signal handling
-_zmq_service = None
+_service = None
 
 # Track service start time for uptime calculation
 import time
@@ -53,11 +53,13 @@ _start_time = time.time()
 
 
 async def initialize_modelservice():
-    """Initialize modelservice with Ollama and return configuration."""
+    """Initialize modelservice and return configuration."""
     # CRITICAL: Validate configuration before proceeding.
     # Validate the already-initialized global config manager to avoid starting file
     # watchers (and to avoid validating a different initialization mode).
     cfg = config_manager
+    process_manager = None
+
     try:
         validate_startup_config(cfg, service="modelservice", fail_fast=True)
         print_config_summary(cfg)
@@ -69,6 +71,8 @@ async def initialize_modelservice():
     # Initialize service-specific logging first to capture all subsequent logs
     from aico.core.logging import initialize_logging
     initialize_logging(service_name="modelservice", enable_loki=True, enable_console=True)
+
+    enable_fs_guard()
     
     # Now we can get a logger
     logger = get_logger("modelservice.main")
@@ -79,17 +83,17 @@ async def initialize_modelservice():
     env = os.getenv("AICO_ENV", "development")
 
     # Startup: Display initial info and use standard AICO logging
-    startup_msg = "\n" + "=" * 60 + "\n[*] AICO Modelservice (ZMQ)\n" + "=" * 60
+    startup_msg = "\n" + "=" * 60 + "\n[*] AICO Modelservice (NATS)\n" + "=" * 60
     print(startup_msg)
     logger.info("AICO Modelservice starting up")
     
-    server_info = f"[>] Communication: ZeroMQ Message Bus\n[>] Environment: {env}\n[>] Version: v{__version__}\n[>] Encryption: Enabled"
+    server_info = f"[>] Communication: NATS Message Bus\n[>] Environment: {env}\n[>] Version: v{__version__}"
     print(server_info)
-    logger.info(f"Server configuration - Communication: ZMQ, Environment: {env}, Version: {__version__}, Encryption: Enabled")
+    logger.info(f"Server configuration - Communication: NATS, Environment: {env}, Version: {__version__}")
     
     print("=" * 60)
     
-    # Check if backend is running before starting ZMQ service
+    # Check if backend is running before starting NATS service
     print("🔍 Checking backend availability...")
     backend_available = await _check_backend_health(cfg)
     if not backend_available:
@@ -99,150 +103,60 @@ async def initialize_modelservice():
         print("✅ Backend is available")
         logger.info("Backend confirmed available at startup")
     
-    # Initialize ZMQ service EARLY to capture all subsequent logs
-    print("🔌 Starting ZMQ logging service...")
-    logger.info("Starting ZMQ service early for log capture")
+    # Initialize NATS service EARLY to capture all subsequent logs
+    print("🔌 Starting NATS service...")
+    logger.info("Starting NATS service early for message handling")
     
-    zmq_service = ModelserviceZMQService(cfg, None)  # No ollama_manager yet
-    await zmq_service.start_early()  # New method for early startup
+    service = ModelserviceNATSService(cfg, None)
+    await service.start_early()
     
-    # Initialize InfluxDB metrics exporter (honor instrumentation flag)
+    # Initialize OTLP metrics exporter (honor instrumentation flag)
     instrumentation_config = cfg.get("instrumentation", {})
-    if instrumentation_config.get("enabled", False):
-        print("📊 Initializing InfluxDB metrics exporter...")
-        logger.info("Initializing InfluxDB metrics exporter (instrumentation enabled)")
+    exporters_config = instrumentation_config.get("exporters", {}) if isinstance(instrumentation_config, dict) else {}
+    otlp_config = exporters_config.get("otlp", {}) if isinstance(exporters_config, dict) else {}
+
+    if instrumentation_config.get("enabled", False) and otlp_config.get("enabled", False):
+        print("📊 Initializing OTLP metrics exporter...")
+        logger.info("Initializing OTLP metrics exporter (instrumentation enabled)")
         try:
             from opentelemetry import metrics as otel_metrics
+            from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
             from opentelemetry.sdk.metrics import MeterProvider
             from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
             from opentelemetry.sdk.resources import Resource
-            from backend.core.otel_influx_exporter import OTelInfluxExporter
             import socket
-            
-            # Get InfluxDB config
-            influx_config = cfg.get("influx", {})
-            influx_url = influx_config.get("url", "http://127.0.0.1:8086")
-            influx_org = influx_config.get("org", "aico")
-            influx_bucket = influx_config.get("bucket", "aico_telemetry")
-            
-            # Retrieve token from keyring
-            influx_token = None
-            try:
-                from aico.security.key_manager import AICOKeyManager
-                
-                # Use the global config_manager (already initialized at module level)
-                key_manager = AICOKeyManager(config_manager)
-                influx_token = key_manager.get_database_password("influx", username="admin_token")
-                
-                if not influx_token:
-                    logger.warning("InfluxDB token not found in keyring; metrics may not be exported. Run 'aico deploy influx' to set up credentials.")
-            except Exception as e:
-                logger.warning(f"Failed to retrieve InfluxDB token from keyring: {e}")
-                influx_token = None
-            
-            # Create resource for modelservice
+
+            traces_cfg = otlp_config.get("traces", {}) if isinstance(otlp_config.get("traces"), dict) else {}
+            metrics_cfg = otlp_config.get("metrics", {}) if isinstance(otlp_config.get("metrics"), dict) else {}
+
+            endpoint = metrics_cfg.get("endpoint") or traces_cfg.get("endpoint") or "otel-collector:4317"
+            insecure = bool(metrics_cfg.get("insecure", traces_cfg.get("insecure", True)))
+
             resource = Resource.create({
                 "service.name": "modelservice",
                 "service.version": __version__,
                 "deployment.environment": instrumentation_config.get("mode", "casual"),
                 "host.name": socket.gethostname(),
             })
-            
-            # Create InfluxDB exporter
-            influx_exporter = OTelInfluxExporter(
-                influx_url=influx_url,
-                org=influx_org,
-                bucket=influx_bucket,
-                token=influx_token,
-                resource_attributes=dict(resource.attributes),
+
+            otlp_metrics_exporter = OTLPMetricExporter(endpoint=endpoint, insecure=insecure)
+            metrics_reader = PeriodicExportingMetricReader(
+                exporter=otlp_metrics_exporter,
+                export_interval_millis=15000,
             )
-            
-            # Wrap exporter in periodic reader (exports every 60 seconds, matching backend)
-            influx_reader = PeriodicExportingMetricReader(
-                exporter=influx_exporter,
-                export_interval_millis=60000,  # 60 seconds (as per schema.lp)
-            )
-            
-            # Create and set meter provider
-            meter_provider = MeterProvider(
-                resource=resource,
-                metric_readers=[influx_reader]
-            )
+
+            meter_provider = MeterProvider(resource=resource, metric_readers=[metrics_reader])
             otel_metrics.set_meter_provider(meter_provider)
-            
-            print("✅ InfluxDB metrics exporter ready")
-            logger.info("InfluxDB metrics exporter initialized successfully")
+
+            print("✅ OTLP metrics exporter ready")
+            logger.info("OTLP metrics exporter initialized successfully")
         except Exception as e:
             print(f"⚠️  Metrics initialization failed: {e}")
             logger.warning(f"Metrics initialization failed: {e}")
     else:
-        print("⏹️  Instrumentation disabled in config; skipping metrics setup")
-        logger.info("Instrumentation disabled in config; skipping modelservice metrics initialization")
+        logger.info("OTLP metrics export disabled; skipping modelservice metrics exporter")
     
-    # ZMQ log transport removed - logs now go directly to InfluxDB
-    logger.info("Modelservice logging initialized with InfluxDB")
-    
-    # Initialize OllamaManager (now that ZMQ logging is available)
-    from .core.ollama_manager import OllamaManager
-    ollama_manager = OllamaManager()
-    
-    # Set the ollama_manager in the ZMQ service
-    zmq_service.set_ollama_manager(ollama_manager)
-    
-    # Initialize process management for graceful shutdown
-    process_manager = None
-    if os.getenv("AICO_DETACH_MODE") == "true":
-        from aico.core.process import ProcessManager
-        process_manager = ProcessManager("modelservice")
-        process_manager.write_pid(os.getpid())
-    
-    # Initialize Ollama with beautiful status messages
-    print("🔧 Initializing Ollama")
-    logger.info("Starting Ollama initialization")
-    
-    try:
-        if await ollama_manager.ensure_installed():
-            print("✅ Ollama binary ready")
-            logger.info("Ollama binary installation verified")
-            
-            if await ollama_manager.start_ollama():
-                print("✅ Ollama server started")
-                logger.info("Ollama server started successfully")
-                
-                ollama_status = await ollama_manager.get_status()
-                if ollama_status:
-                    version = ollama_status.get('version', 'unknown')
-                    print(f"✅ Ollama v{version} ready at http://127.0.0.1:11434")
-                    logger.info(f"Ollama v{version} ready at http://127.0.0.1:11434")
-                    
-                    # Auto-pull and start default models
-                    started_models = await ollama_manager._ensure_default_models()
-                    
-                    # Report started models
-                    if started_models:
-                        print(f"✅ Started {len(started_models)} model(s): {', '.join(started_models)}")
-                        logger.info(f"Started {len(started_models)} model(s): {', '.join(started_models)}")
-                    else:
-                        print("ℹ️ No models configured for auto-start")
-                        logger.info("No models configured for auto-start")
-                else:
-                    print("⚠️ Could not verify Ollama status")
-                    logger.warning("Could not verify Ollama status")
-            else:
-                print("❌ Ollama server failed to start")
-                logger.error("Ollama server failed to start")
-        else:
-            print("❌ Ollama installation failed")
-            logger.error("Ollama installation failed")
-                
-    except Exception as e:
-        print(f"❌ Ollama initialization error: {e}")
-        logger.error(f"Ollama initialization error: {e}")
-        # Log the full exception for debugging
-        import traceback
-        full_traceback = traceback.format_exc()
-        print(f"Full traceback:\n{full_traceback}")
-        logger.error(f"Full traceback: {full_traceback}")
+    # vLLM is now deployed separately via 'aico vllm' CLI commands
     
     # Initialize and preload TransformersManager
     from .core.transformers_manager import TransformersManager
@@ -251,8 +165,8 @@ async def initialize_modelservice():
     # Initialize models (download + preload into memory)
     await transformers_manager.initialize_models()
     
-    # Inject the preloaded TransformersManager into ZMQ service
-    zmq_service.set_transformers_manager(transformers_manager)
+    # Inject the preloaded TransformersManager into service
+    service.set_transformers_manager(transformers_manager)
     
     # Initialize TTS system (blocking - must complete before service is ready)
     print("🎤 Initializing TTS system...")
@@ -260,7 +174,7 @@ async def initialize_modelservice():
     logger.info("Starting TTS system initialization")
     
     try:
-        await zmq_service.handlers.initialize_tts_system()
+        await service.handlers.initialize_tts_system()
         print("✅ TTS system ready")
         logger.info("TTS system initialized successfully")
     except Exception as e:
@@ -274,12 +188,12 @@ async def initialize_modelservice():
         raise SystemExit(1)
     
     print("=" * 60)
-    print("[+] ZMQ service ready... (Press Ctrl+C to stop)\n")
-    logger.info("Modelservice startup complete, ZMQ service ready")
+    print("[+] NATS service ready... (Press Ctrl+C to stop)\n")
+    logger.info("Modelservice startup complete, NATS service ready")
 
-    # Logging will be handled after full ZMQ service initialization in main()
+    # Logging will be handled after full NATS service initialization in main()
 
-    return cfg, ollama_manager, process_manager, zmq_service
+    return cfg, None, process_manager, service
 
 
 async def _check_backend_health(cfg: ConfigurationManager) -> bool:
@@ -288,21 +202,20 @@ async def _check_backend_health(cfg: ConfigurationManager) -> bool:
         import httpx
         
         # Get backend configuration
-        backend_config = cfg.get("api_gateway", {})
-        host = backend_config.get("host", "localhost")
-        port = backend_config.get("port", 8771)
+        host = cfg.get("api_gateway.rest.host", "localhost")
+        port = cfg.get("api_gateway.rest.port", 8771)
         
         # Try to connect to backend health endpoint
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            response = await client.get(f"http://{host}:{port}/api/v1/health")
+        async with httpx.AsyncClient(timeout=3.0, follow_redirects=True) as client:
+            response = await client.get(f"http://{host}:{port}/api/v1/health/")
             return response.status_code == 200
             
     except Exception as e:
         return False
 
 
-async def shutdown_modelservice(ollama_manager, process_manager):
-    """Gracefully shutdown modelservice and Ollama."""
+async def shutdown_modelservice(process_manager):
+    """Gracefully shutdown modelservice."""
     # Get logger safely
     try:
         logger = get_logger("modelservice.main")
@@ -327,17 +240,6 @@ async def shutdown_modelservice(ollama_manager, process_manager):
     if logger:
         logger.info("Stopping services")
     
-    # Stop Ollama gracefully
-    try:
-        await ollama_manager.stop_ollama()
-        print("[+] Ollama stopped")
-        if logger:
-            logger.info("Ollama stopped successfully")
-    except Exception as e:
-        print(f"[!] Error stopping Ollama: {e}")
-        if logger:
-            logger.error(f"Error stopping Ollama: {e}")
-        
     if process_manager:
         process_manager.cleanup_pid_files()
     print("[+] Shutdown complete.")
@@ -353,14 +255,18 @@ def signal_handler(signum, frame):
         logger.info(f"Received signal {signum}, initiating shutdown")
     except:
         print(f"Received signal {signum}, initiating shutdown")
-    
-    if _zmq_service:
-        asyncio.create_task(_zmq_service.stop())
+    global _service
+    if _service is not None:
+        try:
+            asyncio.create_task(_service.stop())
+        except RuntimeError:
+            # No running loop in this thread/context
+            pass
 
 
 async def main():
-    """Main entry point for the modelservice ZMQ service."""
-    global _zmq_service
+    """Main entry point for the modelservice NATS service."""
+    global _service
     
     # Initialize these to None so they're always defined for cleanup
     ollama_manager = None
@@ -371,17 +277,17 @@ async def main():
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
         
-        # Initialize modelservice and Ollama (ZMQ service started early)
-        config, ollama_manager, process_manager, _zmq_service = await initialize_modelservice()
+        # Initialize modelservice and Ollama (service started early)
+        config, ollama_manager, process_manager, _service = await initialize_modelservice()
         
-        # Complete the full ZMQ service initialization (subscribe to all topics)
-        await _zmq_service.start()
+        # Complete the full service initialization (subscribe to all topics)
+        await _service.start()
         
-        # ZMQ log transport removed - logs now go directly to InfluxDB
+        # Logs now go directly to InfluxDB
         
         # Keep the service running (both foreground and background modes)
         # Entering service loop
-        while _zmq_service and _zmq_service.running:
+        while _service and _service.running:
             await asyncio.sleep(1.0)
         # Service loop ended
         
@@ -399,11 +305,10 @@ async def main():
             print(f"Modelservice error: {str(e)}")
         raise
     finally:
-        # Cleanup - ollama_manager and process_manager are always defined (may be None)
-        if _zmq_service:
-            await _zmq_service.stop()
-        if ollama_manager is not None:
-            await shutdown_modelservice(ollama_manager, process_manager)
+        # Cleanup - process_manager is always defined (may be None)
+        if _service:
+            await _service.stop()
+        await shutdown_modelservice(process_manager)
 
 
 def run_main():
@@ -414,7 +319,7 @@ def run_main():
         try:
             logger = get_logger("modelservice.main")
             logger.info("Modelservice stopped by user")
-        except:
+        except Exception:
             print("Modelservice stopped by user")
     except Exception as e:
         try:

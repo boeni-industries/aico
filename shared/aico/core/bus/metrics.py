@@ -10,27 +10,34 @@ from contextlib import contextmanager
 
 from opentelemetry import metrics
 
-# Get OpenTelemetry meter
-meter = metrics.get_meter("aico.messagebus")
+_message_duration = None
+_message_counter = None
+_backlog_gauge = None
 
-# Create metrics instruments
-message_duration = meter.create_histogram(
-    name="aico.messagebus.message.duration",
-    description="Message processing duration in seconds",
-    unit="s"
-)
 
-message_counter = meter.create_counter(
-    name="aico.messagebus.message.count",
-    description="Total number of messages processed",
-    unit="1"
-)
+def _ensure_instruments():
+    global _message_duration, _message_counter, _backlog_gauge
 
-backlog_gauge = meter.create_up_down_counter(
-    name="aico.messagebus.backlog.depth",
-    description="Current message backlog depth",
-    unit="1"
-)
+    if _message_duration is not None:
+        return
+
+    meter = metrics.get_meter("aico.messagebus")
+
+    _message_duration = meter.create_histogram(
+        name="aico.messagebus.message.duration",
+        description="Message processing duration in seconds",
+        unit="s",
+    )
+    _message_counter = meter.create_counter(
+        name="aico.messagebus.message.count",
+        description="Total number of messages processed",
+        unit="1",
+    )
+    _backlog_gauge = meter.create_up_down_counter(
+        name="aico.messagebus.backlog.depth",
+        description="Current message backlog depth",
+        unit="1",
+    )
 
 
 @contextmanager
@@ -70,6 +77,7 @@ def track_message(
     try:
         yield tracker
     finally:
+        _ensure_instruments()
         duration = time.perf_counter() - start_time
         
         attributes = {
@@ -79,8 +87,8 @@ def track_message(
             **extra_attributes
         }
         
-        message_duration.record(duration, attributes)
-        message_counter.add(1, attributes)
+        _message_duration.record(duration, attributes)
+        _message_counter.add(1, attributes)
 
 
 def record_message(
@@ -107,5 +115,6 @@ def record_message(
         **extra_attributes
     }
     
-    message_duration.record(duration_seconds, attributes)
-    message_counter.add(1, attributes)
+    _ensure_instruments()
+    _message_duration.record(duration_seconds, attributes)
+    _message_counter.add(1, attributes)

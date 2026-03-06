@@ -13,11 +13,11 @@ The AICO CLI is a comprehensive command-line interface for managing, operating, 
 **Installation:**
 ```bash
 # Development mode (editable install)
-cd /path/to/aico
-uv pip install -e .
+cd /path/to/aico/cli
+uv sync --frozen
 
 # Run CLI
-aico --help
+uv run aico --help
 ```
 
 ---
@@ -698,7 +698,75 @@ All commands support these global options:
 
 ## Authentication
 
-Many commands require authentication. Use the gateway auth system:
+### Authentication Patterns
+
+The AICO CLI uses **three authentication patterns** depending on the command type:
+
+#### 1. JWT Service Token (API Gateway Commands)
+
+Commands that interact with the API Gateway use **JWT service token authentication**:
+
+**Commands using JWT:**
+- `aico scheduler trigger` - Trigger scheduler tasks
+- `aico interactions *` - Interaction management
+- `aico agency *` - Agency operations
+- `aico skills *` - Skills execution
+- `aico tools *` - Tools execution
+
+**How it works:**
+```bash
+# Commands with @sensitive decorator prompt for master password
+aico scheduler trigger maintenance.run_ledger_cleanup
+
+# CLI automatically:
+# 1. Prompts for master password (via @sensitive decorator)
+# 2. Retrieves JWT token from AICOKeyManager
+# 3. Sends authenticated request with:
+#    - Authorization: Bearer <JWT>
+#    - Idempotency-Key: <UUID>
+# 4. Gateway validates JWT signature and permissions
+```
+
+**Security features:**
+- ✅ **Authentication**: JWT token signed by master key
+- ✅ **Authorization**: Token contains user identity and permissions
+- ✅ **Idempotency**: Prevents duplicate operations
+- ✅ **Audit trail**: User identity logged for all operations
+- ✅ **Token expiry**: Automatic refresh and expiration handling
+
+#### 2. Direct Database Access (Admin Commands)
+
+Local administration commands use direct PostgreSQL access with `@sensitive` decorator:
+
+**Commands using direct DB:**
+- `aico scheduler ls/show/create/update/enable/disable/delete/history/status/cleanup/cancel`
+- `aico kg *` - Knowledge graph operations
+- `aico agency skillgaps *` - Skill gap analysis
+
+**How it works:**
+```bash
+# @sensitive decorator prompts for master password
+aico scheduler ls
+
+# CLI uses master password to:
+# 1. Decrypt database credentials from keyring
+# 2. Connect directly to PostgreSQL
+# 3. Execute queries with full admin privileges
+```
+
+#### 3. Unauthenticated (Public Commands)
+
+Read-only and public commands require no authentication:
+
+**Unauthenticated commands:**
+- `aico modelservice status`
+- `aico versions list`
+- `aico config get`
+- `aico gateway status`
+
+### Gateway Authentication
+
+For explicit gateway authentication:
 
 ```bash
 # Login (generates JWT token, stored in keyring)
@@ -712,6 +780,18 @@ aico gateway auth logout
 ```
 
 JWT tokens are stored securely in the system keychain and have a 24-hour expiry.
+
+### Master Password
+
+The master password is used to:
+1. Decrypt credentials from system keyring
+2. Generate JWT tokens for API authentication
+3. Access encrypted database connections
+
+Set up master password:
+```bash
+aico security setup
+```
 
 ---
 
@@ -844,10 +924,11 @@ aico pg exec "SELECT * FROM users" > users-backup.sql
 ### Command Not Found
 ```bash
 # Ensure CLI is installed
-uv pip install -e .
+cd /path/to/aico/cli
+uv sync --frozen
 
 # Check installation
-which aico
+uv run which aico
 aico --help
 ```
 

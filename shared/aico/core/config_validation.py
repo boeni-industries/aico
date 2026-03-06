@@ -32,10 +32,7 @@ REQUIRED_CONFIG_KEYS = {
         "postgres.db_name",
         "api_gateway.rest.host",
         "api_gateway.rest.port",
-        "message_bus.broker_address",
-        "message_bus.pub_port",
-        "message_bus.sub_port",
-        "security.transport.message_bus_encryption",
+        "message_bus.nats_url",
         "conversation.features",
         "emotion.appraisal_sensitivity",
         "agency.arbiter.enabled",
@@ -46,8 +43,6 @@ REQUIRED_CONFIG_KEYS = {
     "modelservice": [
         "modelservice.host",
         "modelservice.port",
-        "modelservice.ollama.host",
-        "modelservice.ollama.port",
         "modelservice.transformers.models",
         "api_gateway.rest.host",
         "api_gateway.rest.port",
@@ -61,7 +56,7 @@ REQUIRED_CONFIG_KEYS = {
         "system.environment",
         "logging.level",
         "security.transport.encryption_enabled",
-        "message_bus.broker_address",
+        "message_bus.nats_url",
     ]
 }
 
@@ -125,9 +120,6 @@ def validate_config_types(config: ConfigurationManager) -> List[str]:
         "postgres.port": int,
         "postgres.pool_size": int,
         "api_gateway.rest.port": int,
-        "message_bus.pub_port": int,
-        "message_bus.sub_port": int,
-        "security.transport.message_bus_encryption": bool,
         "memory.working.ttl_seconds": int,
         "memory.semantic.enabled": bool,
         "agency.arbiter.enabled": bool,
@@ -171,8 +163,6 @@ def validate_config_ranges(config: ConfigurationManager) -> List[str]:
         "postgres.port": (1, 65535),
         "postgres.pool_size": (1, 100),
         "api_gateway.rest.port": (1, 65535),
-        "message_bus.pub_port": (1, 65535),
-        "message_bus.sub_port": (1, 65535),
         "memory.working.ttl_seconds": (60, 2592000),  # 60 seconds to 30 days
         "agency.arbiter.max_active_intentions": (1, 20),
         "emotion.appraisal_sensitivity": (0.0, 1.0),

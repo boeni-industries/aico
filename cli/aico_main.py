@@ -63,23 +63,25 @@ COMMAND_MODULES = {
     "config": "cli.commands.config",
     "version": "cli.commands.version",
     "security": "cli.commands.security",
-    "lmdb": "cli.commands.lmdb",
-    "chroma": "cli.commands.chroma",
     "kg": "cli.commands.kg",
     "pg": "cli.commands.pg",
+    "tenant": "cli.commands.tenant",
     "influx": "cli.commands.influx",
     "deploy": "cli.commands.deploy",
+    "upgrade": "cli.commands.upgrade",
     "scheduler": "cli.commands.scheduler",
     "emotion": "cli.commands.emotion",
     "dev": "cli.commands.dev",
     "bus": "cli.commands.bus",
     "modelservice": "cli.commands.modelservice",
-    "ollama": "cli.commands.ollama",
+    "vllm": "cli.commands.vllm",
     "tools": "cli.commands.tools",
     "skills": "cli.commands.skills",
     "gateway": "cli.commands.gateway",
     "agency": "cli.commands.agency",
     "interactions": "cli.commands.interactions",
+    "ps": "cli.commands.ps",
+    "exec": "cli.commands.exec",
 }
 
 # Check if a specific command was requested
@@ -105,18 +107,16 @@ from cli.commands.security import app as security_app
 from cli.commands.dev import app as dev_app
 from cli.commands.logs import app as logs_app
 from cli.commands.bus import app as bus_app
-from cli.commands.scheduler import app as scheduler_app
 from cli.commands.tools import app as tools_app
 from cli.commands.skills import app as skills_app
-from cli.commands.modelservice import app as modelservice_app
-from cli.commands.ollama import app as ollama_app
-from cli.commands.lmdb import app as lmdb_app
-from cli.commands.chroma import app as chroma_app
+from cli.commands.vllm import app as vllm_app
 from cli.commands.kg import app as kg_app
 from cli.commands.emotion import app as emotion_app
 from cli.commands.pg import app as pg_app
+from cli.commands.tenant import app as tenant_app
 from cli.commands.influx import app as influx_app
 from cli.commands.deploy import app as deploy_app
+from cli.commands.upgrade import app as upgrade_app
 
 app = typer.Typer(
     name="aico",
@@ -127,26 +127,36 @@ app = typer.Typer(
 
 app.add_typer(config_app, name="config", help=f"{chars['config']} Configuration management")
 app.add_typer(version_app, name="version", help=f"{chars['package']} Version and build information") 
-app.add_typer(lmdb_app, name="lmdb", help=f"{chars['database']} LMDB working memory management")
 app.add_typer(kg_app, name="kg", help="💡 Knowledge graph management")
 app.add_typer(pg_app, name="pg", help=f"{chars['database']} Postgres/Timescale backend management (experimental)")
+app.add_typer(tenant_app, name="tenant", help="🏢 Tenant management")
 app.add_typer(influx_app, name="influx", help=f"{chars['database']} InfluxDB time-series database management")
 app.add_typer(deploy_app, name="deploy", help=f"{chars['dev']} Deployment orchestration for Postgres/InfluxDB backends")
+app.add_typer(upgrade_app, name="upgrade", help="⬆️  System upgrade management with rollback capability")
 app.add_typer(security_app, name="security", help=f"{chars['security']} Security and encryption")
 app.add_typer(logs_app, name="logs", help=f"{chars['logs']} Log management and analysis")
-app.add_typer(scheduler_app, name="scheduler", help="⏰ Task scheduler management")
 app.add_typer(emotion_app, name="emotion", help="🎭 Emotional simulation management")
 app.add_typer(dev_app, name="dev", help=f"{chars['dev']} Development utilities")
 app.add_typer(bus_app, name="bus", help=f"{chars['bus']} Message bus management")
-app.add_typer(modelservice_app, name="modelservice", help="🤖 Model service management")
-app.add_typer(ollama_app, name="ollama", help="🦙 Ollama model management")
+app.add_typer(vllm_app, name="vllm", help="🚀 vLLM deployment and management")
 app.add_typer(tools_app, name="tools", help="🛠 Agency tool inspection and live execution")
 app.add_typer(skills_app, name="skills", help="🎯 Agency skills inspection and live execution")
-app.add_typer(chroma_app, name="chroma", help=f"{chars['database']} ChromaDB semantic memory management")
 
 try:
     from cli.commands import gateway
     app.add_typer(gateway.app, name="gateway", help=f"{chars['gateway']} API Gateway management")
+except ImportError:
+    pass
+
+try:
+    from cli.commands import modelservice
+    app.add_typer(modelservice.app, name="modelservice", help="🤖 Model service management and control")
+except ImportError:
+    pass
+
+try:
+    from cli.commands import scheduler
+    app.add_typer(scheduler.app, name="scheduler", help="⏰ Task scheduler management")
 except ImportError:
     pass
 
@@ -193,11 +203,10 @@ def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", he
         
         commands = [
             (chars["package"], "version", "Manage and synchronize versions across all AICO system parts"),
-            (chars["database"], "lmdb", "LMDB working memory management"),
-            (chars["database"], "chroma", "ChromaDB semantic memory management"),
-            (chars["database"], "pg", "PostgreSQL database management"),
+            (chars["database"], "pg", "PostgreSQL database management (with pgvector)"),
             (chars["database"], "influx", "InfluxDB time-series database management"),
             ("🚀", "deploy", "Deployment orchestration for Postgres/InfluxDB backends"),
+            ("⬆️", "upgrade", "System upgrade management with rollback capability"),
             ("💡", "kg", "Knowledge graph management and inspection"),
             (chars["security"], "security", "Master password setup and security management"),
             (chars["config"], "config", "Configuration management and validation"),
@@ -207,7 +216,7 @@ def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", he
             ("🚌", "bus", "Message bus testing, monitoring, and management"),
             ("🌐", "gateway", "API Gateway management and protocol control"),
             ("🤖", "modelservice", "Model service management and control"),
-            ("🦙", "ollama", "Ollama model management and operations"),
+            ("🚀", "vllm", "vLLM deployment and management (production LLM serving)"),
             ("🎯", "agency", "Agency system control (intentions, values, policies, lessons)"),
             ("💬", "interactions", "Interaction request testing and simulation"),
             ("🧹", "dev", "Development utilities (data cleanup, security reset)")

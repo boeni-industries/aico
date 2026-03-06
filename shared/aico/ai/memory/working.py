@@ -39,14 +39,12 @@ Performance Characteristics:
 - Memory usage monitoring and automatic cleanup of expired sessions
 """
 
-import lmdb
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 import json
 
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
-from aico.data.lmdb import get_lmdb_path, initialize_lmdb_env
 from aico.ai.memory.temporal import TemporalMetadata
 from .metrics import track_query
 
@@ -55,10 +53,12 @@ logger = get_logger("shared.ai.memory.working")
 
 class WorkingMemoryStore:
     """
-    Fast, ephemeral storage for active conversation context using LMDB.
+    DEPRECATED: Legacy LMDB-based working memory store.
+    Use PostgresWorkingMemoryStore instead.
     """
 
     def __init__(self, config_manager: ConfigurationManager):
+        raise RuntimeError("LMDB WorkingMemoryStore is deprecated; use PostgresWorkingMemoryStore")
         self.config = config_manager
         self.env = None
         self.dbs = {}
@@ -69,6 +69,7 @@ class WorkingMemoryStore:
 
     async def initialize(self) -> None:
         """Initialize LMDB environment and open named databases."""
+        raise RuntimeError("LMDB WorkingMemoryStore is deprecated; use PostgresWorkingMemoryStore")
         if self._initialized:
             return
 
@@ -289,7 +290,7 @@ class WorkingMemoryStore:
 
     async def cleanup_expired(self) -> int:
         """
-        Delete expired entries from LMDB.
+        Delete expired entries from working memory.
         
         Returns:
             Number of entries deleted

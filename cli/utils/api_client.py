@@ -19,9 +19,9 @@ from aico.security.exceptions import EncryptionError
 
 @contextmanager
 def get_modelservice_client():
-    """Get a ZMQ-based modelservice client for CLI commands."""
-    from cli.utils.zmq_client import CLIZMQClient
-    yield CLIZMQClient()
+    """Get a message-bus based modelservice client for CLI commands."""
+    from cli.utils.nats_client import CLINATSClient
+    yield CLINATSClient()
 
 
 class CLIBackendClient:

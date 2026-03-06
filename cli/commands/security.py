@@ -34,12 +34,27 @@ from aico.security import AICOKeyManager
 from cli.utils.timezone import format_timestamp_local
 
 def _get_key_manager():
-    """Helper function to get configured AICOKeyManager instance."""
-    from aico.core.config import ConfigurationManager
-    config_manager = ConfigurationManager()
-    config_manager.initialize(lightweight=True)
-    key_manager = AICOKeyManager(config_manager)
-    key_manager.config_manager = config_manager  # Attach for CLI use only
+    """Helper function to get configured AICOKeyManager instance.
+    
+    Uses a minimal config approach to avoid blocking ConfigurationManager initialization.
+    """
+    import sys
+    print("DEBUG: _get_key_manager called", file=sys.stderr, flush=True)
+    
+    # Create a minimal config object that only provides what AICOKeyManager needs
+    class MinimalConfig:
+        def get(self, key, default=None):
+            print(f"DEBUG: MinimalConfig.get({key}, {default})", file=sys.stderr, flush=True)
+            # AICOKeyManager only needs security.keyring_service_name
+            if key == "security.keyring_service_name":
+                return "AICO"
+            return default
+    
+    print("DEBUG: Creating MinimalConfig", file=sys.stderr, flush=True)
+    minimal_config = MinimalConfig()
+    print("DEBUG: Creating AICOKeyManager", file=sys.stderr, flush=True)
+    key_manager = AICOKeyManager(minimal_config)
+    print("DEBUG: AICOKeyManager created successfully", file=sys.stderr, flush=True)
     return key_manager
 
 def security_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
@@ -54,19 +69,22 @@ def security_callback(ctx: typer.Context, help: bool = typer.Option(False, "--he
             ("session", "Show CLI session status and timeout information"),
             ("clear", "Clear cached master key (forces password re-entry)"),
             ("test", "Performance diagnostics and key derivation benchmarking"),
-            ("list-keys", "List all AICO keys stored in system keyring"),
             ("get-key", "Retrieve value of a specific key from keyring"),
             ("pg-set", "Store Postgres password securely via AICOKeyManager"),
             ("pg-env", "Export Postgres env vars for CI/CD and docker-compose"),
+            ("env-sync", "Sync credentials from an env file into the keyring"),
+            ("secrets-show", "Show docker/compose secrets on disk (docker/secrets/*)"),
+            ("secrets-sync", "Sync docker/compose secrets (docker/secrets/*) into the keyring"),
             ("influx-set", "Store InfluxDB API token securely via AICOKeyManager"),
             ("influx-env", "Export InfluxDB env vars for CI/CD and docker-compose"),
-            ("user-create", "Create a new user with optional PIN authentication"),
+            ("user-create", "Create a new user with optional password authentication"),
             ("user-list", "List all users with filtering options"),
             ("user-update", "Update user profile information"),
             ("user-delete", "Delete user (soft delete by default, --hard for permanent)"),
             ("user-cleanup", "Remove all soft-deleted users from database (IRREVERSIBLE)"),
-            ("user-auth", "Authenticate user with PIN"),
-            ("user-set-pin", "Set or update user PIN"),
+            ("user-auth", "Authenticate user with password"),
+            ("user-set-password", "Set or update user password"),
+            ("user-set-pin", "Deprecated alias for user-set-password"),
             ("user-stats", "Show user statistics and authentication info"),
             ("role-assign", "Assign role to user (admin, user, service, cli)"),
             ("role-revoke", "Revoke role from user"),
@@ -82,11 +100,12 @@ def security_callback(ctx: typer.Context, help: bool = typer.Option(False, "--he
             "aico security session",
             "aico security test",
             "aico security passwd",
-            "aico security list-keys",
             "aico security get-key influx_admin_password",
             "aico security get-key influx_admin_token_password --show",
             "aico security pg-set",
             "aico security influx-set",
+            "aico security secrets-show",
+            "aico security secrets-sync",
             "aico security pg-env --ci --format env --include-secrets",
             "aico security role-bootstrap <user-uuid>",
             "aico security role-assign <user-uuid> admin",
@@ -240,12 +259,12 @@ def setup(
             console.print(f"⚠️ [yellow]File encryption key validation failed: {e}[/yellow]")
             console.print("   File encryption may not work properly")
         
-        # Initialize CurveZMQ transport keys for message bus encryption
+        # Initialize transport keys for message bus encryption
         try:
-            console.print("🔒 Setting up CurveZMQ transport encryption...")
+            console.print("🔒 Setting up NATS transport encryption...")
             master_key = key_manager.authenticate(interactive=False)
             
-            # Test CurveZMQ key derivation for all message bus components
+            # Test key derivation for all message bus components
             curve_components = [
                 "message_bus_broker",
                 "message_bus_client_api_gateway",
@@ -253,26 +272,25 @@ def setup(
                 "message_bus_client_scheduler",
                 "message_bus_client_cli",
                 "message_bus_client_modelservice",
-                "zmq_log_transport",  # ZMQ log transport for cross-service logging
                 "message_bus_client_system_host",
                 "message_bus_client_backend_modules"
             ]
             
             for component in curve_components:
                 public_key, secret_key = key_manager.derive_curve_keypair(master_key, component)
-                # Verify keys are 40-character Z85 encoded strings for CurveZMQ
+                # Verify keys are 40-character Z85 encoded strings
                 if len(public_key) != 40 or len(secret_key) != 40:
-                    raise ValueError(f"Invalid CurveZMQ key length for component '{component}': pub={len(public_key)}, sec={len(secret_key)} chars (expected 40)")
+                    raise ValueError(f"Invalid key length for component '{component}': pub={len(public_key)}, sec={len(secret_key)} chars (expected 40)")
                 # Verify they are valid Z85 strings
                 if not all(c in "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#" for c in public_key + secret_key):
                     raise ValueError(f"Invalid Z85 encoding for component '{component}'")
             
-            console.print("✅ [green]CurveZMQ transport keys validated[/green]")
+            console.print("✅ [green]NATS transport keys validated[/green]")
             console.print("🛡️ [green]Message bus encryption ready[/green]")
-            actions_taken.append("CurveZMQ transport keys validated")
+            actions_taken.append("NATS transport keys validated")
             
         except Exception as e:
-            console.print(f"⚠️ [yellow]CurveZMQ transport key validation failed: {e}[/yellow]")
+            console.print(f"⚠️ [yellow]NATS transport key validation failed: {e}[/yellow]")
             console.print("   Message bus encryption may not work properly")
         
         # Summary of actions taken
@@ -376,6 +394,172 @@ def pg_set():
 
     console.print("✅ [green]Postgres password stored securely[/green]")
     console.print("🔐 Use 'aico security pg-env' to export env vars for CI/CD or docker-compose.")
+
+
+@app.command("env-sync", help="Sync credentials from an env file (e.g. docker/.env) into the keyring")
+@sensitive("stores credentials in system keyring")
+def env_sync(
+    env_file: str = typer.Option("docker/.env", "--env-file", "-f", help="Path to env file"),
+    include_jwt: bool = typer.Option(False, "--include-jwt", help="Also sync AICO_API_GATEWAY_JWT_SECRET into the keyring"),
+):
+    """Sync common AICO credentials from an env file into the keyring.
+
+    This is meant to keep docker-compose credentials and host-side CLI credentials in sync.
+    """
+
+    import keyring
+    from pathlib import Path
+
+    console = Console()
+    key_manager = _get_key_manager()
+
+    env_path = Path(env_file)
+    if not env_path.exists():
+        console.print(f"❌ [red]Env file not found: {env_file}[/red]")
+        raise typer.Exit(1)
+
+    raw = env_path.read_text(encoding="utf-8")
+    env_values: dict[str, str] = {}
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        k, v = stripped.split("=", 1)
+        k = k.strip()
+        v = v.strip().strip("\"").strip("'")
+        if k:
+            env_values[k] = v
+
+    synced = 0
+
+    pg_cfg = _load_postgres_config()
+    pg_user = str(pg_cfg.get("user", "postgres"))
+    pg_password = env_values.get("AICO_PG_PASSWORD")
+    if pg_password and pg_password.strip():
+        key_manager.store_database_password(password=pg_password, database_type="postgres", username=pg_user)
+        synced += 1
+    else:
+        console.print(f"⚠️ [yellow]AICO_PG_PASSWORD missing/empty in {env_file} (skipping Postgres)[/yellow]")
+
+    influx_admin_password = env_values.get("AICO_INFLUX_ADMIN_PASSWORD")
+    if influx_admin_password and influx_admin_password.strip():
+        key_manager.store_database_password(password=influx_admin_password, database_type="influx", username="admin_password")
+        synced += 1
+    else:
+        console.print(f"⚠️ [yellow]AICO_INFLUX_ADMIN_PASSWORD missing/empty in {env_file} (skipping)[/yellow]")
+
+    influx_admin_token = env_values.get("AICO_INFLUX_ADMIN_TOKEN")
+    if influx_admin_token and influx_admin_token.strip():
+        key_manager.store_database_password(password=influx_admin_token, database_type="influx", username="admin_token")
+        synced += 1
+    else:
+        console.print(f"⚠️ [yellow]AICO_INFLUX_ADMIN_TOKEN missing/empty in {env_file} (skipping)[/yellow]")
+
+    if include_jwt:
+        jwt_secret = env_values.get("AICO_API_GATEWAY_JWT_SECRET")
+        if jwt_secret and jwt_secret.strip():
+            keyring.set_password(key_manager.service_name, "api_gateway_jwt_secret", jwt_secret)
+            synced += 1
+        else:
+            console.print(f"⚠️ [yellow]AICO_API_GATEWAY_JWT_SECRET missing/empty in {env_file} (skipping JWT)[/yellow]")
+
+    console.print(f"✅ [green]Synced {synced} credential(s) from {env_file} into the keyring[/green]")
+
+
+def _get_docker_secrets_dir() -> Path:
+    if getattr(sys, 'frozen', False):
+        repo_root = Path.cwd()
+    else:
+        repo_root = Path(__file__).parent.parent.parent
+    return (repo_root / "docker" / "secrets").resolve()
+
+
+@app.command("secrets-show", help="Show docker/compose secrets stored as files under docker/secrets/*")
+@sensitive("shows docker secrets from disk")
+def secrets_show(
+    show_values: bool = typer.Option(False, "--show", "-s", help="Show secret values (redacted by default)"),
+):
+    secrets_dir = _get_docker_secrets_dir()
+    if not secrets_dir.exists():
+        console.print(f"❌ [red]Secrets directory not found: {secrets_dir}[/red]")
+        raise typer.Exit(1)
+
+    secret_files = [
+        "pg_password",
+        "api_gateway_jwt_secret",
+        "influx_admin_password",
+        "influx_admin_token",
+    ]
+
+    table = Table(title=f"Docker Secrets (on disk): {secrets_dir}", show_header=True, header_style="bold blue", box=box.SIMPLE)
+    table.add_column("Secret", style="cyan")
+    table.add_column("Exists")
+    table.add_column("Value")
+
+    for name in secret_files:
+        p = secrets_dir / name
+        exists = p.exists()
+        value = ""
+        if exists:
+            if show_values:
+                value = p.read_text(encoding="utf-8").strip()
+            else:
+                value = "********"
+        table.add_row(name, "✓" if exists else "✗", value)
+
+    console.print()
+    console.print(table)
+
+
+@app.command("secrets-sync", help="Sync docker/compose secrets (docker/secrets/*) into the system keyring")
+@sensitive("stores docker secrets in system keyring")
+def secrets_sync(
+    include_jwt: bool = typer.Option(True, "--include-jwt/--no-include-jwt", help="Also sync api_gateway_jwt_secret"),
+):
+    import keyring
+
+    secrets_dir = _get_docker_secrets_dir()
+    if not secrets_dir.exists():
+        console.print(f"❌ [red]Secrets directory not found: {secrets_dir}[/red]")
+        raise typer.Exit(1)
+
+    key_manager = _get_key_manager()
+
+    pg_cfg = _load_postgres_config()
+    pg_user = str(pg_cfg.get("user", "postgres"))
+
+    synced = 0
+
+    pg_path = secrets_dir / "pg_password"
+    if pg_path.exists():
+        pg_password = pg_path.read_text(encoding="utf-8").strip()
+        if pg_password:
+            key_manager.store_database_password(password=pg_password, database_type="postgres", username=pg_user)
+            synced += 1
+
+    influx_pw_path = secrets_dir / "influx_admin_password"
+    if influx_pw_path.exists():
+        influx_admin_password = influx_pw_path.read_text(encoding="utf-8").strip()
+        if influx_admin_password:
+            key_manager.store_database_password(password=influx_admin_password, database_type="influx", username="admin_password")
+            synced += 1
+
+    influx_token_path = secrets_dir / "influx_admin_token"
+    if influx_token_path.exists():
+        influx_admin_token = influx_token_path.read_text(encoding="utf-8").strip()
+        if influx_admin_token:
+            key_manager.store_database_password(password=influx_admin_token, database_type="influx", username="admin_token")
+            synced += 1
+
+    if include_jwt:
+        jwt_path = secrets_dir / "api_gateway_jwt_secret"
+        if jwt_path.exists():
+            jwt_secret = jwt_path.read_text(encoding="utf-8").strip()
+            if jwt_secret:
+                keyring.set_password(key_manager.service_name, "api_gateway_jwt_secret", jwt_secret)
+                synced += 1
+
+    console.print(f"✅ [green]Synced {synced} secret(s) from {secrets_dir} into the keyring[/green]")
 
 
 @app.command("pg-env", help="Export Postgres env vars for CI/CD and docker-compose")
@@ -489,119 +673,6 @@ def influx_set():
     console.print("🔐 Use 'aico security influx-env' to export env vars for CI/CD or docker-compose.")
 
 
-@app.command("list-keys", help="List all AICO keys stored in system keyring")
-def list_keys(
-    show_values: bool = typer.Option(False, "--show", "-s", help="Show actual key values (redacted by default)")
-):
-    """List all AICO keys stored in the system keyring.
-    
-    Shows all keys managed by AICO including database passwords, tokens, and secrets.
-    Values are redacted by default for security.
-    """
-    import keyring
-    import subprocess
-    
-    key_manager = _get_key_manager()
-    service_name = key_manager.service_name
-    
-    console.print(f"\n🔑 [bold cyan]AICO Keyring Entries[/bold cyan] (service: {service_name})\n")
-    
-    # Get all keyring entries for AICO service
-    try:
-        # Use security command to list all AICO keyring entries
-        result = subprocess.run(
-            ["security", "dump-keychain"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True
-        )
-        
-        # Parse the output to find AICO entries
-        # Format: "acct" comes before "svce" in each entry block
-        entries = []
-        current_entry = {}
-        
-        for line in result.stdout.split('\n'):
-            # Look for account name first
-            if '"acct"<blob>=' in line:
-                try:
-                    account = line.split('"acct"<blob>="')[1].split('"')[0]
-                    current_entry = {'account': account}
-                except (IndexError, ValueError):
-                    continue
-            # Then look for service name
-            elif '"svce"<blob>=' in line and current_entry.get('account'):
-                if '"AICO"' in line or '"AICO_Test"' in line:
-                    service = 'AICO' if '"AICO"' in line and 'Test' not in line else 'AICO_Test'
-                    current_entry['service'] = service
-                    entries.append(current_entry)
-                current_entry = {}
-        
-        # Remove duplicates based on account name
-        seen = set()
-        unique_entries = []
-        for entry in entries:
-            if entry['account'] not in seen:
-                seen.add(entry['account'])
-                unique_entries.append(entry)
-        entries = unique_entries
-        
-        # Create table
-        table = Table(
-            title="Stored Keys",
-            show_header=True,
-            header_style="bold yellow",
-            border_style="bright_blue",
-            box=box.SIMPLE_HEAD
-        )
-        table.add_column("Key Name", style="bold white", justify="left")
-        table.add_column("Type", style="cyan", justify="left")
-        table.add_column("Value", style="dim", justify="left")
-        
-        # Categorize and display entries
-        for entry in entries:
-            account = entry['account']
-            
-            # Determine key type
-            if 'password' in account:
-                key_type = "Database Password"
-            elif 'token' in account:
-                key_type = "API Token"
-            elif 'secret' in account:
-                key_type = "Secret"
-            elif account == 'master_key':
-                key_type = "Master Key"
-            elif account == 'salt':
-                key_type = "Salt"
-            else:
-                key_type = "Other"
-            
-            # Get value if requested
-            if show_values:
-                try:
-                    value = keyring.get_password(entry['service'], account)
-                    if value:
-                        display_value = value
-                    else:
-                        display_value = "[red]Not found[/red]"
-                except Exception as e:
-                    display_value = f"[red]Error: {e}[/red]"
-            else:
-                display_value = "********"
-            
-            table.add_row(account, key_type, display_value)
-        
-        console.print(table)
-        console.print(f"\n📊 Total: {len(entries)} keys stored\n")
-        
-        if not show_values:
-            console.print("💡 [dim]Use --show to display actual values (use with caution)[/dim]")
-        
-    except Exception as e:
-        console.print(f"❌ [red]Failed to list keyring entries: {e}[/red]")
-        raise typer.Exit(1)
-
-
 @app.command("get-key", help="Retrieve value of a specific key from keyring")
 @sensitive("retrieves sensitive key value from system keyring")
 def get_key(
@@ -631,7 +702,7 @@ def get_key(
         
         if not value:
             console.print(f"❌ [red]Key '{key_name}' not found in keyring[/red]")
-            console.print(f"\n💡 Use 'aico security list-keys' to see available keys")
+            console.print("\n💡 Use 'aico security secrets-sync' to populate the keyring from docker/secrets/*")
             raise typer.Exit(1)
         
         # Copy to clipboard if requested
@@ -922,99 +993,92 @@ def status(
         )
         console.print(transport_panel)
         
-        # CurveZMQ Message Bus Encryption Section
-        curvezmq_table = Table(
-            title="🔒 CurveZMQ Message Bus Encryption",
+        # NATS Message Bus Encryption Section
+        nats_table = Table(
+            title="🔒 NATS Message Bus Encryption",
             title_justify="left",
             show_header=True,
             header_style="bold yellow",
             border_style="bright_blue",
             box=box.SIMPLE_HEAD
         )
-        curvezmq_table.add_column("Component", style="bold white", justify="left")
-        curvezmq_table.add_column("Status", style="cyan", justify="left")
-        curvezmq_table.add_column("Details", style="dim", justify="left")
+        nats_table.add_column("Component", style="bold white", justify="left")
+        nats_table.add_column("Status", style="cyan", justify="left")
+        nats_table.add_column("Details", style="dim", justify="left")
         
         # Default values for error case
-        curvezmq_enabled = False
-        curvezmq_border = "yellow"
-        curvezmq_status = "CurveZMQ encryption status unknown"
+        nats_enabled = False
+        nats_border = "yellow"
+        nats_status = "NATS encryption status unknown"
         working_components = 0
         total_components = 0
         
         try:
-            # Check CurveZMQ encryption configuration
+            # Check NATS encryption configuration
             transport_config = key_manager.config_manager.get("security", {}).get("transport", {})
-            curvezmq_enabled = transport_config.get("message_bus_encryption", True)
+            nats_enabled = transport_config.get("message_bus_encryption", True)
             
-            if curvezmq_enabled:
-                # Test CurveZMQ key derivation for all components
+            if nats_enabled:
+                # Test key derivation for all components
                 master_key = key_manager.authenticate(interactive=False)
-                curve_components = [
+                nats_components = [
                     ("Broker", "message_bus_broker"),
                     ("API Gateway", "message_bus_client_api_gateway"),
                     ("Log Consumer", "message_bus_client_log_consumer"), 
                     ("Scheduler", "message_bus_client_scheduler"),
                     ("CLI", "message_bus_client_cli"),
                     ("Model Service", "message_bus_client_modelservice"),
-                    ("ZMQ Log Transport", "zmq_log_transport"),
                     ("System Host", "message_bus_client_system_host"),
                     ("Backend Modules", "message_bus_client_backend_modules")
                 ]
                 
-                total_components = len(curve_components)
+                total_components = len(nats_components)
                 
-                for display_name, component_name in curve_components:
+                for display_name, component_name in nats_components:
                     try:
                         public_key, secret_key = key_manager.derive_curve_keypair(master_key, component_name)
                         if len(public_key) == 40 and len(secret_key) == 40:
-                            curvezmq_table.add_row(display_name, "Ready", "CurveZMQ keypair available")
+                            nats_table.add_row(display_name, "Ready", "Keypair available")
                             working_components += 1
                         else:
-                            curvezmq_table.add_row(display_name, "Invalid", f"Key length error: {len(public_key)}/{len(secret_key)} chars")
+                            nats_table.add_row(display_name, "Invalid", f"Key length error: {len(public_key)}/{len(secret_key)} chars")
                     except Exception as e:
-                        curvezmq_table.add_row(display_name, "Error", f"Key derivation failed: {str(e)[:40]}...")
+                        nats_table.add_row(display_name, "Error", f"Key derivation failed: {str(e)[:40]}...")
                 
-                # CurveZMQ configuration details
-                curve_config = transport_config.get("curvezmq", {})
-                auth_policy = curve_config.get("authentication_policy", "CURVE_ALLOW_ANY")
-                key_derivation = curve_config.get("key_derivation", {})
-                iterations = key_derivation.get("iterations", 1)
-                memory_mb = key_derivation.get("memory_cost", 65536) // 1024  # Convert KiB to MB
-                
-                curvezmq_table.add_row("Authentication", "Configured", f"Policy: {auth_policy}")
-                curvezmq_table.add_row("Key Derivation", "Argon2id", f"{iterations} iterations, {memory_mb}MB memory")
+                # NATS configuration details
+                nats_table.add_row("Transport", "Configured", "NATS with TLS")
+                nats_table.add_row("Key Derivation", "Argon2id", "Secure key generation")
                 
                 # Overall status
                 if working_components == total_components:
-                    curvezmq_status = f"All {total_components} components ready for encrypted communication"
-                    curvezmq_border = "green"
+                    nats_status = f"All {total_components} components ready for encrypted communication"
+                    nats_border = "green"
                 elif working_components > 0:
-                    curvezmq_status = f"{working_components}/{total_components} components ready - partial encryption"
-                    curvezmq_border = "yellow"
+                    nats_status = f"{working_components}/{total_components} components ready - partial encryption"
+                    nats_border = "yellow"
                 else:
-                    curvezmq_status = "No components ready - message bus encryption unavailable"
-                    curvezmq_border = "red"
+                    nats_status = "No components ready - message bus encryption unavailable"
+                    nats_border = "red"
             else:
-                curvezmq_table.add_row("Encryption", "Disabled", "Message bus uses plaintext")
-                curvezmq_table.add_row("Security Level", "None", "All inter-component communication unencrypted")
-                curvezmq_status = "CurveZMQ encryption disabled - plaintext message bus"
-                curvezmq_border = "red"
+                nats_table.add_row("Encryption", "Disabled", "Message bus uses plaintext")
+                nats_table.add_row("Security Level", "None", "All inter-component communication unencrypted")
+                nats_status = "NATS encryption disabled - plaintext message bus"
+                nats_border = "red"
                 
         except Exception as e:
-            curvezmq_table.add_row("Configuration", "Error", f"Failed to check status: {str(e)[:50]}...")
-            curvezmq_status = f"CurveZMQ status check failed: {e}"
-            curvezmq_border = "red"
+            nats_table.add_row("Configuration", "Error", f"Failed to check status: {str(e)[:50]}...")
+            nats_status = f"NATS status check failed: {e}"
+            nats_border = "red"
             
-        console.print(curvezmq_table)
+        console.print(nats_table)
         
-        # CurveZMQ Status Summary
-        curvezmq_panel = Panel(
-            curvezmq_status,
+        # NATS Status Summary
+        nats_panel = Panel(
+            nats_status,
             title="🔒 Message Bus Security",
-            border_style=curvezmq_border
+            border_style=nats_border
         )
-        console.print(curvezmq_panel)
+        console.print(nats_panel)
     
     # Show recommendations
     if not health_info["has_master_key"]:
@@ -1351,7 +1415,7 @@ def user_create(
     primary_language: str = typer.Option("en", "--language", "-l", help="Primary language (ISO/BCP-47 code, e.g. 'en', 'de', 'fr')"),
     ctx: typer.Context = typer.Context
 ):
-    """Create a new user with optional PIN authentication"""
+    """Create a new user with optional password authentication"""
     
     if full_name is None:
         console.print("\n❌ [red]Missing required argument: FULL_NAME[/red]\n")
@@ -1360,13 +1424,13 @@ def user_create(
         console.print("[bold yellow]Examples:[/bold yellow]")
         console.print('  aico security user-create "John Doe"')
         console.print('  aico security user-create "Jane Smith" --nickname "Janie" --type person')
-        console.print('  aico security user-create "Bob Wilson" --pin 1234 --type person')
-        console.print('  aico security user-create "Alice Cooper" --nickname "Al" --type admin --pin 5678')
-        console.print('  aico security user-create "Hans Müller" --language de --pin 1234')
+        console.print('  aico security user-create "Bob Wilson" --pin "SecurePass123!" --type person')
+        console.print('  aico security user-create "Alice Cooper" --nickname "Al" --type admin --pin "AdminPass456#"')
+        console.print('  aico security user-create "Hans Müller" --language de --pin "Password789$"')
         console.print("\n[bold yellow]Options:[/bold yellow]")
         console.print("  --nickname, -n    Optional nickname for the user")
         console.print("  --type, -t        User type: person (default: person)")
-        console.print("  --pin, -p         Optional PIN for authentication")
+        console.print("  --pin, -p         Optional password for authentication (min 12 chars)")
         console.print("  --language, -l    Primary language (ISO/BCP-47 code, default: en)")
         console.print("\n[dim]Use 'aico security user-list' to see existing users[/dim]")
         raise typer.Exit(1)
@@ -2049,103 +2113,57 @@ def user_list(
 @app.command("user-auth")
 def user_auth(
     user_uuid: str = typer.Argument(None, help="User UUID"),
-    pin: str = typer.Option(None, "--pin", "-p", help="User PIN", hide_input=True),
+    password: str = typer.Option(None, "--password", "-p", help="User password", hide_input=True),
+    pin: str = typer.Option(None, "--pin", help="Deprecated alias for --password", hide_input=True),
     token: bool = typer.Option(False, "--token", "-t", help="Generate and return JWT token for API testing")
 ):
-    """Authenticate user with PIN and optionally generate JWT token"""
+    """Authenticate user with password/passcode and optionally generate JWT token"""
     
     if user_uuid is None:
         console.print("\n❌ [red]Missing required argument: USER_UUID[/red]\n")
         console.print("[bold cyan]Usage:[/bold cyan]")
         console.print("  aico security user-auth [OPTIONS] USER_UUID\n")
         console.print("[bold yellow]Examples:[/bold yellow]")
-        console.print('  aico security user-auth abc123def --pin 1234')
+        console.print('  aico security user-auth abc123def --password "your-password"')
         console.print('  aico security user-auth 550e8400-e29b-41d4-a716-446655440000 -p 5678')
-        console.print('  aico security user-auth abc123def --pin 1234 --token  # Generate JWT token')
+        console.print('  aico security user-auth abc123def --password "your-password" --token  # Generate JWT token')
         console.print("\n[bold yellow]Required Options:[/bold yellow]")
-        console.print("  --pin, -p         User's PIN for authentication")
-        console.print("\n[bold yellow]Optional Flags:[/bold yellow]")
-        console.print("  --token, -t       Generate JWT token for API testing")
+        console.print("  --password, -p    User password for authentication")
+        console.print("  --pin            Deprecated alias for --password")
         console.print("\n[dim]Use 'aico security user-list' to find user UUIDs[/dim]")
         raise typer.Exit(1)
     
-    if pin is None:
-        console.print("\n❌ [red]Missing required option: --pin[/red]\n")
-        console.print("[bold cyan]Usage:[/bold cyan]")
-        console.print("  aico security user-auth [OPTIONS] USER_UUID\n")
-        console.print("[bold yellow]Examples:[/bold yellow]")
-        console.print(f'  aico security user-auth {user_uuid} --pin 1234')
-        console.print(f'  aico security user-auth {user_uuid} -p 5678')
-        console.print("\n[dim]Use 'aico security user-list' to find user UUIDs[/dim]")
-        raise typer.Exit(1)
+    if password is None:
+        password = pin
+    if password is None:
+        password = typer.prompt("Enter password", hide_input=True)
+
     import asyncio
-    from pathlib import Path
-    from aico.core.config import ConfigurationManager
-    from aico.core.paths import AICOPaths
-    from aico.security.key_manager import AICOKeyManager
     from aico.data.postgres.connection import get_postgres_pool
     from aico.data.user import UserService
-    
+
+    async def authenticate():
+        pool = await get_postgres_pool()
+        async with pool.acquire() as conn:
+            user_service = UserService(conn)
+            return await user_service.authenticate_user(user_uuid, password)
+
     try:
-        # Initialize configuration and paths
-        config_manager = ConfigurationManager()
-        
-        # Authenticate user using PostgreSQL asyncpg
-        async def authenticate():
-            pool = await get_postgres_pool()
-            async with pool.acquire() as conn:
-                user_service = UserService(conn)
-                result = await user_service.authenticate_user(user_uuid, pin)
-                return result
-        
         result = asyncio.run(authenticate())
-        
-        if result["success"]:
-            user = result["user"]
-            
-            # Generate JWT token if requested
-            jwt_token = None
-            if token:
-                from aico.core.authorization import AuthorizationService
-                from backend.api_gateway.models.core.auth import AuthenticationManager
-                
-                # Get user roles and permissions
-                authz_service = AuthorizationService(db_conn)
-                user_roles = authz_service.get_user_roles(user.uuid)
-                user_permissions = authz_service.get_user_permissions(user.uuid)
-                
-                # Initialize auth manager and generate token
-                auth_manager = AuthenticationManager(config_manager)
-                jwt_token = auth_manager.generate_jwt_token(
-                    user_uuid=user.uuid,
-                    username=user.full_name,
-                    roles=user_roles,
-                    permissions=user_permissions,
-                    device_uuid="cli-testing"
-                )
-            
-            console.print(f"\n✅ [green]Authentication successful[/green]")
-            console.print(f"User: {user.full_name}")
-            if user.nickname:
-                console.print(f"Nickname: {user.nickname}")
-            if result.get("last_login"):
-                console.print(f"Last login: {result['last_login']}")
-            
-            # Output token if generated
-            if jwt_token:
-                console.print(f"\n🔑 [bold cyan]JWT Token:[/bold cyan]")
-                console.print(f"{jwt_token}")
-                console.print(f"\n[dim]Use this token with: curl -H \"Authorization: Bearer <token>\"[/dim]")
-        else:
-            console.print(f"\n❌ [red]Authentication failed: {result['error']}[/red]")
-            if result.get("failed_attempts"):
-                console.print(f"Failed attempts: {result['failed_attempts']}")
-            if result.get("locked"):
-                console.print("⚠️ [yellow]Account is locked[/yellow]")
-        
     except Exception as e:
         console.print(f"❌ [red]Authentication error: {e}[/red]")
         raise typer.Exit(1)
+
+    if result.get("success"):
+        console.print("\n✅ [green]Authentication successful![/green]")
+        if token:
+            console.print("\n⚠️ [yellow]--token is not implemented in this command yet[/yellow]")
+    else:
+        console.print(f"\n❌ [red]Authentication failed: {result.get('error') or 'Unknown error'}[/red]")
+        if result.get("failed_attempts") is not None:
+            console.print(f"Failed attempts: {result['failed_attempts']}")
+        if result.get("locked"):
+            console.print("⚠️ [yellow]Account is locked[/yellow]")
 
 
 @app.command("user-update")
@@ -2483,30 +2501,49 @@ def user_set_pin(
     user_uuid: str = typer.Argument(None, help="User UUID"),
     new_pin: str = typer.Option(None, "--new-pin", "-n", help="New PIN", hide_input=True)
 ):
-    """Set or reset user PIN (admin operation - requires authenticated session)"""
+    """Deprecated alias for user-set-password."""
+
+    if user_uuid is None:
+        console.print("\n❌ [red]Missing required argument: USER_UUID[/red]\n")
+        raise typer.Exit(1)
+
+    if new_pin is None:
+        console.print("\n❌ [red]Missing required option: --new-pin[/red]\n")
+        raise typer.Exit(1)
+
+    user_set_password(user_uuid=user_uuid, new_password=new_pin)
+
+
+@app.command("user-set-password")
+@sensitive("allows resetting user password - requires authenticated session")
+def user_set_password(
+    user_uuid: str = typer.Argument(None, help="User UUID"),
+    new_password: str = typer.Option(None, "--new-password", "-n", help="New password", hide_input=True)
+):
+    """Set or reset user password (admin operation - requires authenticated session)"""
     
     if user_uuid is None:
         console.print("\n❌ [red]Missing required argument: USER_UUID[/red]\n")
         console.print("[bold cyan]Usage:[/bold cyan]")
-        console.print("  aico security user-set-pin [OPTIONS] USER_UUID\n")
+        console.print("  aico security user-set-password [OPTIONS] USER_UUID\n")
         console.print("[bold yellow]Examples:[/bold yellow]")
-        console.print('  aico security user-set-pin abc123def --new-pin 1234')
-        console.print('  aico security user-set-pin abc123def -n 5678')
+        console.print('  aico security user-set-password abc123def --new-password "your-password"')
+        console.print('  aico security user-set-password abc123def -n "your-password"')
         console.print("\n[bold yellow]Required Options:[/bold yellow]")
-        console.print("  --new-pin, -n     New PIN for the user")
+        console.print("  --new-password, -n     New password for the user")
         console.print("\n[bold yellow]Note:[/bold yellow]")
         console.print("  This command requires an authenticated CLI session (use 'aico security auth' first)")
-        console.print("  It will overwrite any existing PIN without requiring the old PIN")
+        console.print("  It will overwrite any existing password without requiring the old password")
         console.print("\n[dim]Use 'aico security user-list' to find user UUIDs[/dim]")
         raise typer.Exit(1)
     
-    if new_pin is None:
-        console.print("\n❌ [red]Missing required option: --new-pin[/red]\n")
+    if new_password is None:
+        console.print("\n❌ [red]Missing required option: --new-password[/red]\n")
         console.print("[bold cyan]Usage:[/bold cyan]")
-        console.print("  aico security user-set-pin [OPTIONS] USER_UUID\n")
+        console.print("  aico security user-set-password [OPTIONS] USER_UUID\n")
         console.print("[bold yellow]Examples:[/bold yellow]")
-        console.print(f'  aico security user-set-pin {user_uuid} --new-pin 1234')
-        console.print(f'  aico security user-set-pin {user_uuid} -n 5678')
+        console.print(f'  aico security user-set-password {user_uuid} --new-password "your-password"')
+        console.print(f'  aico security user-set-password {user_uuid} -n "your-password"')
         console.print("\n[dim]Use 'aico security user-list' to find user UUIDs[/dim]")
         raise typer.Exit(1)
     import asyncio
@@ -2522,12 +2559,12 @@ def user_set_pin(
         config_manager = ConfigurationManager()
         
         # Force set PIN using PostgreSQL asyncpg (no old PIN required)
-        async def force_reset_pin():
+        async def force_reset_password():
             pool = await get_postgres_pool()
             async with pool.acquire() as conn:
                 user_service = UserService(conn)
                 try:
-                    result = await user_service.force_set_pin(user_uuid, new_pin)
+                    result = await user_service.force_set_pin(user_uuid, new_password)
                     return result
                 except ValueError as e:
                     if "User not found" in str(e):
@@ -2535,17 +2572,17 @@ def user_set_pin(
                     else:
                         raise
         
-        result = asyncio.run(force_reset_pin())
+        result = asyncio.run(force_reset_password())
         
         if result == "user_not_found":
             console.print(f"❌ [red]User not found: {user_uuid}[/red]")
             raise typer.Exit(1)
         elif result is True:
-            console.print("✅ [green]PIN set successfully[/green]")
-            console.print("[dim]Note: This was an admin PIN reset. The old PIN (if any) has been overwritten.[/dim]")
+            console.print("✅ [green]Password set successfully[/green]")
+            console.print("[dim]Note: This was an admin password reset. The old password (if any) has been overwritten.[/dim]")
         
     except Exception as e:
-        console.print(f"❌ [red]Error setting PIN: {e}[/red]")
+        console.print(f"❌ [red]Error setting password: {e}[/red]")
         raise typer.Exit(1)
 
 

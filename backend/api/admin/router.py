@@ -89,6 +89,12 @@ def _iso_utc(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def _utc_dt(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def _to_user_response(user: UserProfile) -> admin_schemas.AdminUserResponse:
     return admin_schemas.AdminUserResponse(
         uuid=user.uuid,
@@ -202,10 +208,15 @@ async def admin_create_user(
     )
 
     await uow.users.create(user)
+
+    raw_password = body.password if getattr(body, "password", None) is not None else body.pin
+    if not raw_password:
+        raise HTTPException(status_code=400, detail="password is required")
+
     credentials = AuthUserCredentials(
         uuid=str(uuid_lib.uuid4()),
         user_uuid=user.uuid,
-        pin_hash=_pwd_context.hash(body.pin),
+        password_hash=_pwd_context.hash(raw_password),
         failed_attempts=0,
         locked_until=None,
         last_login=None,
@@ -451,7 +462,7 @@ async def admin_bulk_delete_users(
 
 @router.put("/users/{user_uuid}/password", response_model=AdminOperationResponse)
 @handle_admin_service_exceptions
-async def admin_set_user_pin(
+async def admin_set_user_password(
     user_uuid: str,
     body: admin_schemas.AdminUserSetPinRequest,
     request: Request,
@@ -466,9 +477,13 @@ async def admin_set_user_pin(
         raise HTTPException(status_code=404, detail="User not found")
 
     now = datetime.now(UTC)
+    raw_password = body.new_password if getattr(body, "new_password", None) is not None else body.new_pin
+    if not raw_password:
+        raise HTTPException(status_code=400, detail="new_password is required")
+
     cred = await uow.credentials.get_by_user_uuid(user_uuid)
     if cred:
-        cred.pin_hash = _pwd_context.hash(body.new_pin)
+        cred.password_hash = _pwd_context.hash(raw_password)
         cred.failed_attempts = 0
         cred.locked_until = None
         await uow.credentials.update(cred)
@@ -476,7 +491,7 @@ async def admin_set_user_pin(
         cred = AuthUserCredentials(
             uuid=str(uuid_lib.uuid4()),
             user_uuid=user_uuid,
-            pin_hash=_pwd_context.hash(body.new_pin),
+            password_hash=_pwd_context.hash(raw_password),
             failed_attempts=0,
             locked_until=None,
             last_login=None,
@@ -488,7 +503,7 @@ async def admin_set_user_pin(
     await _write_audit_event(
         uow=uow,
         timestamp=now,
-        action="admin.user.pin.reset",
+        action="admin.user.password.reset",
         actor=actor,
         resource_type="user",
         resource_id=user_uuid,
@@ -497,7 +512,7 @@ async def admin_set_user_pin(
         details={"require_change_on_login": body.require_change_on_login},
     )
     await uow.commit()
-    return AdminOperationResponse(success=True, message="PIN updated")
+    return AdminOperationResponse(success=True, message="Password updated")
 
 
 @router.post("/users/{user_uuid}/restore", response_model=AdminOperationResponse)
@@ -560,9 +575,9 @@ async def admin_user_audit_log(
     if action_type:
         conditions.append(system_events.c.metadata["action"].astext == action_type)
     if since:
-        conditions.append(system_events.c.timestamp >= _iso_utc(since))
+        conditions.append(system_events.c.timestamp >= _utc_dt(since))
     if until:
-        conditions.append(system_events.c.timestamp <= _iso_utc(until))
+        conditions.append(system_events.c.timestamp <= _utc_dt(until))
 
     count_stmt = select(system_events.c.id).where(and_(*conditions))
     rows = (await uow._session.execute(count_stmt)).fetchall()
@@ -582,7 +597,7 @@ async def admin_user_audit_log(
         entries.append(
             admin_schemas.AuditEntry(
                 entry_id=row.message_id,
-                timestamp=row.timestamp,
+                timestamp=row.timestamp.isoformat() if row.timestamp else "",
                 actor_uuid=md.get("actor_uuid"),
                 actor_name=md.get("actor_name"),
                 action=md.get("action", ""),
@@ -596,8 +611,10 @@ async def admin_user_audit_log(
         )
 
     return admin_schemas.AuditListResponse(
-        entries=entries,
-        pagination=admin_schemas.Pagination(limit=limit, offset=offset, total_count=total_count),
+        items=entries,
+        total=total_count,
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -625,7 +642,7 @@ async def security_posture(
     active_sessions = await uow.sessions.count(filters={"is_active": True})
 
     # Audit posture (events in last 24h)
-    since_24h = _iso_utc(datetime.now(UTC) - timedelta(hours=24))
+    since_24h = datetime.now(UTC) - timedelta(hours=24)
     audit_count_stmt = select(system_events.c.id).where(
         and_(system_events.c.topic == "audit.admin", system_events.c.timestamp >= since_24h)
     )
@@ -794,9 +811,9 @@ async def auth_stats(
     # If the system currently does not emit these events, counts will be zero.
     conditions = []
     if since:
-        conditions.append(system_events.c.timestamp >= _iso_utc(since))
+        conditions.append(system_events.c.timestamp >= _utc_dt(since))
     if until:
-        conditions.append(system_events.c.timestamp <= _iso_utc(until))
+        conditions.append(system_events.c.timestamp <= _utc_dt(until))
 
     success_stmt = select(system_events).where(
         and_(system_events.c.topic == "auth.login.success", *conditions)
@@ -873,9 +890,9 @@ async def failed_auth_attempts(
     if user_uuid:
         conditions.append(system_events.c.metadata["user_uuid"].astext == user_uuid)
     if since:
-        conditions.append(system_events.c.timestamp >= _iso_utc(since))
+        conditions.append(system_events.c.timestamp >= _utc_dt(since))
     if until:
-        conditions.append(system_events.c.timestamp <= _iso_utc(until))
+        conditions.append(system_events.c.timestamp <= _utc_dt(until))
 
     count_stmt = select(system_events.c.id).where(and_(*conditions))
     total_count = len((await uow._session.execute(count_stmt)).fetchall())
@@ -904,8 +921,10 @@ async def failed_auth_attempts(
         )
 
     return admin_schemas.FailedAuthAttemptsResponse(
-        attempts=attempts,
-        pagination=admin_schemas.Pagination(limit=limit, offset=offset, total_count=total_count),
+        items=attempts,
+        total=total_count,
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -935,9 +954,9 @@ async def audit_list(
     if severity:
         conditions.append(system_events.c.metadata["severity"].astext == severity)
     if since:
-        conditions.append(system_events.c.timestamp >= _iso_utc(since))
+        conditions.append(system_events.c.timestamp >= _utc_dt(since))
     if until:
-        conditions.append(system_events.c.timestamp <= _iso_utc(until))
+        conditions.append(system_events.c.timestamp <= _utc_dt(until))
 
     # search is best-effort (search within details JSON text)
     if search:
@@ -975,8 +994,10 @@ async def audit_list(
         )
 
     return admin_schemas.AuditListResponse(
-        entries=entries,
-        pagination=admin_schemas.Pagination(limit=limit, offset=offset, total_count=total_count),
+        items=entries,
+        total=total_count,
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -1424,7 +1445,7 @@ async def list_logs(
     if label_filters:
         logql_query = "{" + ", ".join(label_filters) + "}"
     else:
-        logql_query = '{job=~".+"}'  # Match all logs
+        logql_query = '{service=~".+"}'  # Match all logs
     
     # Add line filter for search
     if search:
@@ -1447,8 +1468,9 @@ async def list_logs(
     params = {
         "query": logql_query,
         "limit": limit + offset + 100,  # Fetch extra for accurate count
-        "start": int(since.timestamp()),
-        "end": int(until.timestamp()),
+        # Loki expects nanoseconds
+        "start": int(since.timestamp() * 1_000_000_000),
+        "end": int(until.timestamp() * 1_000_000_000),
         "direction": "backward"
     }
     
@@ -1677,8 +1699,8 @@ async def get_logs_stats(
         # max_entries_limit/limit would bias results toward the most recent logs.
         # Use aggregations instead.
 
-        selector_all = '{service=~"backend|modelservice|cli|shared"}'
-        selector_errors = '{service=~"backend|modelservice|cli|shared", level=~"ERROR|CRITICAL"}'
+        selector_all = '{service=~".+"}'
+        selector_errors = '{service=~".+", level=~"ERROR|CRITICAL"}'
 
         def _instant(query: str) -> float:
             url = f"{loki_url}/loki/api/v1/query"
@@ -1744,19 +1766,42 @@ async def get_logs_stats(
         by_subsystem = _instant_series(f"sum by(service) (count_over_time({selector_all}[24h]))", "service")
 
         # Hourly timeline: sum over all logs with 1h buckets
-        series = _range(f"sum(count_over_time({selector_all}[1h]))", start_time, end_time, step_seconds=3600)
+        # Build a deterministic last-24h bucket series and map Loki samples onto it.
+        step_seconds = 3600
+        series = _range(
+            f"sum(count_over_time({selector_all}[1h]))",
+            start_time,
+            end_time,
+            step_seconds=step_seconds,
+        )
 
-        hourly_counts = defaultdict(int)
+        # Pre-build 24 bucket timestamps (UTC), oldest -> newest.
+        bucket_times_utc = [start_time + timedelta(seconds=step_seconds * i) for i in range(24)]
+        bucket_counts = [0 for _ in range(24)]
+
         for item in series:
             for ts, val in item.get("values", []):
                 try:
-                    # Loki returns ts as seconds string for range results
-                    dt = datetime.fromtimestamp(float(ts), tz=timezone.utc).astimezone()
-                    hourly_counts[str(dt.hour)] += int(float(val))
+                    # Loki/Prometheus-style APIs may return timestamps in seconds (float)
+                    # or nanoseconds (int-like string). Handle both.
+                    ts_float = float(ts)
+                    if ts_float > 1_000_000_000_000:
+                        ts_float = ts_float / 1_000_000_000
+
+                    # Map timestamp to bucket index.
+                    idx = int(round((ts_float - start_time.timestamp()) / step_seconds))
+                    if 0 <= idx < 24:
+                        bucket_counts[idx] = int(float(val))
                 except Exception:
                     continue
 
-        # Ensure keys 0-23 exist (Studio expects full day)
+        # Studio expects a dict keyed by local hour-of-day.
+        # Use each bucket's local hour-of-day as key and fill any missing with 0.
+        hourly_counts = defaultdict(int)
+        for i, dt_utc in enumerate(bucket_times_utc):
+            local_hour = dt_utc.astimezone().hour
+            hourly_counts[str(local_hour)] += int(bucket_counts[i])
+
         recent_activity = {str(h): int(hourly_counts.get(str(h), 0)) for h in range(24)}
 
         # Trend analysis: compare last hour to previous hour

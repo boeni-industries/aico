@@ -75,7 +75,15 @@ class TelemetryManager:
             self._initialized = False
             return
 
-        self.mode = self.config.get('mode', 'casual')
+        self.mode = self._normalize_mode(self.config.get('mode', 'casual'))
+
+        logger.info(
+            "Telemetry enabled (mode=%s). exporters=%s",
+            self.mode,
+            list((self.config.get("exporters") or {}).keys())
+            if isinstance(self.config.get("exporters"), dict)
+            else [],
+        )
         
         # Create resource with service information
         import socket
@@ -99,6 +107,7 @@ class TelemetryManager:
     
     def _initialize_tracing(self, resource: Resource) -> None:
         """Initialize trace provider and processors"""
+        before_provider = trace.get_tracer_provider()
         self.tracer_provider = TracerProvider(resource=resource)
         
         # Always add console exporter in dev mode for debugging
@@ -107,57 +116,57 @@ class TelemetryManager:
             self.tracer_provider.add_span_processor(console_processor)
         
         trace.set_tracer_provider(self.tracer_provider)
+
+        after_provider = trace.get_tracer_provider()
+        logger.info(
+            "TracerProvider installed: before=%s after=%s installed_is_sdk=%s",
+            type(before_provider),
+            type(after_provider),
+            after_provider is self.tracer_provider,
+        )
     
     def _initialize_metrics(self, resource: Resource, db_connection=None) -> None:
         """Initialize meter provider and readers"""
-        # Create metric exporter for InfluxDB
-        from backend.core.otel_influx_exporter import OTelInfluxExporter
         from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-        import os
         
-        # Get InfluxDB config from database.influx section
-        db_config = self.config.get('database', {})
-        influx_config = db_config.get('influx', {})
-        influx_url = influx_config.get('url', 'http://127.0.0.1:8086')
-        influx_org = influx_config.get('org', 'aico')
-        influx_bucket = influx_config.get('bucket', 'aico_telemetry')
-        
-        # Read token from keyring automatically
-        from aico.security.key_manager import AICOKeyManager
-        from aico.core.config import ConfigurationManager
-        
+        exporters_config = self.config.get("exporters", {})
+        otlp_config = exporters_config.get("otlp", {}) if isinstance(exporters_config, dict) else {}
+
+        if not (self.mode in ["dev", "production"] and otlp_config.get("enabled", False)):
+            logger.info("OTLP exporter disabled; metrics will use default no-op meter provider")
+            return
+
         try:
-            config_manager = ConfigurationManager()
-            key_manager = AICOKeyManager(config_manager)
-            influx_token = key_manager.get_database_password('influx', username='admin_token')
-            
-            if not influx_token:
-                logger.warning("InfluxDB token not found in keyring; InfluxDB writes may fail. Run 'aico deploy influx' to set up credentials.")
-        except Exception as e:
-            logger.warning(f"Failed to retrieve InfluxDB token from keyring: {e}")
-            influx_token = None
-        
-        # Create InfluxDB exporter
-        influx_exporter = OTelInfluxExporter(
-            influx_url=influx_url,
-            org=influx_org,
-            bucket=influx_bucket,
-            token=influx_token,
-            resource_attributes=dict(resource.attributes),
+            from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+        except ImportError:
+            logger.warning(
+                "OTLP metrics exporter not available (install with: pip install opentelemetry-exporter-otlp)"
+            )
+            return
+
+        traces_endpoint = None
+        metrics_endpoint = None
+        insecure = True
+
+        if isinstance(otlp_config.get("traces"), dict):
+            traces_endpoint = otlp_config.get("traces", {}).get("endpoint")
+            insecure = bool(otlp_config.get("traces", {}).get("insecure", True))
+
+        if isinstance(otlp_config.get("metrics"), dict):
+            metrics_endpoint = otlp_config.get("metrics", {}).get("endpoint")
+            insecure = bool(otlp_config.get("metrics", {}).get("insecure", insecure))
+
+        endpoint = metrics_endpoint or traces_endpoint
+        if not endpoint:
+            endpoint = "otel-collector:4317"
+
+        otlp_metrics_exporter = OTLPMetricExporter(endpoint=endpoint, insecure=insecure)
+        metrics_reader = PeriodicExportingMetricReader(
+            exporter=otlp_metrics_exporter,
+            export_interval_millis=15000,
         )
-        
-        # Wrap exporter in periodic reader (exports every 60 seconds to reduce InfluxDB load)
-        # Longer intervals = less frequent writes = less CPU spikes = less blocking
-        influx_reader = PeriodicExportingMetricReader(
-            exporter=influx_exporter,
-            export_interval_millis=60000,  # 60 seconds (reduce InfluxDB write frequency)
-        )
-        
-        self.meter_provider = MeterProvider(
-            resource=resource,
-            metric_readers=[influx_reader]
-        )
-        
+
+        self.meter_provider = MeterProvider(resource=resource, metric_readers=[metrics_reader])
         metrics.set_meter_provider(self.meter_provider)
     
     def _initialize_exporters(self) -> None:
@@ -174,7 +183,28 @@ class TelemetryManager:
         if self.mode in ['dev', 'production']:
             otlp_config = exporters_config.get('otlp', {})
             if otlp_config.get('enabled', False):
+                traces_endpoint = (
+                    (otlp_config.get("traces") or {}).get("endpoint")
+                    if isinstance(otlp_config.get("traces"), dict)
+                    else None
+                )
+                logger.info(
+                    "OTLP trace export enabled (endpoint=%s)",
+                    traces_endpoint or "<default>",
+                )
                 self._initialize_otlp_exporter(otlp_config)
+
+    def _normalize_mode(self, mode: str) -> str:
+        if not isinstance(mode, str):
+            return "casual"
+
+        normalized = mode.strip().lower()
+        if normalized in {"prod", "production"}:
+            return "production"
+        if normalized in {"dev", "test", "pro", "casual"}:
+            return normalized
+
+        return normalized
     
     def _initialize_prometheus_exporter(self, config: Dict[str, Any]) -> None:
         """Initialize Prometheus metrics exporter"""
@@ -210,11 +240,16 @@ class TelemetryManager:
             
             traces_config = config.get('traces', {})
             endpoint = traces_config.get('endpoint', 'http://localhost:4317')
+
+            # In local docker we typically talk plaintext to the collector.
+            insecure = traces_config.get('insecure', True)
+            headers = traces_config.get('headers', {})
             
             # Create OTLP exporter
             otlp_exporter = OTLPSpanExporter(
                 endpoint=endpoint,
-                headers=traces_config.get('headers', {}),
+                insecure=insecure,
+                headers=headers,
             )
             
             # Add to tracer provider
@@ -242,6 +277,15 @@ class TelemetryManager:
         
         try:
             FastAPIInstrumentor.instrument_app(app)
+
+            from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
+
+            already_present = any(
+                getattr(m, "cls", None) is OpenTelemetryMiddleware
+                for m in getattr(app, "user_middleware", [])
+            )
+            if not already_present:
+                app.add_middleware(OpenTelemetryMiddleware)
         except Exception as e:
             logger.error(f"Failed to instrument FastAPI: {e}")
     

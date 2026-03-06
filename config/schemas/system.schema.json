@@ -10,6 +10,21 @@
       "enum": ["development", "production", "test"],
       "description": "Deployment environment"
     },
+    "components": {
+      "type": "object",
+      "description": "External component workspace configuration",
+      "properties": {
+        "studio": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Path to the aico-studio workspace (absolute or relative to the AICO repo root)"
+            }
+          }
+        }
+      }
+    },
     "paths": {
       "type": "object",
       "required": ["data_root"],

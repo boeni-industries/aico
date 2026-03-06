@@ -66,7 +66,7 @@ class LLMJsonSanitizer:
         self.log_repairs = log_repairs
         
         if not JSON_REPAIR_AVAILABLE:
-            logger.warning(
+            logger.debug(
                 "[JSON_SANITIZER] json-repair library not available. "
                 "Install with: pip install json-repair"
             )

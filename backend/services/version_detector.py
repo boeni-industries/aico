@@ -121,10 +121,7 @@ class DatabaseVersionDetector:
     # Default versions as fallback
     DEFAULT_VERSIONS = {
         "PostgreSQL": "18.1",
-        "InfluxDB": "2.8.0",
-        "ChromaDB": "0.5.x",
-        "LMDB": "0.9.x",
-        "Ollama": "0.5.x",
+        "vLLM": "unknown",
     }
     
     def __init__(self, cache_ttl_hours: int = 24):
@@ -156,10 +153,7 @@ class DatabaseVersionDetector:
         """Get detection method description"""
         methods = {
             "PostgreSQL": "docker exec + SELECT version()",
-            "InfluxDB": "docker exec + influxd version",
-            "ChromaDB": "python package version",
-            "LMDB": "python package version",
-            "Ollama": "HTTP API /api/version",
+            "vLLM": "HTTP API /health or /v1/models",
         }
         return methods.get(db_name, "unknown")
     
@@ -170,14 +164,8 @@ class DatabaseVersionDetector:
         try:
             if db_name == "PostgreSQL":
                 version = await self._detect_postgresql_version()
-            elif db_name == "InfluxDB":
-                version = await self._detect_influxdb_version()
-            elif db_name == "ChromaDB":
-                version = await self._detect_chromadb_version()
-            elif db_name == "LMDB":
-                version = await self._detect_lmdb_version()
-            elif db_name == "Ollama":
-                version = await self._detect_ollama_version()
+            elif db_name == "vLLM":
+                version = await self._detect_vllm_version()
             else:
                 logger.error(f"Unknown database: {db_name}")
                 return self.DEFAULT_VERSIONS.get(db_name, "unknown")
@@ -235,111 +223,47 @@ class DatabaseVersionDetector:
         logger.error(f"PostgreSQL version detection FAILED - using fallback: {fallback}")
         return fallback
     
-    async def _detect_influxdb_version(self) -> str:
-        """Detect InfluxDB version from container"""
-        logger.debug("Attempting InfluxDB version detection via docker exec...")
-        
+    async def _detect_vllm_version(self) -> str:
+        """Detect vLLM version/reachability via OpenAI-compatible HTTP API.
+
+        Note: vLLM's OpenAI-compatible server does not reliably expose a semantic
+        server version string. We therefore treat this as a reachability check
+        and return "unknown" (but cache it) when the endpoint is reachable.
+        """
+        logger.debug("Attempting vLLM reachability check via HTTP API...")
+
+        # Import lazily to avoid hard dependency at module import time
         try:
-            # Try docker exec
-            result = await asyncio.to_thread(
-                subprocess.run,
-                ["docker", "exec", "aico-influxdb", "influxd", "version"],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            
-            if result.returncode == 0:
-                # Parse version from output like "InfluxDB v2.8.0 ..."
-                output = result.stdout.strip()
-                if "InfluxDB" in output:
-                    version_part = output.split("InfluxDB")[1].strip().split()[0].lstrip('v')
-                    logger.info(f"InfluxDB version detected successfully: {version_part}")
-                    return version_part
-                else:
-                    logger.error(f"InfluxDB version query returned unexpected format: {output}")
-            else:
-                logger.error(f"InfluxDB version query failed with exit code {result.returncode}: {result.stderr}")
-                
-        except subprocess.TimeoutExpired:
-            logger.error("InfluxDB version detection timed out after 5 seconds")
+            from aico.core.config import ConfigurationManager
+            config = ConfigurationManager()
+            vllm_cfg = config.get("llm.vllm", {})
         except Exception as e:
-            logger.error(f"InfluxDB version detection failed: {e}", exc_info=True)
-        
-        # If we get here, detection failed
-        fallback = self.DEFAULT_VERSIONS["InfluxDB"]
-        logger.error(f"InfluxDB version detection FAILED - using fallback: {fallback}")
-        return fallback
-    
-    async def _detect_chromadb_version(self) -> str:
-        """Detect ChromaDB version from Python package"""
-        logger.debug("Attempting ChromaDB version detection from Python package...")
-        
-        try:
-            import chromadb
-            version = chromadb.__version__
-            logger.info(f"ChromaDB version detected successfully: {version}")
-            return version
-        except ImportError:
-            logger.error("ChromaDB package not installed - cannot detect version")
-        except AttributeError:
-            logger.error("ChromaDB package has no __version__ attribute")
-        except Exception as e:
-            logger.error(f"ChromaDB version detection failed: {e}", exc_info=True)
-        
-        # If we get here, detection failed
-        fallback = self.DEFAULT_VERSIONS["ChromaDB"]
-        logger.error(f"ChromaDB version detection FAILED - using fallback: {fallback}")
-        return fallback
-    
-    async def _detect_lmdb_version(self) -> str:
-        """Detect LMDB version from Python package"""
-        logger.debug("Attempting LMDB version detection from Python package...")
-        
-        try:
-            import lmdb
-            version = lmdb.version()
-            version_str = ".".join(map(str, version))
-            logger.info(f"LMDB version detected successfully: {version_str}")
-            return version_str
-        except ImportError:
-            logger.error("LMDB package not installed - cannot detect version")
-        except AttributeError:
-            logger.error("LMDB package has no version() function")
-        except Exception as e:
-            logger.error(f"LMDB version detection failed: {e}", exc_info=True)
-        
-        # If we get here, detection failed
-        fallback = self.DEFAULT_VERSIONS["LMDB"]
-        logger.error(f"LMDB version detection FAILED - using fallback: {fallback}")
-        return fallback
-    
-    async def _detect_ollama_version(self) -> str:
-        """Detect Ollama version from HTTP API"""
-        logger.debug("Attempting Ollama version detection via HTTP API...")
-        
+            logger.debug(f"Could not read vLLM config for version detection: {e}")
+            vllm_cfg = {}
+
+        host = vllm_cfg.get("host", "localhost")
+        port = int(vllm_cfg.get("port", 8774))
+        base_url = f"http://{host}:{port}"
+
         try:
             import httpx
             async with httpx.AsyncClient(timeout=2.0) as client:
-                response = await client.get("http://localhost:11434/api/version")
-                if response.status_code == 200:
-                    version_data = response.json()
-                    version = version_data.get("version", self.DEFAULT_VERSIONS["Ollama"])
-                    logger.info(f"Ollama version detected successfully: {version}")
-                    return version
-                else:
-                    logger.error(f"Ollama API returned status {response.status_code}")
-        except httpx.TimeoutException:
-            logger.error("Ollama version detection timed out after 2 seconds")
-        except httpx.ConnectError:
-            logger.error("Cannot connect to Ollama - service may not be running")
+                # Prefer /health if available
+                resp = await client.get(f"{base_url}/health")
+                if resp.status_code == 200:
+                    return self.DEFAULT_VERSIONS["vLLM"]
+
+                # Fallback to OpenAI models list
+                resp = await client.get(f"{base_url}/v1/models")
+                if resp.status_code == 200:
+                    return self.DEFAULT_VERSIONS["vLLM"]
+
+                logger.debug(f"vLLM API returned status {resp.status_code}")
         except Exception as e:
-            logger.error(f"Ollama version detection failed: {e}", exc_info=True)
-        
-        # If we get here, detection failed
-        fallback = self.DEFAULT_VERSIONS["Ollama"]
-        logger.error(f"Ollama version detection FAILED - using fallback: {fallback}")
-        return fallback
+            # vLLM is optional at runtime (e.g., during dev); don't treat as error
+            logger.debug(f"vLLM reachability check failed: {e}")
+
+        return "unavailable"
     
     async def get_all_versions(self) -> Dict[str, str]:
         """Get all database versions"""

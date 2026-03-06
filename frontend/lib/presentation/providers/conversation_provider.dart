@@ -145,11 +145,16 @@ class ConversationNotifier extends _$ConversationNotifier {
       final allMessages = await _messageRepository.getMessages(
         '', // Empty string loads all user messages
         onBackgroundSyncComplete: (freshMessages) {
-          // Update with fresh messages from background sync
-          state = state.copyWith(
-            messages: freshMessages,
-            allMessages: freshMessages,
-          );
+          // Update with fresh messages from background sync.
+          // IMPORTANT: The backend message history can be empty (e.g. working-memory retention)
+          // even when the local cache has older history. Never wipe an existing non-empty UI
+          // state with an empty background-sync result.
+          if (freshMessages.isNotEmpty || state.messages.isEmpty) {
+            state = state.copyWith(
+              messages: freshMessages,
+              allMessages: freshMessages,
+            );
+          }
         },
       );
       
@@ -540,6 +545,11 @@ class ConversationNotifier extends _$ConversationNotifier {
 
   /// Clear current conversation
   void clearConversation() {
+    state = const ConversationState(currentConversationId: null);
+  }
+
+  Future<void> clearLocalHistory({String conversationId = ''}) async {
+    await _messageRepository.clearLocalCache(conversationId: conversationId);
     state = const ConversationState(currentConversationId: null);
   }
 

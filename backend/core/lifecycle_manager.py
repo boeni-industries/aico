@@ -31,11 +31,17 @@ class BackendLifecycleManager:
     and router mounting with proper dependency injection.
     """
     
-    def __init__(self, config_manager: ConfigurationManager):
+    def __init__(self, config_manager: ConfigurationManager, role: str):
         self.config = config_manager
         self.logger = get_logger("backend.core.lifecycle_manager")
         import time
         self.start_time = time.time()
+
+        if role not in {"gateway", "core"}:
+            raise ValueError(
+                f"Invalid role '{role}'. Monolith mode is removed; role must be 'gateway' or 'core'."
+            )
+        self.role = role
         
         # Core components
         self.container = ServiceContainer(config_manager)
@@ -64,46 +70,60 @@ class BackendLifecycleManager:
         await initialize_postgres_dependencies()
         self.logger.debug("PostgreSQL session factory initialized")
         
-        # 2. Initialize service container (AI processors need UoW factory)
+        # 2. Initialize service container (role-scoped)
         await self._initialize_container()
         
         # 3. Initialize OpenTelemetry instrumentation (now has database access)
         await self._initialize_telemetry()
         
-        # 4. Create FastAPI app
-        self.app = self._create_fastapi_app()
+        self.logger.info(f"🔍 Role check: self.role='{self.role}', is_core={self.role == 'core'}, is_gateway={self.role == 'gateway'}")
         
+        if self.role == "core":
+            await self.container.start_all()
+            self._display_service_status()
+            self._display_plugin_status()
+            
+            # Initialize NATS request handlers for gateway→core communication
+            await self._initialize_nats_handlers()
+            
+            self.logger.info("AICO core startup complete")
+            return None
+
+        if self.role != "gateway":
+            raise RuntimeError(
+                f"Invalid startup role state: role={self.role!r}. Expected 'gateway' or 'core'."
+            )
+
+        # gateway
+        self.logger.info("🚀 Starting gateway initialization")
+        self.app = self._create_fastapi_app()
+
         # Store start time in app state for health monitoring
         self.app.state.backend_start_time = self.start_time
-        
-        # 5. Configure middleware stack
+
+        # Configure middleware stack
         self._configure_middleware()
-        
-        # 6. Mount API routers
+
+        # Mount API routers
         self._mount_routers()
-        
-        # 7. Instrument FastAPI with OpenTelemetry
+
+        # Instrument FastAPI with OpenTelemetry
         self._instrument_fastapi()
-        
-        # Start all services
+
+        # Start gateway services/plugins only
         await self.container.start_all()
-        
+
         # Display service and plugin startup status
         self._display_service_status()
         self._display_plugin_status()
-        
-        # Start ZMQ message broker
-        await self._start_message_broker()
-        
-        # Display available routes
-        self._display_routes()
-        
-        # Display log consumer status (debug logic removed)
-        
-        # Start protocol adapters (WebSocket, ZeroMQ)
+
+        # Initialize gateway NATS client for gateway→core communication
+        await self._initialize_gateway_nats_client()
+
+        # Start protocol adapters (WebSocket)
         await self._start_protocol_adapters()
-        
-        self.logger.info("AICO backend startup complete")
+
+        self.logger.info("AICO gateway startup complete")
         return self.app
     
     async def stop(self) -> None:
@@ -148,11 +168,18 @@ class BackendLifecycleManager:
                 except Exception:
                     self.logger.warning("Database connection not yet available for telemetry")
             
-            # Build config dict expected by initialize_telemetry
+            # Build config dict expected by initialize_telemetry.
+            # Preserve nested exporter configuration (otlp/prometheus/etc.) so
+            # TelemetryManager can honor it.
+            instrumentation_config = self.config.get("instrumentation", {})
+            if not isinstance(instrumentation_config, dict):
+                instrumentation_config = {}
+
             config_dict = {
-                'instrumentation': {
-                    'enabled': enabled,
-                    'mode': mode
+                "instrumentation": {
+                    **instrumentation_config,
+                    "enabled": enabled,
+                    "mode": mode,
                 }
             }
             
@@ -171,7 +198,8 @@ class BackendLifecycleManager:
         
         try:
             from backend.core.telemetry import instrument_fastapi
-            instrument_fastapi(self.app)
+            app_to_instrument = getattr(self, "fastapi_app", None) or self.app
+            instrument_fastapi(app_to_instrument)
             self.logger.info("FastAPI instrumented with OpenTelemetry")
             
         except Exception as e:
@@ -193,17 +221,91 @@ class BackendLifecycleManager:
         # Register plugin classes first
         self._register_plugin_classes()
         
-        # Register core services
-        await self._register_core_services()
-
-        # Register AI processors
-        await self._register_ai_processors()
-        
-        # Register plugins
-        await self._register_plugins()
+        if self.role == "gateway":
+            await self._register_gateway_services()
+            await self._register_plugins()
+            self._assert_gateway_split()
+        elif self.role == "core":
+            await self._register_core_services()
+            await self._register_ai_processors()
+            self._assert_core_split()
+        else:
+            raise RuntimeError(
+                f"Invalid role={self.role!r}; expected 'gateway' or 'core' (monolith removed)."
+            )
         
         self.logger.info("Service container initialized")
-    
+
+    async def _register_gateway_services(self) -> None:
+        """Register gateway-only infrastructure services.
+
+        IMPORTANT: Gateway must not register any core domain services or AI processors.
+        """
+        def create_database_connection(container: ServiceContainer) -> Any:
+            # Gateway uses UoW pattern per request; no shared DB connection.
+            return None
+
+        def create_config_service(container: ServiceContainer):
+            return container.config
+
+        self.container.register_service(
+            "database",
+            create_database_connection,
+            dependencies=[],
+            priority=5,
+        )
+
+        self.container.register_service(
+            "config",
+            create_config_service,
+            dependencies=[],
+            priority=1,
+        )
+
+        self.logger.debug("Gateway services registered")
+
+    def _assert_gateway_split(self) -> None:
+        """Fail fast if gateway container contains any core services or AI processors."""
+        forbidden_services = {
+            "task_scheduler",
+            "scheduler_worker",
+            "emotion_engine",
+            "conversation_engine",
+            "outbox_publisher",
+        }
+
+        registered = set(getattr(self.container, "_definitions", {}).keys())
+        illegal = sorted(forbidden_services.intersection(registered))
+        if illegal:
+            raise RuntimeError(
+                "Gateway/Core split violation: gateway registered core services: " + ", ".join(illegal)
+            )
+
+        # Ensure no AI processors are registered in-process in gateway
+        try:
+            from aico.ai import ai_registry
+
+            if ai_registry.get("memory") is not None or ai_registry.get("agency") is not None:
+                raise RuntimeError(
+                    "Gateway/Core split violation: gateway initialized AI processors (memory/agency)"
+                )
+        except Exception as e:
+            # If registry import fails, surface it clearly (should never fail in normal runtime)
+            raise RuntimeError(f"Gateway/Core split assertion failed: {e}")
+
+    def _assert_core_split(self) -> None:
+        """Fail fast if core container is missing required core services."""
+        required_services = {
+            "outbox_publisher",
+        }
+
+        registered = set(getattr(self.container, "_definitions", {}).keys())
+        missing = sorted(required_services.difference(registered))
+        if missing:
+            raise RuntimeError(
+                "Core split violation: core is missing required services: " + ", ".join(missing)
+            )
+
     async def _register_core_services(self) -> None:
         """Register core infrastructure services"""
         
@@ -213,30 +315,9 @@ class BackendLifecycleManager:
             # PostgreSQL uses UnitOfWork pattern per request
             return None
         
-        # ZMQ context factory
-        def create_zmq_context(container: ServiceContainer):
-            import zmq
-            return zmq.Context()
-        
         # Config service factory
         def create_config_service(container: ServiceContainer):
             return container.config
-        
-        # ChromaDB client factory (shared singleton)
-        def create_chromadb_client(container: ServiceContainer):
-            from aico.core.paths import AICOPaths
-            import chromadb
-            from chromadb.config import Settings
-            
-            chromadb_path = AICOPaths.get_semantic_memory_path()
-            # Use consistent settings for all ChromaDB clients
-            return chromadb.PersistentClient(
-                path=str(chromadb_path),
-                settings=Settings(
-                    anonymized_telemetry=False,
-                    allow_reset=True  # Match semantic memory settings
-                )
-            )
         
         # Register services
         self.container.register_service(
@@ -245,12 +326,17 @@ class BackendLifecycleManager:
             dependencies=[],
             priority=5  # Start early, stop late
         )
-        
+
+        # Outbox publisher (durable publication fallback) - core only
+        def create_outbox_publisher(_container: ServiceContainer):
+            from backend.services.outbox_publisher import OutboxPublisherService
+            return OutboxPublisherService("outbox_publisher", _container)
+
         self.container.register_service(
-            "chromadb_client",
-            create_chromadb_client,
+            "outbox_publisher",
+            create_outbox_publisher,
             dependencies=[],
-            priority=6  # After database
+            priority=25,
         )
         
         self.container.register_service(
@@ -260,53 +346,71 @@ class BackendLifecycleManager:
             priority=1  # Start first
         )
         
-        self.container.register_service(
-            "zmq_context",
-            create_zmq_context,
-            dependencies=[],
-            priority=10  # Start after database, stop before database
-        )
-        
         # NOTE: Do not register shared UserService here.
         # Backend uses PostgreSQL via UnitOfWork/repositories; the shared UserService
         # expects an asyncpg connection and would be constructed with database=None
         # (since the backend's legacy `database` service is intentionally unused).
         
-        # Task scheduler factory
-        def create_task_scheduler(container: ServiceContainer):
-            from backend.scheduler import TaskScheduler
-            return TaskScheduler("task_scheduler", container)
-        
-        self.container.register_service(
-            "task_scheduler",
-            create_task_scheduler,
-            dependencies=[],
-            priority=25
-        )
-        
-        # Emotion engine factory
-        def create_emotion_engine(container: ServiceContainer, zmq_context=None):
-            from backend.services.emotion_engine import EmotionEngine
-            return EmotionEngine("emotion_engine", container)
-        
-        self.container.register_service(
-            "emotion_engine",
-            create_emotion_engine,
-            dependencies=["zmq_context"],
-            priority=30  # Start after message_bus (20), before conversation_engine (35)
-        )
-        
-        # Conversation engine factory
-        def create_conversation_engine(container: ServiceContainer, zmq_context=None, emotion_engine=None):
-            from backend.services.conversation_engine import ConversationEngine
-            return ConversationEngine("conversation_engine", container)
-        
-        self.container.register_service(
-            "conversation_engine",
-            create_conversation_engine,
-            dependencies=["zmq_context", "emotion_engine"],  # Ensure emotion engine is ready
-            priority=35  # Start after message_bus (20) and emotion_engine (30)
-        )
+        if self.role != "gateway":
+            # Task scheduler factory
+            def create_task_scheduler(container: ServiceContainer):
+                from backend.scheduler import TaskScheduler
+                return TaskScheduler("task_scheduler", container)
+
+            self.container.register_service(
+                "task_scheduler",
+                create_task_scheduler,
+                dependencies=[],
+                priority=25
+            )
+
+            # Scheduler worker (JetStream consumer)
+            def create_scheduler_worker(container: ServiceContainer):
+                from backend.services.scheduler_worker import SchedulerWorkerService
+                return SchedulerWorkerService("scheduler_worker", container)
+
+            self.container.register_service(
+                "scheduler_worker",
+                create_scheduler_worker,
+                dependencies=[],
+                priority=26,
+            )
+
+            # Emotion engine factory
+            def create_emotion_engine(container: ServiceContainer):
+                from backend.services.emotion_engine import EmotionEngine
+                return EmotionEngine("emotion_engine", container)
+
+            self.container.register_service(
+                "emotion_engine",
+                create_emotion_engine,
+                dependencies=[],
+                priority=30  # Start after message_bus (20), before conversation_engine (35)
+            )
+
+            # Conversation engine factory
+            def create_conversation_engine(container: ServiceContainer, emotion_engine=None):
+                from backend.services.conversation_engine import ConversationEngine
+                return ConversationEngine("conversation_engine", container)
+
+            self.container.register_service(
+                "conversation_engine",
+                create_conversation_engine,
+                dependencies=["emotion_engine"],  # Ensure emotion engine is ready
+                priority=35  # Start after message_bus (20) and emotion_engine (30)
+            )
+            
+            # UoW factory for core services that need database access
+            def create_uow_factory(container: ServiceContainer):
+                from backend.core.postgres_dependencies import get_uow_factory
+                return get_uow_factory()
+            
+            self.container.register_service(
+                "uow",
+                create_uow_factory,
+                dependencies=[],
+                priority=10  # Early initialization
+            )
         
         self.logger.debug("Core services registered")
 
@@ -710,37 +814,26 @@ class BackendLifecycleManager:
         registry.register_plugin_class("validation", ValidationPlugin)
         registry.register_plugin_class("routing", RoutingPlugin)
         registry.register_plugin_class("encryption", EncryptionPlugin)
-        
-        # Register AI plugin classes
-        from backend.services.embodiment_engine import EmbodimentPlugin
-        from backend.services.agency_engine import AgencyPlugin
-        from backend.services.personality_engine import PersonalityPlugin
-        
-        registry.register_plugin_class("embodiment", EmbodimentPlugin)
-        registry.register_plugin_class("agency", AgencyPlugin)
-        registry.register_plugin_class("personality", PersonalityPlugin)
-        
-        # Note: EmotionEngine is registered as a service (lines 266-275), not a plugin
-        
+
         self.logger.debug("Plugin classes registered")
-    
+
     async def _register_plugins(self) -> None:
         """Register plugin services"""
         # Get plugin configuration
         plugin_config = self.config.get("api_gateway.plugins", {})
-        
+
         for plugin_name, config in plugin_config.items():
             if not config.get("enabled", False):
                 self.logger.debug(f"Plugin {plugin_name} disabled, skipping registration")
                 continue
-            
+
             # Get plugin factory from registry
             try:
                 factory = get_plugin_registry().create_plugin_factory(plugin_name)
-                
+
                 # Determine dependencies based on plugin type
                 dependencies = self._get_plugin_dependencies(plugin_name)
-                
+
                 # Register plugin service
                 self.container.register_service(
                     f"{plugin_name}_plugin",
@@ -748,31 +841,26 @@ class BackendLifecycleManager:
                     dependencies=dependencies,
                     priority=self._get_plugin_priority(plugin_name)
                 )
-                
+
                 self.logger.debug(f"Registered plugin service: {plugin_name}_plugin")
-                
+
             except Exception as e:
                 self.logger.error(f"Failed to register plugin '{plugin_name}': {e}")
                 # Fail fast - don't continue with broken plugins
                 raise
-        
+
         self.logger.debug("Plugin services registered")
     
-    def _get_plugin_dependencies(self, plugin_name: str) -> List[str]:
+    def _get_plugin_dependencies(self, plugin_name: str) -> list:
         """Get plugin dependencies based on plugin type"""
         # Standard dependencies for different plugin types
         dependency_map = {
-            "security": ["database", "zmq_context"],
+            "security": ["database"],
             "encryption": ["database"],
             "rate_limiting": ["database"],
             "validation": [],
             "routing": [],
-            "message_bus": ["zmq_context"],
-            # AI plugins need message bus for inter-plugin communication
-            "embodiment": ["zmq_context"],
-            "agency": ["zmq_context"],
-            "emotion": ["zmq_context"],
-            "personality": ["zmq_context"],
+            "message_bus": [],
         }
         
         return dependency_map.get(plugin_name, [])
@@ -786,11 +874,6 @@ class BackendLifecycleManager:
             "rate_limiting": 40,
             "validation": 45,
             "routing": 50,
-            # AI plugins start after core infrastructure
-            "embodiment": 60,
-            "agency": 61,
-            "emotion": 62,
-            "personality": 63,
         }
         
         return priority_map.get(plugin_name, 100)
@@ -806,7 +889,6 @@ class BackendLifecycleManager:
                 'config': self.config,
                 'logger': self.logger,
                 'db_connection': self.container.get_service('database'),
-                'zmq_context': self.container.get_service('zmq_context'),
             }
             
             # Add plugin services as dependencies
@@ -870,7 +952,11 @@ class BackendLifecycleManager:
                 app.state.lifecycle_manager = self
                 
                 # Store task scheduler for scheduler API endpoints
-                task_scheduler = self.container.get_service('task_scheduler')
+                task_scheduler = None
+                try:
+                    task_scheduler = self.container.get_service('task_scheduler')
+                except Exception:
+                    task_scheduler = None
                 if task_scheduler:
                     app.state.task_scheduler = task_scheduler
                 
@@ -902,19 +988,23 @@ class BackendLifecycleManager:
         from backend.core.exception_handlers import register_exception_handlers
         register_exception_handlers(self.app)
 
-        # 1. CORS middleware (outermost)
-        from fastapi.middleware.cors import CORSMiddleware
-        self.app.add_middleware(
-            CORSMiddleware,
-            allow_origins=["*"],  # Configure appropriately for production
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
-
         # 2. Metrics middleware (collect request metrics)
         from backend.api_gateway.middleware.metrics import MetricsMiddleware
         self.app.add_middleware(MetricsMiddleware)
+
+        # 2b. Idempotency middleware (minimal, scoped to high-risk mutations)
+        from backend.api_gateway.middleware.idempotency import IdempotencyMiddleware
+        self.app.add_middleware(IdempotencyMiddleware)
+
+        # 2c. Rate limiting middleware (Valkey-backed; fail-open)
+        from starlette.middleware.base import BaseHTTPMiddleware
+        from backend.api_gateway.middleware.rate_limiter import ValkeyFixedWindowRateLimiterMiddleware
+
+        rate_limiter = ValkeyFixedWindowRateLimiterMiddleware(self.config, self.app)
+        self.app.add_middleware(
+            BaseHTTPMiddleware,
+            dispatch=rate_limiter.dispatch,
+        )
 
         # 3. Correlation context middleware (request-scoped IDs for structured logging)
         from fastapi import Request
@@ -950,9 +1040,37 @@ class BackendLifecycleManager:
             response = await call_next(request)
 
             if request.url.path.startswith("/api/v1/") and response.status_code >= 400:
-                self.logger.warning(f"Response: {request.method} {request.url.path} -> {response.status_code}")
+                if response.status_code == 429:
+                    self.logger.warning(
+                        f"rate_limiter.rate_limited Response: {request.method} {request.url.path} -> {response.status_code}"
+                    )
+                else:
+                    self.logger.warning(f"Response: {request.method} {request.url.path} -> {response.status_code}")
 
             return response
+
+        # 1. CORS middleware (outermost)
+        # NOTE: Starlette stacks middlewares such that the *last* added middleware
+        # becomes the outermost wrapper. CORS must therefore be added LAST so it
+        # can attach Access-Control-* headers even for early-return responses
+        # (e.g., 429 from rate limiting).
+        from fastapi.middleware.cors import CORSMiddleware
+        cors_origins = self.config.get(
+            "api_gateway.cors_origins",
+            [
+                "http://localhost:3000",
+                "http://127.0.0.1:3000",
+                "http://localhost:3002",
+                "http://127.0.0.1:3002",
+            ],
+        )
+        self.app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
         
         # 5. Plugin-based middleware will be added by plugins during their initialization
         self.logger.debug("Middleware stack configured")
@@ -973,46 +1091,85 @@ class BackendLifecycleManager:
         if not self.app:
             raise RuntimeError("FastAPI app not created")
 
+        self.logger.info("🚀 _mount_routers() called")
+        
         # Mount domain routers
-        self._mount_domain_routers()
+        try:
+            self._mount_domain_routers()
+            self.logger.info("✅ _mount_domain_routers() completed successfully")
+        except Exception as e:
+            self.logger.error(f"❌ _mount_domain_routers() FAILED: {e}")
+            import traceback
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+            raise
 
         self.logger.debug("API routers mounted")
 
         # Apply encryption middleware as final ASGI wrapper (after all routers mounted)
-        self.logger.debug("Starting encryption middleware initialization")
-        key_manager = AICOKeyManager(self.config)
-        # Store reference to FastAPI app before wrapping for route display
-        self.fastapi_app = self.app
-        self.app = EncryptionMiddleware(self.app, key_manager)
-        self.logger.debug("Encryption middleware started successfully")
+        plugin_enabled = bool(self.config.get("api_gateway.plugins.encryption.enabled", True))
+        transport_enabled = bool(self.config.get("security.transport.encryption.enabled", True))
+        if plugin_enabled and transport_enabled:
+            self.logger.debug("Starting encryption middleware initialization")
+            key_manager = AICOKeyManager(self.config)
+            # Store reference to FastAPI app before wrapping for route display
+            self.fastapi_app = self.app
+            # Create encryption middleware instance
+            encryption_middleware = EncryptionMiddleware(self.app, key_manager)
+            # Store middleware instance in app.state for access by streaming endpoints
+            self.app.state.encryption_middleware = encryption_middleware
+            # Wrap the app with the middleware
+            self.app = encryption_middleware
+            self.logger.debug("Encryption middleware started successfully")
+        else:
+            self.logger.info(
+                "Encryption middleware disabled",
+                extra={
+                    "plugin_enabled": plugin_enabled,
+                    "transport_enabled": transport_enabled,
+                },
+            )
 
     def _mount_domain_routers(self) -> None:
-        """Mount domain-specific API routers"""
-        # Import routers
+        """Mount domain-specific API routers (GATEWAY ONLY - Core has NO HTTP endpoints)"""
+        
+        # CRITICAL: Core service has NO HTTP server - it only responds via NATS
+        if self.role == "core":
+            self.logger.info("� Core service: NO HTTP routers mounted (NATS-only architecture)")
+            return
+        
+        # Only gateway mounts HTTP routers
+        if self.role != "gateway":
+            self.logger.warning(f"Unknown role {self.role} - skipping router mounting")
+            return
+            
+        self.logger.info("🔧 Gateway: Starting HTTP router mounting process...")
+        
+        # Import gateway routers
         from backend.api.health.router import router as health_router
         from backend.api.echo.router import router as echo_router
         from backend.api.users.router import router as users_router
         from backend.api.admin.router import router as admin_router
         from backend.api.logs.router import router as logs_router
+        from backend.api.users_sessions.router import router as users_sessions_router
+        from backend.api.handshake.router import router as handshake_router
+        
+        # Import NATS-proxy routers
+        from backend.api.memory.router_gateway import router as memory_router_gw
+        from backend.api.memory_album.router_gateway import router as memory_album_router_gw
+        from backend.api.kg.router_gateway import router as kg_router_gw
+        from backend.api.operations.router_gateway import router as operations_router_gw
+        from backend.api.system.router_gateway import router as system_router_gw
+        from backend.api.agency.router_gateway import router as agency_router_gw
+        from backend.api.scheduler.router import router as scheduler_router
+        from backend.api.emotion.router import router as emotion_router
+        from backend.api.ams.router import router as ams_router
         from backend.api.conversation.router import router as conversation_router
         from backend.api.interactions.router import router as interactions_router
-        from backend.api.memory.router import router as memory_router
-        from backend.api.system.router import router as system_router
-        from backend.api.system.health.router import router as system_health_router
-        from backend.api.memory_album import router as memory_album_router
-        from backend.api.kg.router import router as kg_router
-        from backend.api.behavioral.router import router as behavioral_router
-        from backend.api.emotion.router import router as emotion_router
         from backend.api.tts.router import router as tts_router
-        from backend.api.agency.router import router as agency_router
-        from backend.api.ams.router import router as ams_router
-        from backend.api.operations.router import router as operations_router
-        from backend.api.scheduler.router import router as scheduler_router
-        from backend.api.users_sessions.router import router as users_sessions_router
         
-        # Mount routers with prefixes
+        # Mount common routers
         self.app.include_router(health_router, prefix="/api/v1/health", tags=["health"])
-        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/health", "tags": ["health"]})
+        self.logger.info("✅ Mounted: /api/v1/health")
         
         self.app.include_router(echo_router, prefix="/api/v1/echo", tags=["echo"])
         self.logger.debug("Router mounted", extra={"prefix": "/api/v1/echo", "tags": ["echo"]})
@@ -1026,99 +1183,92 @@ class BackendLifecycleManager:
         self.app.include_router(logs_router, prefix="/api/v1/logs", tags=["logs"])
         self.logger.debug("Router mounted", extra={"prefix": "/api/v1/logs", "tags": ["logs"]})
         
-        self.app.include_router(conversation_router, prefix="/api/v1/conversation", tags=["conversation"])
-        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/conversation", "tags": ["conversation"]})
-
-        self.app.include_router(interactions_router, prefix="/api/v1/interactions", tags=["interactions"])
-        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/interactions", "tags": ["interactions"]})
-        
-        self.app.include_router(memory_router, prefix="/api/v1", tags=["memory"])
-        self.logger.debug("Router mounted", extra={"prefix": "/api/v1", "tags": ["memory"]})
-        
-        self.app.include_router(system_router, prefix="/api/v1/system", tags=["system"])
-        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/system", "tags": ["system"]})
-        
-        self.app.include_router(system_health_router, prefix="/api/v1/system", tags=["system-health"])
-        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/system", "tags": ["system-health"]})
-        
-        self.app.include_router(memory_album_router, prefix="/api/v1/memory-album", tags=["memory-album"])
-        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/memory-album", "tags": ["memory-album"]})
-        
-        self.app.include_router(kg_router, prefix="/api/v1/kg", tags=["knowledge-graph"])
-        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/kg", "tags": ["knowledge-graph"]})
-        
-        self.app.include_router(behavioral_router, prefix="/api/v1/behavioral", tags=["behavioral"])
-        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/behavioral", "tags": ["behavioral"]})
-        
-        self.app.include_router(emotion_router, prefix="/api/v1/emotion", tags=["emotion"])
-        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/emotion", "tags": ["emotion"]})
-        
-        self.app.include_router(tts_router, prefix="/api/v1/tts", tags=["tts"])
-        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/tts", "tags": ["tts"]})
-        
-        self.app.include_router(agency_router, prefix="/api/v1/agency", tags=["agency"])
-        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/agency", "tags": ["agency"]})
-        
-        self.app.include_router(ams_router, prefix="/api/v1", tags=["ams"])
-        self.logger.debug("Router mounted", extra={"prefix": "/api/v1", "tags": ["ams"]})
-        
-        self.app.include_router(operations_router, prefix="/api/v1/operations", tags=["operations"])
-        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/operations", "tags": ["operations"]})
-        
-        self.app.include_router(scheduler_router, prefix="/api/v1/scheduler", tags=["scheduler"])
-        self.logger.debug("Router mounted", extra={"prefix": "/api/v1/scheduler", "tags": ["scheduler"]})
-        
         self.app.include_router(users_sessions_router, prefix="/api/v1/users-sessions", tags=["users-sessions"])
         self.logger.debug("Router mounted", extra={"prefix": "/api/v1/users-sessions", "tags": ["users-sessions"]})
+
+        self.app.include_router(handshake_router, prefix="/api/v1/handshake", tags=["handshake"])
+        self.logger.info("✅ Mounted: /api/v1/handshake")
+
+        # User-facing chat + interaction endpoints (HTTP)
+        self.app.include_router(conversation_router, prefix="/api/v1/conversation", tags=["conversation"])
+        self.logger.info("✅ Mounted: /api/v1/conversation")
+
+        self.app.include_router(interactions_router, prefix="/api/v1/interactions", tags=["interactions"])
+        self.logger.info("✅ Mounted: /api/v1/interactions")
         
-    
-    def _display_routes(self) -> None:
-        """Display available API route groups"""
-        # Route information available via logs
-        pass
-    
-    async def _start_message_broker(self) -> None:
-        """Start ZMQ message broker"""
+        # NATS-proxy endpoints (gateway → core via NATS)
+        self.app.include_router(memory_router_gw, prefix="/api/v1", tags=["memory"])
+        self.logger.info("✅ Mounted: /api/v1/memory (gateway→core NATS proxy)")
+        
+        self.app.include_router(memory_album_router_gw, prefix="/api/v1", tags=["memory-album"])
+        self.logger.info("✅ Mounted: /api/v1/memory-album (gateway→core NATS proxy)")
+        
+        self.app.include_router(kg_router_gw, prefix="/api/v1", tags=["kg"])
+        self.logger.info("✅ Mounted: /api/v1/kg (gateway→core NATS proxy)")
+        
+        self.app.include_router(operations_router_gw, prefix="/api/v1", tags=["operations"])
+        self.logger.info("✅ Mounted: /api/v1/operations (gateway→core NATS proxy)")
+        
+        self.app.include_router(scheduler_router, prefix="/api/v1/scheduler", tags=["scheduler"])
+        self.logger.info("✅ Mounted: /api/v1/scheduler (gateway→core NATS proxy)")
+        
+        self.app.include_router(emotion_router, prefix="/api/v1/emotion", tags=["emotion"])
+        self.logger.info("✅ Mounted: /api/v1/emotion (gateway→core NATS proxy)")
+        
+        self.app.include_router(system_router_gw, prefix="/api/v1", tags=["system"])
+        self.logger.info("✅ Mounted: /api/v1/system (gateway→core NATS proxy)")
+        
+        self.app.include_router(agency_router_gw, prefix="/api/v1", tags=["agency"])
+        self.logger.info("✅ Mounted: /api/v1/agency (gateway→core NATS proxy)")
+        
+        self.app.include_router(ams_router, prefix="/api/v1", tags=["ams"])
+        self.logger.info("✅ Mounted: /api/v1/ams")
+        
+        self.app.include_router(tts_router, prefix="/api/v1/tts", tags=["tts"])
+        self.logger.info("✅ Mounted: /api/v1/tts")
+        
+        self.logger.info(f"🎉 Gateway HTTP router mounting complete: {len(self.app.routes)} total routes")
+
+
+    # Dependency injection functions for FastAPI
+    async def _initialize_nats_handlers(self) -> None:
+        """Initialize NATS request handlers for gateway→core communication"""
         try:
-            message_bus_plugin = self.container.get_service('message_bus_plugin')
-            if message_bus_plugin:
-                # Message bus plugin starts broker in its start() method
-                # Notify ZMQ log transport that broker is ready to flush buffered messages
-                self._notify_log_transport_broker_ready()
-            else:
-                self.logger.warning("ZMQ message broker not available - message_bus_plugin not found")
-                
+            from backend.core.nats_handlers import CoreNATSHandlers
+            from aico.core.bus import MessageBusClient
+            
+            # Create dedicated message bus client for request handling
+            message_bus = MessageBusClient("core_request_handler")
+            await message_bus.connect()
+            
+            # Initialize and register handlers
+            handlers = CoreNATSHandlers(self.container)
+            await handlers.setup_handlers(message_bus)
+            
+            self.logger.info("✅ NATS request handlers initialized for gateway→core communication")
+            
         except Exception as e:
-            self.logger.error(f"Failed to start message broker: {e}")
-    
-    def _notify_log_transport_broker_ready(self) -> None:
-        """Notify ZMQ log transport that broker is ready, but delay buffer flush until LogConsumer is subscribed"""
-        # ZMQ log transport removed - logs now go directly to InfluxDB
-        # Log consumer service also removed - no longer needed
-        pass
-    
-    def _notify_log_consumer_broker_ready(self) -> None:
-        """Notify log consumer service that broker is ready and schedule buffer flush after subscription"""
-        # Log consumer service removed - logs now go directly to InfluxDB
-        pass
-    
-    async def _connect_log_consumer_and_flush_buffer(self, log_consumer):
-        """Connect log consumer and flush buffer after subscription is complete"""
-        # Log consumer service removed - logs now go directly to InfluxDB
-        pass
-    
-    def _display_log_consumer_status(self) -> None:
-        """Display log consumer service status"""
-        # Log consumer service removed - logs now go directly to InfluxDB
-        pass
-    
-    async def _debug_log_consumer_initialization(self) -> None:
-        """Debug log consumer initialization issues"""
-        # Log consumer service removed - logs now go directly to InfluxDB
-        pass
+            self.logger.error(f"Failed to initialize NATS handlers: {e}", exc_info=True)
+            # Don't fail startup if NATS handlers fail - core services can still work
+
+    async def _initialize_gateway_nats_client(self) -> None:
+        """Initialize gateway NATS client for making requests to core"""
+        try:
+            from backend.api_gateway.core.nats_client import initialize_gateway_nats_client
+            from aico.core.bus import MessageBusClient
+            
+            # Create dedicated message bus client for gateway requests
+            message_bus = MessageBusClient("gateway_nats_client")
+            await message_bus.connect()
+            
+            # Initialize the singleton
+            initialize_gateway_nats_client(message_bus)
+            self.logger.info("✅ Gateway NATS client initialized for core communication")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to initialize gateway NATS client: {e}", exc_info=True)
 
 
-# Dependency injection functions for FastAPI
 def get_service_container(request: Request) -> ServiceContainer:
     """Get service container from FastAPI app state"""
     if not hasattr(request.app.state, 'service_container'):

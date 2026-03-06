@@ -315,7 +315,9 @@ class ServiceContainer:
             
             # Visit dependencies first
             if name in self._definitions:
-                for dep in self._definitions[name].dependencies:
+                deps = self._definitions[name].dependencies
+                # Visit dependencies in priority order (lower priority number first)
+                for dep in sorted(deps, key=lambda d: self._definitions.get(d, ServiceDefinition(d, None, [])).priority):
                     visit(dep)
             
             temp_visited.remove(name)
@@ -323,12 +325,12 @@ class ServiceContainer:
             order.append(name)
         
         # Visit all registered services
-        for service_name in self._definitions:
+        for service_name in sorted(self._definitions, key=lambda n: self._definitions[n].priority):
             visit(service_name)
         
-        # Sort by priority within dependency constraints
-        # Services with same dependency level are sorted by priority
-        self._startup_order = sorted(order, key=lambda name: self._definitions[name].priority)
+        # 'order' is now a valid topological order. Priority is applied deterministically
+        # by choosing the visitation order for both roots and edges.
+        self._startup_order = order
         self._shutdown_order = self._startup_order.copy()
         
         self.logger.debug(f"Service startup order: {self._startup_order}")

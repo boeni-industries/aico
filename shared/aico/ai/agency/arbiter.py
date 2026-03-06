@@ -68,8 +68,8 @@ class Intention(BaseModel):
     reasons: List[str] = Field(default_factory=list)
     activated_at: Optional[datetime] = None
     deactivated_at: Optional[datetime] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class IntentionSet(BaseModel):
@@ -79,7 +79,7 @@ class IntentionSet(BaseModel):
     intentions: List[Intention] = Field(default_factory=list)
     max_active: int = 3
     max_background: int = 5
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     
     @property
     def active_intentions(self) -> List[Intention]:

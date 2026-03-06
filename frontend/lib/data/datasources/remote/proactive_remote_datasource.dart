@@ -10,17 +10,48 @@ class ProactiveRemoteDataSource {
   /// Get all pending proactive initiations for current user
   Future<List<InitiationModel>> getPendingInitiations() async {
     try {
+      // Proactive conversation initiations are represented as pending interaction requests.
+      // The legacy /conversation/proactive/* endpoints are intentionally not part of the
+      // gateway HTTP surface.
       final response = await _apiClient.request<dynamic>(
         'GET',
-        '/conversation/proactive/pending',
+        '/interactions',
+        queryParameters: {
+          'status': 'pending',
+          // Most proactive initiations are delivered as dialogue interactions.
+          'interaction_type': 'dialogue',
+          'limit': '50',
+          'offset': '0',
+        },
       );
-      
-      if (response != null && response is List) {
-        return response
-            .map((item) => InitiationModel.fromJson(item as Map<String, dynamic>))
-            .toList();
+
+      if (response == null || response is! Map) {
+        return [];
       }
-      return [];
+
+      final items = response['items'];
+      if (items == null || items is! List) {
+        return [];
+      }
+
+      // Map InteractionResponse -> InitiationModel (UI expects this shape)
+      return items
+          .whereType<Map>()
+          .map((raw) {
+            final m = Map<String, dynamic>.from(raw);
+            return InitiationModel.fromJson({
+              'initiation_id': (m['interaction_id'] ?? '').toString(),
+              'user_id': (m['user_id'] ?? '').toString(),
+              'conversation_id': (m['correlation_id'] ?? '').toString(),
+              'question': (m['prompt'] ?? '').toString(),
+              'initiated_at': (m['created_at'] ?? '').toString(),
+              'resolution_status': (m['status'] ?? '').toString(),
+              'resolved_at': m['answered_at']?.toString(),
+              'user_response_time': null,
+              'engagement_score': null,
+            });
+          })
+          .toList();
     } catch (e) {
       throw Exception('Failed to get pending initiations: $e');
     }
@@ -31,16 +62,40 @@ class ProactiveRemoteDataSource {
     try {
       final response = await _apiClient.request<dynamic>(
         'GET',
-        '/conversation/proactive/history',
-        queryParameters: {'limit': limit.toString()},
+        '/interactions',
+        queryParameters: {
+          'interaction_type': 'dialogue',
+          'limit': limit.toString(),
+          'offset': '0',
+        },
       );
-      
-      if (response != null && response is List) {
-        return response
-            .map((item) => InitiationModel.fromJson(item as Map<String, dynamic>))
-            .toList();
+
+      if (response == null || response is! Map) {
+        return [];
       }
-      return [];
+
+      final items = response['items'];
+      if (items == null || items is! List) {
+        return [];
+      }
+
+      return items
+          .whereType<Map>()
+          .map((raw) {
+            final m = Map<String, dynamic>.from(raw);
+            return InitiationModel.fromJson({
+              'initiation_id': (m['interaction_id'] ?? '').toString(),
+              'user_id': (m['user_id'] ?? '').toString(),
+              'conversation_id': (m['correlation_id'] ?? '').toString(),
+              'question': (m['prompt'] ?? '').toString(),
+              'initiated_at': (m['created_at'] ?? '').toString(),
+              'resolution_status': (m['status'] ?? '').toString(),
+              'resolved_at': m['answered_at']?.toString(),
+              'user_response_time': null,
+              'engagement_score': null,
+            });
+          })
+          .toList();
     } catch (e) {
       throw Exception('Failed to get initiation history: $e');
     }
@@ -49,10 +104,14 @@ class ProactiveRemoteDataSource {
   /// Respond to a proactive initiation
   Future<void> respondToInitiation(InitiationResponseRequest request) async {
     try {
+      // Proactive responses are handled by answering the underlying interaction request.
       await _apiClient.request(
         'POST',
-        '/conversation/proactive/respond',
-        data: request.toJson(),
+        '/interactions/${request.initiationId}/answer',
+        data: {
+          'answer_text': request.responseText ?? '',
+          'answer_json': null,
+        },
       );
     } catch (e) {
       throw Exception('Failed to respond to initiation: $e');

@@ -16,6 +16,22 @@ from aico.data.repositories.base import Repository
 
 class PostgresAgencyEventsLogRepository(Repository[AgencyEventLog]):
     """PostgreSQL implementation of agency events log repository."""
+
+    @staticmethod
+    def _normalize_dt(value):
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, str):
+            s = value.strip()
+            if s.endswith("+00"):
+                s = s + ":00"
+            try:
+                return datetime.fromisoformat(s)
+            except ValueError:
+                return value
+        return value
     
     def __init__(self, session: AsyncSession):
         self.session = session
@@ -60,7 +76,7 @@ class PostgresAgencyEventsLogRepository(Repository[AgencyEventLog]):
             workflow_trace_id=row.workflow_trace_id,
             parent_event_id=row.parent_event_id,
             severity=row.severity,
-            created_at=row.created_at,
+            created_at=self._normalize_dt(row.created_at),
         )
     
     async def update(self, entity: AgencyEventLog) -> AgencyEventLog:
@@ -120,7 +136,7 @@ class PostgresAgencyEventsLogRepository(Repository[AgencyEventLog]):
                 workflow_trace_id=row.workflow_trace_id,
                 parent_event_id=row.parent_event_id,
                 severity=row.severity,
-                created_at=row.created_at,
+                created_at=self._normalize_dt(row.created_at),
             )
             for row in result.fetchall()
         ]
@@ -163,7 +179,7 @@ class PostgresAgencyEventsLogRepository(Repository[AgencyEventLog]):
                 workflow_trace_id=row.workflow_trace_id,
                 parent_event_id=row.parent_event_id,
                 severity=row.severity,
-                created_at=row.created_at,
+                created_at=self._normalize_dt(row.created_at),
             )
             for row in result.fetchall()
         ]
@@ -192,7 +208,7 @@ class PostgresAgencyEventsLogRepository(Repository[AgencyEventLog]):
                 workflow_trace_id=row.workflow_trace_id,
                 parent_event_id=row.parent_event_id,
                 severity=row.severity,
-                created_at=row.created_at,
+                created_at=self._normalize_dt(row.created_at),
             )
             for row in result.fetchall()
         ]
@@ -221,7 +237,7 @@ class PostgresAgencyEventsLogRepository(Repository[AgencyEventLog]):
                 workflow_trace_id=row.workflow_trace_id,
                 parent_event_id=row.parent_event_id,
                 severity=row.severity,
-                created_at=row.created_at,
+                created_at=self._normalize_dt(row.created_at),
             )
             for row in result.fetchall()
         ]
@@ -281,7 +297,7 @@ class PostgresAgencyEventsLogRepository(Repository[AgencyEventLog]):
                 workflow_trace_id=row.workflow_trace_id,
                 parent_event_id=row.parent_event_id,
                 severity=row.severity,
-                created_at=row.created_at,
+                created_at=self._normalize_dt(row.created_at),
             )
             for row in result.fetchall()
         ]

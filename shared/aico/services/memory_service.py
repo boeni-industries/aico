@@ -6,7 +6,7 @@ Provides high-level memory operations.
 
 NOTE: This service primarily orchestrates existing repositories.
 Episodic memory storage may use LMDB directly (as per architecture).
-Semantic memory uses ChromaDB (as per architecture).
+Semantic memory uses PostgreSQL with pgvector (as per architecture).
 This service provides a unified interface for memory operations.
 """
 
@@ -106,12 +106,12 @@ class MemoryService:
         Consolidate episodic memories into semantic memory.
         
         This is a high-level orchestration method that would:
-        1. Retrieve episodic memories from LMDB
+        1. Retrieve episodic memories from working memory
         2. Process and consolidate them
-        3. Store consolidated memories in ChromaDB
+        3. Store consolidated memories in PostgreSQL with pgvector
         4. Update metadata in PostgreSQL
         
-        NOTE: Actual implementation depends on LMDB and ChromaDB integration.
+        NOTE: Actual implementation depends on LMDB and PostgreSQL integration.
         This service provides the database metadata operations.
         """
         try:
@@ -157,7 +157,7 @@ class MemoryService:
         return await self.get_memory_count(user_id, memory_type="semantic")
 
     # ==================== Memory Search Operations ====================
-    # Note: Actual semantic search happens in ChromaDB
+    # Note: Actual semantic search happens in PostgreSQL with pgvector
     # This service provides metadata-based search
 
     async def search_memories_by_metadata(self, user_id: str, filters: Dict[str, Any]) -> List[Any]:
@@ -175,7 +175,7 @@ class MemoryService:
         """
         Delete old memory metadata.
         
-        NOTE: This only deletes metadata. Actual memory content in LMDB/ChromaDB
+        NOTE: This only deletes metadata. Actual memory content in LMDB/PostgreSQL
         would need separate cleanup.
         """
         try:

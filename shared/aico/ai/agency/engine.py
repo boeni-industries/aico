@@ -146,7 +146,7 @@ class AgencyEngine(BaseAIProcessor):
         )
         
         # Phase 4: Values & Ethics service
-        self.values_ethics = ValuesEthicsService(logger=logger)
+        self.values_ethics = ValuesEthicsService(config=self.config, logger=logger)
         # Values & Ethics initialized
         
         # Phase 4: Goal Arbiter with configuration
@@ -192,9 +192,6 @@ class AgencyEngine(BaseAIProcessor):
             RemediationPostgresVacuumSkill,
             RemediationPostgresArchiveSkill,
             RemediationDatabaseDiskPressureSkill,
-            RemediationChromaCompactSkill,
-            RemediationLmdbCompactSkill,
-            RemediationLmdbCleanupSkill,
             RemediationInfluxGetMeasurementsSkill,
             RemediationInfluxApplyRetentionSkill,
             RemediationInfluxDropMeasurementSkill,
@@ -271,9 +268,6 @@ class AgencyEngine(BaseAIProcessor):
             self.skill_registry.register(RemediationPostgresVacuumSkill(session_factory))
             self.skill_registry.register(RemediationPostgresArchiveSkill(session_factory))
             self.skill_registry.register(RemediationDatabaseDiskPressureSkill(session_factory))
-            self.skill_registry.register(RemediationChromaCompactSkill())
-            self.skill_registry.register(RemediationLmdbCompactSkill())
-            self.skill_registry.register(RemediationLmdbCleanupSkill())
             self.skill_registry.register(RemediationInfluxGetMeasurementsSkill(config_manager))
             self.skill_registry.register(RemediationInfluxApplyRetentionSkill(config_manager))
             self.skill_registry.register(RemediationInfluxDropMeasurementSkill(config_manager))

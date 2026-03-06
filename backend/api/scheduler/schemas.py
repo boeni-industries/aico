@@ -66,6 +66,94 @@ class TaskExecutionResponse(BaseModel):
     duration_seconds: Optional[float]
 
 
+class ExecutionSummaryResponse(BaseModel):
+    """Summary model for executions list endpoints (no heavy result payload)."""
+
+    task_id: str
+    execution_id: str
+    status: str
+    started_at: str
+    completed_at: Optional[str]
+    error_message: Optional[str]
+    duration_seconds: Optional[float]
+    acknowledged: bool = False
+
+
+class ExecutionDetailResponse(ExecutionSummaryResponse):
+    """Detailed execution payload used for per-execution drilldown."""
+
+    result: Optional[Any] = None
+
+
+class ExecutionListResponse(BaseModel):
+    """Cursor-paginated response for listing executions in a time range."""
+
+    items: List[ExecutionSummaryResponse]
+    next_cursor_started_at: Optional[str] = None
+    next_cursor_execution_id: Optional[str] = None
+    has_more: bool
+    limit: int
+    start_time: str
+    end_time: str
+
+
+class ExecutionStatsBucket(BaseModel):
+    bucket_start: str
+    status: str
+    count: int
+
+
+class ExecutionStatsResponse(BaseModel):
+    items: List[ExecutionStatsBucket]
+    bucket: str
+    start_time: str
+    end_time: str
+    task_id: Optional[str] = None
+
+
+class RunSummaryResponse(BaseModel):
+    id: int
+    task_id: str
+    run_key: str
+    tenant_id: Optional[str] = None
+    scheduled_for: str
+    planned_at: Optional[str] = None
+    state: str
+    enqueued_at: Optional[str] = None
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    execution_id: Optional[str] = None
+    reason_code: Optional[str] = None
+
+
+class RunDetailResponse(RunSummaryResponse):
+    reason_detail: Optional[str] = None
+
+
+class RunListResponse(BaseModel):
+    items: List[RunSummaryResponse]
+    total_count: int
+    limit: int
+    offset: int
+    start_time: str
+    end_time: str
+
+
+class RunStatsBucket(BaseModel):
+    bucket_start: str
+    state: str
+    count: int
+
+
+class RunStatsResponse(BaseModel):
+    items: List[RunStatsBucket]
+    bucket: str
+    start_time: str
+    end_time: str
+    task_id: Optional[str] = None
+    tenant_id: Optional[str] = None
+
+
 class TaskStatusResponse(BaseModel):
     """Response model for task status"""
     task_id: str

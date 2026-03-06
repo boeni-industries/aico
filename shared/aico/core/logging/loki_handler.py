@@ -17,7 +17,8 @@ import threading
 import time
 import json
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timezone
+import email.utils
 from typing import Optional, Dict, Any, List
 from concurrent.futures import ThreadPoolExecutor
 
@@ -64,7 +65,9 @@ class LokiLogHandler(logging.Handler):
         self.overflow_strategy = overflow_strategy
         
         # In-memory buffer (thread-safe deque)
-        self.buffer = deque(maxlen=buffer_size if overflow_strategy == "drop_oldest" else None)
+        # NOTE: Do NOT rely on deque(maxlen=...) because it silently drops items and
+        # bypasses our dropped-record statistics. Enforce buffer_size manually.
+        self.buffer = deque()
         self.buffer_lock = threading.Lock()
         
         # Background flush thread
@@ -80,12 +83,23 @@ class LokiLogHandler(logging.Handler):
 
         # Shutdown guard to prevent scheduling work during interpreter teardown
         self._closing = threading.Event()
+
+        self._last_ts_per_stream: Dict[str, int] = {}
+        self._last_ts_lock = threading.Lock()
+
+        # Estimate of Loki clock offset relative to this process:
+        #   loki_time ~= local_time + _loki_time_offset_ns
+        # Updated opportunistically from HTTP Date headers on push responses.
+        self._loki_time_offset_ns = 0
+        self._loki_time_offset_lock = threading.Lock()
         
         # Statistics
         self.stats = {
             "records_buffered": 0,
             "records_written": 0,
             "records_dropped": 0,
+            "timestamps_clamped": 0,
+            "timestamps_monotonic_adjusted": 0,
             "write_errors": 0,
             "last_flush": None
         }
@@ -106,12 +120,19 @@ class LokiLogHandler(logging.Handler):
             
             # Add to buffer (thread-safe)
             with self.buffer_lock:
-                if self.overflow_strategy == "drop_newest" and len(self.buffer) >= self.buffer_size:
-                    # Drop this record
-                    with self.stats_lock:
-                        self.stats["records_dropped"] += 1
-                    return
-                
+                if len(self.buffer) >= self.buffer_size:
+                    if self.overflow_strategy == "drop_newest":
+                        # Drop this record
+                        with self.stats_lock:
+                            self.stats["records_dropped"] += 1
+                        return
+
+                    # drop_oldest
+                    if self.buffer:
+                        self.buffer.popleft()
+                        with self.stats_lock:
+                            self.stats["records_dropped"] += 1
+
                 self.buffer.append(log_entry)
                 
                 with self.stats_lock:
@@ -203,12 +224,76 @@ class LokiLogHandler(logging.Handler):
         if hasattr(record, "conversation_id") and record.conversation_id:
             log_obj["conversation_id"] = record.conversation_id
 
+        try:
+            standard_attrs = {
+                "name",
+                "msg",
+                "args",
+                "levelname",
+                "levelno",
+                "pathname",
+                "filename",
+                "module",
+                "exc_info",
+                "exc_text",
+                "stack_info",
+                "lineno",
+                "funcName",
+                "created",
+                "msecs",
+                "relativeCreated",
+                "thread",
+                "threadName",
+                "processName",
+                "process",
+                "taskName",
+            }
+
+            for key, value in (getattr(record, "__dict__", {}) or {}).items():
+                if not isinstance(key, str):
+                    continue
+                if key in standard_attrs:
+                    continue
+                if key in log_obj:
+                    continue
+                if key.startswith("_"):
+                    continue
+
+                try:
+                    json.dumps({key: value}, ensure_ascii=False)
+                    log_obj[key] = value
+                except Exception:
+                    try:
+                        log_obj[key] = str(value)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
         # Remove None values and JSON-serialize
         log_obj = {k: v for k, v in log_obj.items() if v is not None}
         log_line = json.dumps(log_obj, ensure_ascii=False, separators=(",", ":"))
         
+        ts_ns = int(record.created * 1_000_000_000)
+        # Defensive: Loki rejects samples too far in the future. If a producer clock
+        # drifts or a record has a bad timestamp, clamp to a small future tolerance
+        # to avoid silent ingestion gaps.
+        now_ns = int(time.time() * 1_000_000_000)
+        with self._loki_time_offset_lock:
+            loki_offset_ns = int(self._loki_time_offset_ns)
+
+        # Clamp against Loki time, not local time. On dev machines with sleep/wake
+        # cycles, Docker/Loki time can drift behind local time, leading to
+        # "timestamp too new" rejects even if we clamp against local time.
+        loki_now_ns = now_ns + loki_offset_ns
+        max_future_ns = loki_now_ns + 10_000_000_000  # 10s tolerance
+        if ts_ns > max_future_ns:
+            ts_ns = max_future_ns
+            with self.stats_lock:
+                self.stats["timestamps_clamped"] += 1
+
         return {
-            "timestamp": int(record.created * 1_000_000_000),  # nanoseconds
+            "timestamp": ts_ns,  # nanoseconds
             "labels": labels,
             "line": log_line
         }
@@ -293,6 +378,47 @@ class LokiLogHandler(logging.Handler):
                     str(entry["timestamp"]),
                     entry["line"]
                 ])
+
+            # Loki expects entries to be ordered by timestamp per stream.
+            # Also enforce monotonicity per stream to avoid ingestion rejects
+            # during clock adjustments (sleep/wake) or multi-threaded log bursts.
+            for label_str, stream in streams.items():
+                try:
+                    stream["values"].sort(key=lambda v: int(v[0]))
+                except Exception:
+                    pass
+
+                with self._last_ts_lock:
+                    last_ts = self._last_ts_per_stream.get(label_str)
+
+                if last_ts is not None:
+                    adjusted = 0
+                    prev = last_ts
+                    for item in stream["values"]:
+                        try:
+                            ts = int(item[0])
+                        except Exception:
+                            continue
+                        if ts <= prev:
+                            ts = prev + 1
+                            item[0] = str(ts)
+                            adjusted += 1
+                        prev = ts
+
+                    if adjusted:
+                        with self.stats_lock:
+                            self.stats["timestamps_monotonic_adjusted"] += adjusted
+
+                    with self._last_ts_lock:
+                        self._last_ts_per_stream[label_str] = prev
+                else:
+                    if stream.get("values"):
+                        try:
+                            last_val = int(stream["values"][-1][0])
+                            with self._last_ts_lock:
+                                self._last_ts_per_stream[label_str] = last_val
+                        except Exception:
+                            pass
             
             # Build Loki push request
             payload = {
@@ -305,6 +431,13 @@ class LokiLogHandler(logging.Handler):
                 json=payload,
                 timeout=10
             )
+
+            # Opportunistically learn Loki time from the HTTP Date header to
+            # compensate for host/container clock skew.
+            try:
+                self._update_loki_time_offset_from_response(response)
+            except Exception:
+                pass
             
             if response.status_code == 204:
                 # Success
@@ -324,6 +457,42 @@ class LokiLogHandler(logging.Handler):
         
         finally:
             self._write_in_flight.clear()
+
+    def _update_loki_time_offset_from_response(self, response: Any) -> None:
+        date_header = None
+        try:
+            date_header = response.headers.get("Date")
+        except Exception:
+            date_header = None
+
+        if not date_header:
+            return
+
+        try:
+            dt = email.utils.parsedate_to_datetime(date_header)
+        except Exception:
+            return
+
+        if dt is None:
+            return
+
+        if dt.tzinfo is None:
+            # HTTP dates are supposed to be GMT; treat as UTC if tz is missing.
+            dt = dt.replace(tzinfo=timezone.utc)
+
+        loki_now_ns = int(dt.timestamp() * 1_000_000_000)
+        local_now_ns = int(time.time() * 1_000_000_000)
+        offset_ns = loki_now_ns - local_now_ns
+
+        # Clamp insane offsets (e.g., bad headers) to avoid harming ingestion.
+        # If offset is outside +/- 6 hours, ignore it.
+        if abs(offset_ns) > int(6 * 3600 * 1_000_000_000):
+            return
+
+        with self._loki_time_offset_lock:
+            # Smooth slightly to avoid jitter.
+            prev = int(self._loki_time_offset_ns)
+            self._loki_time_offset_ns = int(prev * 0.9 + offset_ns * 0.1)
     
     def flush(self):
         """Flush all buffered records immediately."""

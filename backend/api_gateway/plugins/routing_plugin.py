@@ -8,6 +8,7 @@ from typing import Dict, Any
 from backend.core.plugin_base import BasePlugin, PluginMetadata, PluginPriority
 from ..models.core.message_router import MessageRouter
 from aico.core.logging import get_logger
+from aico.core.bus import MessageBusClient
 
 
 class RoutingPlugin(BasePlugin):
@@ -83,14 +84,8 @@ class RoutingPlugin(BasePlugin):
     async def start(self) -> None:
         """Start the routing plugin"""
         try:
-            # Get message bus service from container
-            message_bus_plugin = self.require_service('message_bus_plugin')
-            
-            # Register as a module to get a MessageBusClient (not the host)
-            message_bus_client = await message_bus_plugin.message_bus_host.register_module(
-                "api_gateway", 
-                ["api.response.*", "system.error.*"]
-            )
+            message_bus_client = MessageBusClient("api_gateway_routing")
+            await message_bus_client.connect()
             
             await self.message_router.set_message_bus(message_bus_client)
             self.logger.info("Routing plugin started with message bus")

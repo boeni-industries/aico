@@ -1,0 +1,69 @@
+FROM python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# System deps (kept minimal)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    gnupg \
+    build-essential \
+    g++ \
+    docker.io \
+    docker-cli \
+  && rm -rf /var/lib/apt/lists/*
+
+# PostgreSQL client tools must match the server major version (Postgres 18.x)
+RUN set -eux; \
+    mkdir -p /etc/apt/keyrings; \
+    curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/keyrings/postgresql.gpg; \
+    echo "deb [signed-by=/etc/apt/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo $VERSION_CODENAME)-pgdg main" > /etc/apt/sources.list.d/pgdg.list; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends postgresql-client-18; \
+    rm -rf /var/lib/apt/lists/*
+
+# Install uv
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
+
+# Copy dependency metadata + required local path deps first.
+# NOTE: backend depends on shared via a local path source (../shared), so we need
+# the shared project present before running uv.
+COPY shared /app/shared
+COPY backend /app/backend
+COPY backend/uv.lock /app/backend/uv.lock
+COPY README.md VERSIONS /app/
+
+# Install deps (without installing the local project) so this layer is stable
+# across source-only changes.
+WORKDIR /app/backend
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project
+
+WORKDIR /app
+
+# Copy remaining source
+COPY cli /app/cli
+COPY modelservice /app/modelservice
+COPY proto /app/proto
+COPY config /app/config
+
+# Copy entrypoint script
+COPY docker/entrypoint-backend.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Install the local backend project into the already-synced environment.
+# NOTE: Must run in /app/backend so uv finds /app/backend/.venv.
+WORKDIR /app/backend
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install -e .
+
+WORKDIR /app/backend
+
+EXPOSE 8771
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["/app/backend/.venv/bin/python", "gateway_main.py"]

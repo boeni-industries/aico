@@ -6,6 +6,7 @@ Tests can read and write, but must clean up their test data.
 """
 
 import pytest
+import pytest_asyncio
 from pathlib import Path
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
@@ -33,20 +34,91 @@ def test_db():
 
     import os
     expected_db_name = os.environ.get("AICO_TEST_DB_NAME", "aico_test")
+    maintenance_db_name = os.environ.get("AICO_TEST_DB_MAINTENANCE_DB", "aico")
+    pg_container_name = os.environ.get("AICO_TEST_DB_CONTAINER", "aico-postgres")
     
     password = key_manager.get_database_password("postgres", username=pg_cfg.get("user", "postgres"))
     if not password:
         raise RuntimeError("PostgreSQL password not found in keyring")
     
-    # Connect to PostgreSQL
-    db = psycopg2.connect(
-        host=pg_cfg.get("host", "127.0.0.1"),
-        port=int(pg_cfg.get("port", 5432)),
-        dbname=expected_db_name,
-        user=pg_cfg.get("user", "postgres"),
-        password=password,
-        cursor_factory=RealDictCursor
-    )
+    def _connect(dbname: str):
+        return psycopg2.connect(
+            host=pg_cfg.get("host", "127.0.0.1"),
+            port=int(pg_cfg.get("port", 5432)),
+            dbname=dbname,
+            user=pg_cfg.get("user", "postgres"),
+            password=password,
+            cursor_factory=RealDictCursor,
+        )
+
+    def _apply_schema_sql() -> None:
+        import subprocess
+
+        root = Path(__file__).resolve().parents[3]
+        schema_path = root / "shared" / "aico" / "data" / "postgres" / "schema.sql"
+        if not schema_path.exists():
+            raise RuntimeError(f"Schema file not found: {schema_path}")
+
+        with open(schema_path, "r") as f:
+            sql_text = f.read()
+
+        sql_text = "SET statement_timeout = 0;\nSET lock_timeout = 0;\n" + sql_text
+
+        cmd = [
+            "docker",
+            "exec",
+            "-i",
+            "-e",
+            f"PGPASSWORD={password}",
+            pg_container_name,
+            "psql",
+            "-h",
+            "localhost",
+            "-U",
+            pg_cfg.get("user", "postgres"),
+            "-d",
+            expected_db_name,
+            "-v",
+            "ON_ERROR_STOP=1",
+        ]
+        result = subprocess.run(
+            cmd,
+            input=sql_text,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=int(os.environ.get("AICO_TEST_SCHEMA_APPLY_TIMEOUT_SECONDS", "300")),
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                "Failed to apply schema.sql:\n"
+                + (result.stderr or "")
+                + ("\n" + result.stdout if result.stdout else "")
+            )
+
+    maint = _connect(maintenance_db_name)
+    maint.set_session(autocommit=True)
+    try:
+        cur = maint.cursor()
+
+        cur.execute("ALTER DATABASE template1 REFRESH COLLATION VERSION")
+        cur.execute(f"ALTER DATABASE {maintenance_db_name} REFRESH COLLATION VERSION")
+
+        cur.execute(
+            "SELECT 1 FROM pg_database WHERE datname = %s",
+            (expected_db_name,),
+        )
+        exists = cur.fetchone()
+        if exists:
+            cur.execute(f"DROP DATABASE {expected_db_name} WITH (FORCE)")
+        cur.execute(f"CREATE DATABASE {expected_db_name}")
+        cur.close()
+    finally:
+        maint.close()
+
+    _apply_schema_sql()
+
+    db = _connect(expected_db_name)
 
     cursor = db.cursor()
     cursor.execute("SELECT current_database() AS db")
@@ -59,7 +131,192 @@ def test_db():
             f"Refusing to run tests against non-test database: '{current_db}'. "
             f"Expected '{expected_db_name}'. Set AICO_TEST_DB_NAME if needed."
         )
+    cursor.execute("CREATE SCHEMA IF NOT EXISTS aico_core")
     cursor.execute("SET search_path TO aico_core,public")
+    # Ensure test DB schema is up-to-date enough for the current codebase.
+    # This is intentionally minimal and idempotent: only add columns that newer
+    # code expects but older test DBs may not yet have.
+    cursor.execute(
+        "ALTER TABLE IF EXISTS ethics_value_profiles "
+        "ADD COLUMN IF NOT EXISTS autonomy_level TEXT DEFAULT 'balanced'"
+    )
+
+    cursor.execute(
+        "ALTER TABLE IF EXISTS user_feedback_requests "
+        "ALTER COLUMN responded_at TYPE TIMESTAMPTZ USING NULLIF(responded_at::text, '')::timestamptz"
+    )
+    cursor.execute(
+        "ALTER TABLE IF EXISTS user_feedback_requests "
+        "ALTER COLUMN created_at TYPE TIMESTAMPTZ USING NULLIF(created_at::text, '')::timestamptz"
+    )
+    
+    # Create scheduler tables if missing (needed for distributed scheduler idempotency)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS scheduler_tasks (
+            task_id TEXT PRIMARY KEY,
+            task_class TEXT NOT NULL,
+            schedule TEXT NOT NULL,
+            config TEXT,
+            enabled BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS scheduler_task_executions (
+            id BIGSERIAL PRIMARY KEY,
+            task_id TEXT NOT NULL,
+            execution_id TEXT NOT NULL,
+            run_key TEXT,
+            status TEXT NOT NULL,
+            started_at TIMESTAMPTZ NOT NULL,
+            completed_at TIMESTAMPTZ,
+            result TEXT,
+            error_message TEXT,
+            duration_seconds DOUBLE PRECISION,
+            acknowledged BOOLEAN DEFAULT FALSE
+        )
+    """)
+
+    cursor.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_scheduler_task_executions_run_key
+        ON scheduler_task_executions (task_id, run_key)
+        WHERE run_key IS NOT NULL
+    """)
+
+    # Create interaction_requests table if missing
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS interaction_requests (
+            interaction_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            correlation_id TEXT NOT NULL,
+            interaction_type TEXT NOT NULL,
+            requirement TEXT NOT NULL,
+            status TEXT NOT NULL,
+            category TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            title TEXT,
+            prompt TEXT,
+            context_json JSONB,
+            allowed_options JSONB,
+            expected_answer_type TEXT,
+            answer_text TEXT,
+            answer_json JSONB,
+            answered_at TIMESTAMPTZ,
+            expires_at TIMESTAMPTZ,
+            idempotency_key TEXT NOT NULL,
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
+    cursor.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_interaction_requests_idempotency_key
+        ON interaction_requests (user_id, idempotency_key)
+    """)
+    
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_interaction_requests_user_status
+        ON interaction_requests (user_id, status, created_at DESC)
+    """)
+    
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_interaction_requests_correlation
+        ON interaction_requests (correlation_id)
+    """)
+    
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_interaction_requests_expires
+        ON interaction_requests (expires_at)
+        WHERE expires_at IS NOT NULL
+    """)
+    
+    # Create interaction_events table if missing
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS interaction_events (
+            event_id TEXT PRIMARY KEY,
+            interaction_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            correlation_id TEXT NOT NULL,
+            actor TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            from_status TEXT,
+            to_status TEXT,
+            payload_json JSONB,
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_interaction_events_interaction
+        ON interaction_events (interaction_id, created_at ASC)
+    """)
+    
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_interaction_events_user_time
+        ON interaction_events (user_id, created_at DESC)
+    """)
+    
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_interaction_events_correlation
+        ON interaction_events (correlation_id, created_at ASC)
+    """)
+
+    # Create outbox_events table if missing (used for durable publication fallback)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS outbox_events (
+            event_id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            payload_bytes BYTEA NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            attempts INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            available_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            sent_at TIMESTAMPTZ
+        )
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_outbox_events_pending
+        ON outbox_events (status, available_at, created_at)
+        WHERE status = 'pending'
+    """)
+
+    # Working memory table (Postgres-backed LMDB replacement)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS working_memory_messages (
+            id BIGSERIAL PRIMARY KEY,
+            conversation_id TEXT NOT NULL,
+            user_id TEXT,
+            message_id TEXT,
+            role TEXT,
+            content TEXT,
+            language TEXT,
+            message_type TEXT,
+            payload_json JSONB,
+            stored_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMPTZ,
+            last_accessed_at TIMESTAMPTZ,
+            access_count INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_working_memory_conversation_stored_at
+        ON working_memory_messages (conversation_id, stored_at DESC)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_working_memory_user_stored_at
+        ON working_memory_messages (user_id, stored_at DESC)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_working_memory_expires_at
+        ON working_memory_messages (expires_at)
+        WHERE expires_at IS NOT NULL
+    """)
+
     db.commit()
     cursor.close()
     
@@ -67,9 +324,18 @@ def test_db():
     
     db.close()
 
+    maint = _connect(maintenance_db_name)
+    maint.set_session(autocommit=True)
+    try:
+        cur = maint.cursor()
+        cur.execute(f"DROP DATABASE IF EXISTS {expected_db_name} WITH (FORCE)")
+        cur.close()
+    finally:
+        maint.close()
 
-@pytest.fixture(scope="session")
-def session_factory(test_db):
+
+@pytest_asyncio.fixture(scope="session")
+async def session_factory(test_db):
     """
     Create async SQLAlchemy session factory for tests.
     
@@ -103,8 +369,8 @@ def session_factory(test_db):
     )
     
     yield factory
-    
-    # Cleanup is handled by engine disposal
+
+    await engine.dispose()
 
 
 @pytest.fixture
@@ -174,6 +440,7 @@ async def test_user(test_db):
     # Delete Phase 6.8 data (policy & ethics)
     cursor.execute("DELETE FROM aico_core.ethics_gate_audit WHERE user_id = %s", (user_uuid,))
     cursor.execute("DELETE FROM aico_core.ethics_decisions_cache WHERE user_id = %s", (user_uuid,))
+    cursor.execute("DELETE FROM aico_core.ethics_value_profiles WHERE user_id = %s", (user_uuid,))
     cursor.execute("DELETE FROM aico_core.consent_audit_log WHERE user_id = %s", (user_uuid,))
     cursor.execute("DELETE FROM aico_core.consent_user_consents WHERE user_id = %s", (user_uuid,))
     cursor.execute("DELETE FROM aico_core.agency_policy_rules WHERE user_id = %s", (user_uuid,))

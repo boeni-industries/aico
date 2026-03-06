@@ -8,6 +8,7 @@ import pytest
 import pytest_asyncio
 from datetime import datetime, timedelta, UTC
 from typing import Dict, Any
+import uuid
 
 from aico.ai.agency.models import (
     Goal,
@@ -25,8 +26,9 @@ from aico.ai.agency.models import (
 @pytest.fixture
 def sample_goal(test_user) -> Goal:
     """Provide a basic test goal with real test user."""
+    goal_id = f"test-goal-{uuid.uuid4().hex}"
     return Goal(
-        goal_id="test-goal-1",
+        goal_id=goal_id,
         user_id=test_user,
         origin=GoalOrigin.USER,
         goal_type="project",
@@ -44,7 +46,7 @@ def sample_goal(test_user) -> Goal:
 def sample_hobby_goal(test_user) -> Goal:
     """Provide a hobby/agent-self goal with real test user."""
     return Goal(
-        goal_id="test-goal-hobby-1",
+        goal_id=f"test-goal-hobby-{uuid.uuid4().hex}",
         user_id=test_user,
         origin=GoalOrigin.HOBBY,
         goal_type="learning",
@@ -100,29 +102,29 @@ def sample_goals(test_user) -> list[Goal]:
 
 
 @pytest.fixture
-def sample_plan() -> Plan:
+def sample_plan(sample_goal: Goal) -> Plan:
     """Provide a basic test plan."""
     return Plan(
-        plan_id="test-plan-1",
-        goal_id="test-goal-1",
+        plan_id=f"test-plan-{uuid.uuid4().hex}",
+        goal_id=sample_goal.goal_id,
         status=PlanStatus.DRAFT,
         steps=[
             PlanStep(
-                step_id="step-1",
+                step_id=f"step-{uuid.uuid4().hex}",
                 order=1,
                 description="Set up testing environment",
                 status=StepStatus.PENDING,
                 metadata={"phase": "setup"},
             ),
             PlanStep(
-                step_id="step-2",
+                step_id=f"step-{uuid.uuid4().hex}",
                 order=2,
                 description="Write first unit test",
                 status=StepStatus.PENDING,
                 metadata={"phase": "implementation"},
             ),
             PlanStep(
-                step_id="step-3",
+                step_id=f"step-{uuid.uuid4().hex}",
                 order=3,
                 description="Run tests and verify coverage",
                 status=StepStatus.PENDING,
@@ -136,15 +138,15 @@ def sample_plan() -> Plan:
 
 
 @pytest.fixture
-def sample_plan_with_shape() -> Plan:
+def sample_plan_with_shape(sample_goal: Goal) -> Plan:
     """Provide a plan generated from a template shape."""
     return Plan(
-        plan_id="test-plan-shaped-1",
-        goal_id="test-goal-1",
+        plan_id=f"test-plan-shaped-{uuid.uuid4().hex}",
+        goal_id=sample_goal.goal_id,
         status=PlanStatus.DRAFT,
         steps=[
             PlanStep(
-                step_id="step-1",
+                step_id=f"step-{uuid.uuid4().hex}",
                 order=1,
                 description="Clarify the specific question or outcome for this goal.",
                 status=StepStatus.PENDING,
@@ -155,7 +157,7 @@ def sample_plan_with_shape() -> Plan:
                 },
             ),
             PlanStep(
-                step_id="step-2",
+                step_id=f"step-{uuid.uuid4().hex}",
                 order=2,
                 description="Gather key information, examples, or constraints relevant to the goal.",
                 status=StepStatus.PENDING,
@@ -166,7 +168,7 @@ def sample_plan_with_shape() -> Plan:
                 },
             ),
             PlanStep(
-                step_id="step-3",
+                step_id=f"step-{uuid.uuid4().hex}",
                 order=3,
                 description="Summarise options or approaches and choose a direction.",
                 status=StepStatus.PENDING,
@@ -177,7 +179,7 @@ def sample_plan_with_shape() -> Plan:
                 },
             ),
             PlanStep(
-                step_id="step-4",
+                step_id=f"step-{uuid.uuid4().hex}",
                 order=4,
                 description="Take the first concrete action towards the chosen direction.",
                 status=StepStatus.PENDING,
@@ -198,12 +200,12 @@ def sample_plan_with_shape() -> Plan:
 
 
 @pytest.fixture
-def sample_agency_event(test_user) -> AgencyEvent:
+def sample_agency_event(test_user, sample_goal: Goal, sample_plan: Plan) -> AgencyEvent:
     """Provide a sample agency event."""
     return AgencyEvent(
         user_id=test_user,
-        goal_id="test-goal-1",
-        plan_id="test-plan-1",
+        goal_id=sample_goal.goal_id,
+        plan_id=sample_plan.plan_id,
         event_type="goal_created",
         source="test_fixture",
         payload={"title": "Test Goal", "goal_type": "project"},

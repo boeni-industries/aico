@@ -1,0 +1,19 @@
+# Example config for `uv run --project cli aico deploy system --config <file> --non-interactive`
+#
+# Secrets:
+# - Prefer `security.master_password_file` (Docker/K8s secret mount)
+# - Alternatively set `AICO_MASTER_PASSWORD` in the environment
+
+system:
+  services: true
+
+security:
+  master_password_file: /run/secrets/aico_master_password
+
+tenant:
+  display_name: "My Deployment"
+  primary_language: "en"
+
+admin:
+  full_name: "Owner Admin"
+  pin: "ChangeMe-Strong1!"
