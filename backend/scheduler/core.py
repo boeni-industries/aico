@@ -1241,6 +1241,15 @@ class TaskScheduler(BaseService):
                     
                     if hasattr(self, "priority_queue") and self.priority_queue and self.priority_queue.has_task(task_id):
                         self.logger.debug(f"Task {task_id} already queued - skipping")
+                        mark_suppressed = getattr(repo, "mark_suppressed", None)
+                        if mark_suppressed:
+                            await mark_suppressed(
+                                task_id=task_id,
+                                scheduled_for=scheduled_for,
+                                tenant_id=run.tenant_id,
+                                reason_code="ALREADY_QUEUED",
+                                reason_detail="Task already in priority queue",
+                            )
                         continue
                     
                     # Prepare task config
