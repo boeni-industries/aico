@@ -89,6 +89,10 @@ class BackupSetCreateRequest(BaseModel):
         False,
         description="Whether to include InfluxDB (telemetry) in the backup set. Excluded by default.",
     )
+    created_by_user_uuid: Optional[str] = Field(
+        None,
+        description="User UUID responsible for creating the backup set (set by gateway for auditability).",
+    )
 
 
 class BackupSetInfo(BaseModel):
@@ -97,6 +101,9 @@ class BackupSetInfo(BaseModel):
     created_at: str = Field(..., description="Backup set creation timestamp")
     path: str = Field(..., description="Absolute path to the backup set directory on disk")
     included: dict = Field(..., description="Component inclusion map (postgres/lmdb/influxdb)")
+    status: Optional[str] = Field(None, description="Backup set status (creating/available/deleted/error)")
+    deleted_at: Optional[str] = Field(None, description="Deletion timestamp when soft-deleted")
+    deleted_by_user_uuid: Optional[str] = Field(None, description="User UUID who deleted the backup")
 
 
 class BackupSetCreateResponse(BaseModel):

@@ -6,11 +6,12 @@ These endpoints validate auth and proxy requests to core via NATS request/reply.
 """
 
 from typing import Annotated, Dict, Any
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
 from backend.api.scheduler.dependencies import require_admin_access
 from backend.api.errors import raise_api_error
+from backend.api.system.dependencies import get_current_user
 from aico.core.logging import get_logger
 
 router = APIRouter(prefix="/operations", tags=["operations"])
@@ -287,7 +288,8 @@ async def get_topology(
 @router.post("/backup-sets")
 async def create_backup_set(
     request: Dict[str, Any],
-    _auth: bool = Depends(require_admin_access)
+    _auth: bool = Depends(require_admin_access),
+    user: dict = Depends(get_current_user),
 ):
     """
     Create a new backup set.
@@ -298,6 +300,10 @@ async def create_backup_set(
         from backend.api_gateway.core.nats_client import get_gateway_nats_client
         
         nats_client = get_gateway_nats_client()
+        created_by = user.get("user_uuid") or user.get("user_id")
+        if created_by:
+            request = dict(request or {})
+            request["created_by_user_uuid"] = str(created_by)
         data = await nats_client.request_operations_create_backup(request)
         
         return data
@@ -312,7 +318,9 @@ async def create_backup_set(
 
 @router.get("/backup-sets", response_model=BackupSetsResponse)
 async def get_backup_sets(
-    _auth: bool = Depends(require_admin_access)
+    include_deleted: bool = Query(False),
+    _auth: bool = Depends(require_admin_access),
+    user: dict = Depends(get_current_user),
 ):
     """
     Get backup sets information.
@@ -323,7 +331,7 @@ async def get_backup_sets(
         from backend.api_gateway.core.nats_client import get_gateway_nats_client
         
         nats_client = get_gateway_nats_client()
-        data = await nats_client.request_operations_backup_sets()
+        data = await nats_client.request_operations_backup_sets_with_options(include_deleted=bool(include_deleted))
         
         return BackupSetsResponse(**data)
         
@@ -384,18 +392,44 @@ async def download_backup_set(
 @router.delete("/backup-sets/{backup_id}")
 async def delete_backup_set(
     backup_id: str,
-    _auth: bool = Depends(require_admin_access)
+    _auth: bool = Depends(require_admin_access),
+    user: dict = Depends(get_current_user),
 ):
-    """Delete a backup set and its remote archive (gateway direct call)."""
+    """Soft-delete a backup set and move its artifact to trash (gateway→core NATS proxy)."""
     try:
-        from backend.api.operations.backup_sets import delete_backup_set_async as core_delete_async
+        from backend.api_gateway.core.nats_client import get_gateway_nats_client
 
-        return await core_delete_async(backup_id)
+        nats_client = get_gateway_nats_client()
+        deleted_by = user.get("user_uuid") or user.get("user_id")
+        return await nats_client.request_operations_delete_backup_set(
+            backup_id=backup_id,
+            deleted_by_user_uuid=str(deleted_by) if deleted_by else None,
+        )
     except Exception as e:
         raise_api_error(
             status_code=500,
             error_code="OPERATIONS_DELETE_BACKUP_FAILED",
             message=f"Failed to delete backup: {str(e)}",
+        )
+
+
+@router.delete("/backup-sets/{backup_id}/purge")
+async def purge_backup_set(
+    backup_id: str,
+    _auth: bool = Depends(require_admin_access),
+    _user: dict = Depends(get_current_user),
+):
+    """Purge a backup set tombstone and permanently delete the trashed artifact (gateway→core NATS proxy)."""
+    try:
+        from backend.api_gateway.core.nats_client import get_gateway_nats_client
+
+        nats_client = get_gateway_nats_client()
+        return await nats_client.request_operations_purge_backup_set(backup_id=backup_id)
+    except Exception as e:
+        raise_api_error(
+            status_code=500,
+            error_code="OPERATIONS_PURGE_BACKUP_FAILED",
+            message=f"Failed to purge backup: {str(e)}",
         )
 
 

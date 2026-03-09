@@ -351,6 +351,18 @@ class GatewayNATSClient:
         """Request operations backup sets from core via NATS"""
         return await self._nats_request_with_trace("operations.backup_sets", b"{}")
 
+    async def request_operations_backup_sets_with_options(self, *, include_deleted: bool) -> Dict[str, Any]:
+        payload = json.dumps({"include_deleted": bool(include_deleted)}).encode("utf-8")
+        return await self._nats_request_with_trace("operations.backup_sets", payload)
+
+    async def request_operations_delete_backup_set(self, *, backup_id: str, deleted_by_user_uuid: str | None) -> Dict[str, Any]:
+        payload = json.dumps({"backup_id": backup_id, "deleted_by_user_uuid": deleted_by_user_uuid}).encode("utf-8")
+        return await self._nats_request_with_trace("operations.backup.delete", payload)
+
+    async def request_operations_purge_backup_set(self, *, backup_id: str) -> Dict[str, Any]:
+        payload = json.dumps({"backup_id": backup_id}).encode("utf-8")
+        return await self._nats_request_with_trace("operations.backup.purge", payload)
+
     async def request_operations_restore_backup(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Request backup restore from core via NATS."""
         payload = json.dumps(request_data).encode("utf-8")

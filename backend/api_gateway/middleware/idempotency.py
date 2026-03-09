@@ -41,8 +41,7 @@ def _is_protected_path(path: str) -> bool:
         or path.startswith("/api/v1/system/health/remediate/")
         or path == "/api/v1/system/health/actions/execute"
         or path.startswith("/api/v1/scheduler/")
-        or path == "/api/v1/operations/backup-sets"
-        or path == "/api/v1/operations/backup-sets/restore"
+        or path.startswith("/api/v1/operations/backup-sets")
         or path.startswith("/api/v1/admin/")
     )
 

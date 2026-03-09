@@ -1277,6 +1277,18 @@
       "BackupSetCreateRequest": {
         "description": "Request to create a coordinated backup set.",
         "properties": {
+          "created_by_user_uuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "User UUID responsible for creating the backup set (set by gateway for auditability).",
+            "title": "Created By User Uuid"
+          },
           "include_influx": {
             "default": false,
             "description": "Whether to include InfluxDB (telemetry) in the backup set. Excluded by default.",
@@ -1389,6 +1401,30 @@
             "title": "Created At",
             "type": "string"
           },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Deletion timestamp when soft-deleted",
+            "title": "Deleted At"
+          },
+          "deleted_by_user_uuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "User UUID who deleted the backup",
+            "title": "Deleted By User Uuid"
+          },
           "included": {
             "additionalProperties": true,
             "description": "Component inclusion map (postgres/lmdb/influxdb)",
@@ -1399,6 +1435,18 @@
             "description": "Absolute path to the backup set directory on disk",
             "title": "Path",
             "type": "string"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Backup set status (creating/available/deleted/error)",
+            "title": "Status"
           }
         },
         "required": [

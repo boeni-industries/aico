@@ -45,6 +45,7 @@ _INFLUX_CONTAINER = "aico-influxdb"
 _backup_lock = asyncio.Lock()
 
 _BACKUP_ARCHIVE_OBJECT_PREFIX = "backups/backup_sets"
+_BACKUP_TRASH_OBJECT_PREFIX = "backups/trash/backup_sets"
 
 
 def _safe_extract_tar(tf: tarfile.TarFile, dest_dir: Path) -> None:
@@ -120,6 +121,10 @@ def _archives_root() -> Path:
 
 def _backup_archive_object_key(backup_id: str) -> str:
     return f"{_BACKUP_ARCHIVE_OBJECT_PREFIX}/{backup_id}.tar.gz"
+
+
+def _backup_trash_object_key(backup_id: str) -> str:
+    return f"{_BACKUP_TRASH_OBJECT_PREFIX}/{backup_id}.tar.gz"
 
 
 def _get_artifact_store_client_or_none():
@@ -456,12 +461,13 @@ async def create_backup_set(request: BackupSetCreateRequest) -> BackupSetCreateR
                 object_key, size_bytes, sha256, created_by_user_uuid, deleted_at
             ) VALUES (
                 $1, NOW(), NULL, 'creating', $2::jsonb, NULL,
-                $3, NULL, NULL, NULL, NULL
+                $3, NULL, NULL, $4, NULL
             );
             """,
             backup_id,
             json.dumps(manifest.get("included") or {}),
             key,
+            request.created_by_user_uuid,
         )
 
         try:
@@ -485,6 +491,9 @@ async def create_backup_set(request: BackupSetCreateRequest) -> BackupSetCreateR
                     created_at=manifest["created_at"],
                     path=key,
                     included=manifest["included"],
+                    status="available",
+                    deleted_at=None,
+                    deleted_by_user_uuid=None,
                 )
 
                 try:
@@ -541,13 +550,18 @@ def list_backup_sets() -> BackupSetListResponse:
 
 
 async def list_backup_sets_async() -> BackupSetListResponse:
+    return await list_backup_sets_async_with_options(include_deleted=False)
+
+
+async def list_backup_sets_async_with_options(*, include_deleted: bool) -> BackupSetListResponse:
     rows = await _db_fetch(
         """
-        SELECT backup_id, created_at, included_json, object_key
+        SELECT backup_id, created_at, included_json, object_key, status, deleted_at, deleted_by_user_uuid
         FROM aico_core.backup_sets
-        WHERE deleted_at IS NULL
+        WHERE ($1::boolean = TRUE) OR deleted_at IS NULL
         ORDER BY created_at DESC;
-        """
+        """,
+        bool(include_deleted),
     )
     sets: list[BackupSetInfo] = []
     for r in rows:
@@ -564,6 +578,9 @@ async def list_backup_sets_async() -> BackupSetListResponse:
                 created_at=r["created_at"].isoformat(),
                 path=str(r["object_key"]),
                 included=included or {},
+                status=str(r.get("status")) if r.get("status") is not None else None,
+                deleted_at=r["deleted_at"].isoformat() if isinstance(r.get("deleted_at"), datetime) else (str(r.get("deleted_at")) if r.get("deleted_at") else None),
+                deleted_by_user_uuid=str(r.get("deleted_by_user_uuid")) if r.get("deleted_by_user_uuid") else None,
             )
         )
     return BackupSetListResponse(backup_sets=sets, total_count=len(sets))
@@ -576,7 +593,7 @@ def get_backup_set_status(backup_id: str) -> BackupSetStatusResponse:
 async def get_backup_set_status_async(backup_id: str) -> BackupSetStatusResponse:
     row = await _db_fetchrow(
         """
-        SELECT backup_id, created_at, included_json, manifest_json, object_key
+        SELECT backup_id, created_at, included_json, manifest_json, object_key, status, deleted_at, deleted_by_user_uuid
         FROM aico_core.backup_sets
         WHERE backup_id = $1 AND deleted_at IS NULL
         LIMIT 1;
@@ -605,6 +622,9 @@ async def get_backup_set_status_async(backup_id: str) -> BackupSetStatusResponse
         created_at=row["created_at"].isoformat(),
         path=str(row["object_key"]),
         included=included or {},
+        status=str(row.get("status")) if row.get("status") is not None else None,
+        deleted_at=None,
+        deleted_by_user_uuid=None,
     )
     return BackupSetStatusResponse(backup_set=info, manifest=manifest)
 
@@ -627,12 +647,78 @@ def delete_backup_set(backup_id: str) -> BackupSetDeleteResponse:
     raise RuntimeError("delete_backup_set must be called via delete_backup_set_async")
 
 
-async def delete_backup_set_async(backup_id: str) -> BackupSetDeleteResponse:
+async def delete_backup_set_async(backup_id: str, *, deleted_by_user_uuid: str | None = None) -> BackupSetDeleteResponse:
+    # Check if backup exists and whether it's already deleted
+    row = await _db_fetchrow(
+        """
+        SELECT backup_id, object_key, deleted_at
+        FROM aico_core.backup_sets
+        WHERE backup_id = $1
+        LIMIT 1;
+        """,
+        backup_id,
+    )
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backup set not found")
+    
+    # If already soft-deleted, return success (idempotent)
+    if row.get("deleted_at") is not None:
+        return BackupSetDeleteResponse(
+            success=True,
+            backup_id=backup_id,
+            deleted_dir=False,
+            deleted_archive=False,
+            freed_bytes=0,
+            message="Backup set already deleted",
+        )
+
+    deleted_dir = False
+    deleted_archive = False
+
+    # Soft-delete artifact: move it to a trash key so purge can remove it permanently.
+    artifact_store = _get_artifact_store_client_or_none()
+    if artifact_store is not None:
+        key = str(row.get("object_key") or _backup_archive_object_key(backup_id))
+        trash_key = _backup_trash_object_key(backup_id)
+        try:
+            if artifact_store.object_exists(key=key):
+                artifact_store.move_object(source_key=key, dest_key=trash_key)
+                deleted_archive = True
+        except Exception:
+            pass
+
+    freed_bytes = 0
+
+    await _db_execute(
+        """
+        UPDATE aico_core.backup_sets
+        SET deleted_at = NOW(),
+            deleted_by_user_uuid = $2,
+            status = 'deleted',
+            object_key = $3
+        WHERE backup_id = $1;
+        """,
+        backup_id,
+        deleted_by_user_uuid,
+        _backup_trash_object_key(backup_id),
+    )
+
+    return BackupSetDeleteResponse(
+        success=True,
+        backup_id=backup_id,
+        deleted_dir=deleted_dir,
+        deleted_archive=deleted_archive,
+        freed_bytes=freed_bytes,
+        message="Backup set deleted",
+    )
+
+
+async def purge_backup_set_async(backup_id: str) -> BackupSetDeleteResponse:
     row = await _db_fetchrow(
         """
         SELECT backup_id, object_key
         FROM aico_core.backup_sets
-        WHERE backup_id = $1 AND deleted_at IS NULL
+        WHERE backup_id = $1
         LIMIT 1;
         """,
         backup_id,
@@ -643,21 +729,18 @@ async def delete_backup_set_async(backup_id: str) -> BackupSetDeleteResponse:
     deleted_dir = False
     deleted_archive = False
 
-    # Best-effort: delete remote archive from artifact store (MinIO) so we don't
-    # accumulate orphaned objects.
     artifact_store = _get_artifact_store_client_or_none()
     if artifact_store is not None:
-        key = _backup_archive_object_key(backup_id)
+        key = str(row.get("object_key") or _backup_trash_object_key(backup_id))
         try:
             if artifact_store.object_exists(key=key):
                 artifact_store.delete_object(key=key)
+                deleted_archive = True
         except Exception:
             pass
 
-    freed_bytes = 0
-
     await _db_execute(
-        "UPDATE aico_core.backup_sets SET deleted_at = NOW(), status = 'deleted' WHERE backup_id = $1;",
+        "DELETE FROM aico_core.backup_sets WHERE backup_id = $1;",
         backup_id,
     )
 
@@ -666,8 +749,8 @@ async def delete_backup_set_async(backup_id: str) -> BackupSetDeleteResponse:
         backup_id=backup_id,
         deleted_dir=deleted_dir,
         deleted_archive=deleted_archive,
-        freed_bytes=freed_bytes,
-        message="Backup set deleted",
+        freed_bytes=0,
+        message="Backup set purged",
     )
 
 

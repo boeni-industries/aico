@@ -6,8 +6,12 @@ Handles gateway→core requests via NATS request/reply pattern.
 
 import json
 import os
-from datetime import UTC, timezone
-from typing import Any, Dict, List
+import uuid
+import time
+import asyncio
+from datetime import datetime, timedelta, timezone, UTC
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 from aico.core.logging import get_logger
 from google.protobuf.struct_pb2 import Struct
 from opentelemetry import trace
@@ -58,6 +62,14 @@ class CoreNATSHandlers:
         # Initialize system health handlers (will be lazy-loaded when needed)
         self.system_handlers = None
         self._system_handlers_start_time = None
+
+        # Guard against duplicate subscription setup. In some startup/reconnect flows,
+        # setup_handlers() can be invoked multiple times; without a guard, each call
+        # adds another subscription and causes handlers (e.g. backup.create) to run
+        # multiple times per single request.
+        self._setup_lock = asyncio.Lock()
+        self._setup_in_progress = False
+        self._setup_completed = False
     
     async def _get_system_handlers(self):
         """Lazy-load system handlers when first needed."""
@@ -2418,7 +2430,8 @@ class CoreNATSHandlers:
             # Parse request
             backup_request = BackupSetCreateRequest(
                 output_path=request_data.get("output_path"),
-                include_influx=request_data.get("include_influx", False)
+                include_influx=request_data.get("include_influx", False),
+                created_by_user_uuid=request_data.get("created_by_user_uuid"),
             )
             
             # Create backup
@@ -2467,9 +2480,10 @@ class CoreNATSHandlers:
     async def handle_operations_backup_sets_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Handle operations backup sets request from gateway"""
         try:
-            from backend.api.operations.backup_sets import list_backup_sets_async
+            from backend.api.operations.backup_sets import list_backup_sets_async_with_options
 
-            resp = await list_backup_sets_async()
+            include_deleted = bool(request_data.get("include_deleted", False))
+            resp = await list_backup_sets_async_with_options(include_deleted=include_deleted)
             return {
                 "backup_sets": [b.model_dump() for b in resp.backup_sets],
                 "total_count": int(resp.total_count),
@@ -2480,6 +2494,40 @@ class CoreNATSHandlers:
                 "error": "OPERATIONS_BACKUP_SETS_FAILED",
                 "message": str(e)
             }
+
+    async def handle_operations_delete_backup_set_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle backup set soft-delete request from gateway"""
+        try:
+            backup_id = str(request_data.get("backup_id") or "").strip()
+            if not backup_id:
+                return {"error": "VALIDATION_ERROR", "message": "backup_id is required"}
+
+            deleted_by_user_uuid = request_data.get("deleted_by_user_uuid")
+            if deleted_by_user_uuid is not None:
+                deleted_by_user_uuid = str(deleted_by_user_uuid)
+
+            from backend.api.operations.backup_sets import delete_backup_set_async
+
+            resp = await delete_backup_set_async(backup_id, deleted_by_user_uuid=deleted_by_user_uuid)
+            return resp.model_dump()
+        except Exception as e:
+            self.logger.error(f"Failed to delete backup set: {e}", exc_info=True)
+            return {"error": "OPERATIONS_DELETE_BACKUP_FAILED", "message": str(e)}
+
+    async def handle_operations_purge_backup_set_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle backup set purge request from gateway"""
+        try:
+            backup_id = str(request_data.get("backup_id") or "").strip()
+            if not backup_id:
+                return {"error": "VALIDATION_ERROR", "message": "backup_id is required"}
+
+            from backend.api.operations.backup_sets import purge_backup_set_async
+
+            resp = await purge_backup_set_async(backup_id)
+            return resp.model_dump()
+        except Exception as e:
+            self.logger.error(f"Failed to purge backup set: {e}", exc_info=True)
+            return {"error": "OPERATIONS_PURGE_BACKUP_FAILED", "message": str(e)}
     
     async def handle_scheduler_expected_runs_today_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Handle scheduler expected runs today request from gateway"""
@@ -2627,6 +2675,14 @@ class CoreNATSHandlers:
     
     async def setup_handlers(self, message_bus_client):
         """Register all NATS request handlers using native NATS request/reply"""
+
+        async with self._setup_lock:
+            if self._setup_completed:
+                self.logger.warning("setup_handlers called again; subscriptions already registered. Skipping.")
+                return
+            # Mark as completed immediately (under lock) so even if setup_handlers is invoked
+            # again during startup/reconnect churn, we do not register duplicate subscriptions.
+            self._setup_completed = True
         
         def make_handler(handler_func, response_type):
             """Create a NATS message handler that processes requests and sends replies"""
@@ -2694,7 +2750,7 @@ class CoreNATSHandlers:
                         pass
             
             return handler
-        
+
         # Register handlers using direct NATS subscriptions (not MessageBusClient.subscribe)
         # because we need access to the raw NATS message for the reply subject
         self.logger.info("Subscribing to scheduler.status...")
@@ -3100,6 +3156,20 @@ class CoreNATSHandlers:
             cb=make_handler(self.handle_operations_backup_sets_request, "operations.backup_sets.reply")
         )
         self.logger.info(f"✅ Subscribed to operations.backup_sets (sid={sid10})")
+
+        self.logger.info("Subscribing to operations.backup.delete...")
+        sid10c = await message_bus_client._nats.subscribe(
+            "operations.backup.delete",
+            cb=make_handler(self.handle_operations_delete_backup_set_request, "operations.backup.delete.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to operations.backup.delete (sid={sid10c})")
+
+        self.logger.info("Subscribing to operations.backup.purge...")
+        sid10d = await message_bus_client._nats.subscribe(
+            "operations.backup.purge",
+            cb=make_handler(self.handle_operations_purge_backup_set_request, "operations.backup.purge.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to operations.backup.purge (sid={sid10d})")
         
         self.logger.info("Subscribing to scheduler.expected_runs_today...")
         sid11 = await message_bus_client._nats.subscribe(
@@ -3193,6 +3263,7 @@ class CoreNATSHandlers:
         self.logger.info(f"✅ Subscribed to system.health.check.ai_behaviour (sid={sid22})")
         
         self.logger.info("Core NATS request handlers registered (scheduler, emotion, memory, kg, operations, system, health checks)")
+        return
         self.logger.info("Subscribing to agency.connectivity.scan...")
         await message_bus_client._nats.subscribe("agency.connectivity.scan", cb=make_handler(self.handle_agency_connectivity_scan_request, "agency.connectivity.scan.reply"))
         
