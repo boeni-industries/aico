@@ -349,6 +349,7 @@ class DatabaseVacuumTask(BaseTask):
         try:
             from aico.data.postgres.connection import get_session_factory
             from aico.data.uow import UnitOfWork
+            from sqlalchemy import text
             
             analyze_tables = context.get_config("analyze_tables", True)
 
@@ -360,12 +361,12 @@ class DatabaseVacuumTask(BaseTask):
             session_factory = await get_session_factory()
             async with UnitOfWork(session_factory) as uow:
                 # VACUUM and ANALYZE must be run outside transaction, so use raw connection
-                await uow.session.execute("VACUUM")
+                await uow.session.execute(text("VACUUM"))
                 results["vacuum_type"] = "standard"
                 
                 # Analyze tables for query optimization
                 if analyze_tables:
-                    await uow.session.execute("ANALYZE")
+                    await uow.session.execute(text("ANALYZE"))
                     results["tables_analyzed"] = True
                 
                 await uow.commit()
