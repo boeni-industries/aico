@@ -340,7 +340,7 @@ class DatabaseVacuumTask(BaseTask):
     task_id = "maintenance.database_vacuum"
     default_config = {
         "enabled": True,
-        "schedule": "0 5 * * 0",  # Weekly on Sunday at 5:00 AM (staggered)
+        "schedule": "0 3 * * 0",  # Weekly on Sunday at 3:00 AM (deep off-hours)
         "analyze_tables": True
     }
     
@@ -355,21 +355,26 @@ class DatabaseVacuumTask(BaseTask):
 
             results = {}
 
-            # Perform a standard vacuum operation via raw SQL through UoW session
-            # This reclaims space and defragments the database.
+            # VACUUM must run outside transaction - use raw connection
             self.logger.info("Starting database VACUUM...")
             session_factory = await get_session_factory()
-            async with UnitOfWork(session_factory) as uow:
-                # VACUUM and ANALYZE must be run outside transaction, so use raw connection
-                await uow.session.execute(text("VACUUM"))
+            async with session_factory() as session:
+                # Get raw connection and set autocommit for VACUUM
+                connection = await session.connection()
+                raw_conn = await connection.get_raw_connection()
+                
+                # Execute VACUUM outside transaction
+                await raw_conn.set_isolation_level(0)  # AUTOCOMMIT mode
+                cursor = await raw_conn.cursor()
+                await cursor.execute("VACUUM")
                 results["vacuum_type"] = "standard"
                 
-                # Analyze tables for query optimization
+                # ANALYZE can run in transaction
                 if analyze_tables:
-                    await uow.session.execute(text("ANALYZE"))
+                    await cursor.execute("ANALYZE")
                     results["tables_analyzed"] = True
                 
-                await uow.commit()
+                await cursor.close()
             
             message = f"Database vacuum completed: {results}"
             

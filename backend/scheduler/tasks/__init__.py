@@ -11,6 +11,7 @@ from .agency_arbiter import AgencyArbiterTask
 from .agency_plan_executor import AgencyPlanExecutorTask
 from .goal_expiration import GoalExpirationTask
 from .kg_consolidation import KGConsolidationTask
+from .maintenance import DatabaseVacuumTask
 
 __all__ = [
     "BaseTask",
@@ -23,4 +24,5 @@ __all__ = [
     "AgencyPlanExecutorTask",
     "GoalExpirationTask",
     "KGConsolidationTask",
+    "DatabaseVacuumTask",
 ]
