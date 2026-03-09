@@ -1,7 +1,7 @@
 """
 Memory Stats API Router
 
-Provides statistics endpoints for semantic memory (ChromaDB) and working memory (LMDB).
+Provides statistics endpoints for semantic memory and working memory.
 Knowledge Graph endpoints are in /backend/api/kg/router.py
 """
 
@@ -65,7 +65,7 @@ async def get_semantic_stats(
     request: Request
 ):
     """
-    Get semantic memory (ChromaDB) statistics.
+    Get semantic memory statistics.
     
     Returns:
         - total_vectors: Total vector count across collections
@@ -156,7 +156,7 @@ async def get_working_stats(
     request: Request
 ):
     """
-    Get working memory (LMDB) statistics.
+    Get working memory statistics.
     
     Returns:
         - active_items: Current number of items in memory

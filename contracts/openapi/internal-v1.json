@@ -21329,7 +21329,7 @@
         ]
       },
       "post": {
-        "description": "Create a coordinated backup set (PostgreSQL + ChromaDB + optional InfluxDB).",
+        "description": "Create a coordinated backup set (PostgreSQL + optional InfluxDB).",
         "operationId": "create_backup_set_api_v1_operations_backup_sets_post",
         "requestBody": {
           "content": {

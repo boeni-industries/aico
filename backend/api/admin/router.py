@@ -297,7 +297,7 @@ async def admin_delete_user(
 
     now = datetime.now(UTC)
     
-    # Clean up LMDB and ChromaDB data first
+    # Clean up user data first
     cleanup_result = await cleanup_user_data(user_uuid)
     if cleanup_result["errors"]:
         logger.warning(f"Cleanup errors for user {user_uuid}: {cleanup_result['errors']}")
@@ -371,7 +371,7 @@ async def admin_bulk_delete_users(
     
     for user_uuid in body.user_uuids:
         try:
-            # Clean up LMDB and ChromaDB data first
+            # Clean up user data first
             cleanup_result = await cleanup_user_data(user_uuid)
             if cleanup_result["errors"]:
                 logger.warning(f"Cleanup errors for user {user_uuid}: {cleanup_result['errors']}")

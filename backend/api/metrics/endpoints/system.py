@@ -163,11 +163,11 @@ async def get_system_health_metrics():
         # Calculate real queue backlog from message bus
         queue_backlog = 0
 
-        import os
-        from pathlib import Path
         storage_size_mb = 0.0
         try:
-            data_dir = Path.home() / "Library" / "Application Support" / "aico" / "data"
+            from aico.core.paths import AICOPaths
+
+            data_dir = AICOPaths.get_data_directory() / AICOPaths.get_data_subdirectory_from_config()
             if data_dir.exists():
                 for file in data_dir.rglob("*"):
                     if file.is_file():

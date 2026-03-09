@@ -401,7 +401,6 @@ def _create_manifest_base(backup_id: str, include_influx: bool) -> dict:
         "completed_at": None,
         "included": {
             "postgres": True,
-            "chromadb": True,
             "influxdb": bool(include_influx),
         },
         "containers": {
@@ -410,7 +409,7 @@ def _create_manifest_base(backup_id: str, include_influx: bool) -> dict:
             "influxdb": _INFLUX_CONTAINER,
         },
         "artifacts": {},
-        "restore_order": ["postgres", "chromadb", "influxdb"],
+        "restore_order": ["postgres", "influxdb"],
     }
 
 
@@ -431,23 +430,6 @@ async def create_backup_set(request: BackupSetCreateRequest) -> BackupSetCreateR
 
         try:
             manifest["artifacts"]["postgres"] = await _postgres_dump(backup_dir)
-
-            host_runtime = _get_host_runtime_dir()
-
-            # In dockerized mode, Chroma may still live on the host runtime directory.
-            # Prefer that mounted location when present so backups reflect the actual live data.
-            chroma_src = (
-                (host_runtime / "data" / "memory" / "semantic")
-                if host_runtime is not None
-                else AICOPaths.get_semantic_memory_path()
-            )
-            chroma_tar = backup_dir / "chromadb" / "chromadb.tar.gz"
-            chroma_meta = await _backup_directory_to_tar(chroma_src, chroma_tar)
-            manifest["artifacts"]["chromadb"] = {
-                "path": str(chroma_tar.relative_to(backup_dir)),
-                "sha256": chroma_meta["sha256"],
-                "size_bytes": chroma_meta["size_bytes"],
-            }
 
             if request.include_influx:
                 raise HTTPException(
@@ -753,18 +735,6 @@ async def restore_backup_set(request: BackupSetRestoreRequest) -> BackupSetResto
         if restore_primary:
             await _postgres_restore_to(_POSTGRES_PRIMARY_CONTAINER, pg_dump_path)
             await _verify_postgres_container(_POSTGRES_PRIMARY_CONTAINER)
-
-        chroma_rel = artifacts.get("chromadb", {}).get("path")
-        if chroma_rel:
-            chroma_tar = backup_dir / chroma_rel
-            target = AICOPaths.get_semantic_memory_path()
-            pre = target.parent / f"{target.name}.pre_restore_{int(time.time())}"
-            if target.exists():
-                shutil.copytree(target, pre)
-                shutil.rmtree(target)
-            target.mkdir(parents=True, exist_ok=True)
-            with tarfile.open(chroma_tar, "r:gz") as tf:
-                _safe_extract_tar(tf, target.parent)
 
         if manifest.get("included", {}).get("influxdb"):
             if request.restore_influx:

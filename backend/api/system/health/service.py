@@ -522,7 +522,6 @@ class HealthService:
         # Map component to skill
         component_skill_map = {
             "postgres": "maint.connectivity.verify_component",
-            "chroma": "maint.connectivity.verify_component",
             "influx": "maint.connectivity.verify_component",
             "modelservice": "maint.connectivity.verify_component",
             "ollama": "maint.connectivity.verify_component",
@@ -618,11 +617,6 @@ class HealthService:
                 "Verify connection string in config/core.yaml",
                 "Check PostgreSQL logs for errors",
                 "Ensure database 'aico' exists",
-            ],
-            "chroma": [
-                "Check ChromaDB is running",
-                "Verify ChromaDB path in config",
-                "Check disk space for ChromaDB data",
             ],
             "influx": [
                 "Check InfluxDB is running",

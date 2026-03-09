@@ -391,20 +391,11 @@ async def get_storage_trends(database_name: str) -> StorageTrendResponse:
             # For PostgreSQL, size will be queried from the database itself
             # This is a placeholder for trend data
             current_size = 0  # Will be replaced with actual PostgreSQL size query
-        elif database_name == "ChromaDB":
-            chroma_path = AICOPaths.get_data_directory() / "data" / "memory" / "semantic"
-            if os.path.exists(chroma_path):
-                for dirpath, dirnames, filenames in os.walk(chroma_path):
-                    for filename in filenames:
-                        filepath = os.path.join(dirpath, filename)
-                        try:
-                            current_size += os.path.getsize(filepath)
-                        except Exception:
-                            pass
-        
+
         # Generate 7 days of simulated historical data
         # In production, replace with actual historical metrics
         now = datetime.now(UTC)
+        data_points = []
         for i in range(7, 0, -1):
             timestamp = (now - timedelta(days=i)).isoformat()
             # Simulate gradual growth (90-100% of current size)

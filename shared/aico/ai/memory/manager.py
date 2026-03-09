@@ -144,7 +144,7 @@ class MemoryManager(BaseAIProcessor):
         self._uow_factory = uow_factory  # Store UoW factory for PostgreSQL access
         
         # Memory stores (lazy initialization)
-        self._working_store: Optional[WorkingMemoryStore] = None  # Conversation history + context
+        self._working_store: Optional[PostgresWorkingMemoryStore] = None  # Conversation history + context
         self._semantic_store: Optional[SemanticMemoryStore] = None  # Segments + KG
         self._behavioral_store = None  # Phase 3: Skill-based interaction learning
         

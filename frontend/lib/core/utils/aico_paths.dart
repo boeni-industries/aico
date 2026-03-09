@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
-import 'package:yaml/yaml.dart';
 
 /// Unified path resolver that reads from AICO's core.yaml configuration
 /// Provides consistent cross-platform path resolution for frontend persistence
@@ -41,18 +40,8 @@ class AICOPaths {
         // Use Application Support on other platforms
         appDataDir = await getApplicationSupportDirectory();
       }
-      _baseDataDir = path.join(appDataDir.path, 'boeni-industries', 'aico');
-
-      // Read core.yaml configuration
-      final configFile = File(path.join(_baseDataDir!, 'config', 'defaults', 'core.yaml'));
-      if (await configFile.exists()) {
-        final yamlString = await configFile.readAsString();
-        final yamlData = loadYaml(yamlString);
-        _config = Map<String, dynamic>.from(yamlData);
-      } else {
-        // Fallback to default configuration
-        _config = _getDefaultConfig();
-      }
+      _baseDataDir = path.join(appDataDir.path, 'boeni-industries', 'aico_frontend');
+      _config = _getDefaultConfig();
     } catch (e) {
       // Fallback to default configuration on any error
       _config = _getDefaultConfig();

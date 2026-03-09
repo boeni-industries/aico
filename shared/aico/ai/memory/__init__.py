@@ -16,7 +16,6 @@ message bus integration for loose coupling and extensibility.
 """
 
 from .manager import MemoryManager
-from .working import WorkingMemoryStore
 from .semantic import SemanticMemoryStore
 from .context import ContextAssembler  # Uses context/ subdirectory
 
@@ -29,7 +28,6 @@ from . import unified
 __all__ = [
     # Core memory components
     "MemoryManager",
-    "WorkingMemoryStore", 
     "SemanticMemoryStore",
     "ContextAssembler",
     # AMS modules

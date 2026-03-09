@@ -20,6 +20,31 @@ from pathlib import Path
 backend_dir = Path(__file__).parent
 sys.path.insert(0, str(backend_dir))
 
+
+def _is_running_in_docker() -> bool:
+    if os.getenv("AICO_DOCKER", "").strip() in {"1", "true", "yes"}:
+        return True
+    if Path("/.dockerenv").exists():
+        return True
+    try:
+        cgroup = Path("/proc/1/cgroup")
+        if cgroup.exists() and "docker" in cgroup.read_text(encoding="utf-8", errors="ignore"):
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _require_container_data_dir() -> None:
+    if not _is_running_in_docker():
+        return
+    data_dir = os.getenv("AICO_DATA_DIR")
+    if not data_dir or not data_dir.strip():
+        raise SystemExit(
+            "FATAL: Running in Docker but AICO_DATA_DIR is not set. "
+            "Set AICO_DATA_DIR to a mounted volume path (e.g. /var/lib/aico)."
+        )
+
 # Import AICO modules
 from aico.core.config import ConfigurationManager
 from aico.core.config_validation import validate_startup_config, print_config_summary
@@ -28,6 +53,7 @@ from aico.core.fs_guard import enable_fs_guard
 
 # Initialize backend-specific logging first before importing any modules that use loggers
 config_manager = ConfigurationManager()
+_require_container_data_dir()
 initialize_logging(service_name="backend", enable_loki=True, enable_console=True)
 
 enable_fs_guard()

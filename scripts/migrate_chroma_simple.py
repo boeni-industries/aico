@@ -10,12 +10,23 @@ from pathlib import Path
 
 def main():
     # Configuration
-    CHROMA_PATH = Path.home() / ".local/share/aico/semantic_memory"
-    PG_HOST = "127.0.0.1"
-    PG_PORT = 5432
-    PG_DB = "aico"
-    PG_USER = "postgres"
-    PG_PASSWORD = "IVxQahLhAmn3XgGrOlnzvq76c3SJDF0h-xVbJRl0jLw"
+    chroma_path_raw = os.environ.get("AICO_LEGACY_CHROMA_DIR")
+    if not chroma_path_raw:
+        print("❌ Missing AICO_LEGACY_CHROMA_DIR")
+        print("   This is a one-off legacy migration script and requires an explicit ChromaDB data directory.")
+        return 1
+
+    CHROMA_PATH = Path(chroma_path_raw)
+
+    PG_HOST = os.environ.get("AICO_PG_HOST", "127.0.0.1")
+    PG_PORT = int(os.environ.get("AICO_PG_PORT", "5432"))
+    PG_DB = os.environ.get("AICO_PG_DB", "aico")
+    PG_USER = os.environ.get("AICO_PG_USER", "postgres")
+    PG_PASSWORD = os.environ.get("AICO_PG_PASSWORD")
+    if not PG_PASSWORD:
+        print("❌ Missing AICO_PG_PASSWORD")
+        print("   Provide Postgres credentials via env vars for this one-off migration.")
+        return 1
     
     print("=" * 80)
     print("ChromaDB → Postgres/pgvector Migration")

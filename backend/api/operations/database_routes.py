@@ -104,7 +104,7 @@ async def create_backup_set(
     request: BackupSetCreateRequest,
     user: Annotated[dict, Depends(get_current_user)],
 ) -> BackupSetCreateResponse:
-    """Create a coordinated backup set (PostgreSQL + ChromaDB + optional InfluxDB)."""
+    """Create a coordinated backup set (PostgreSQL + optional InfluxDB)."""
     return await backup_sets.create_backup_set(request)
 
 
