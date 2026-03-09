@@ -56,8 +56,16 @@ async def get_postgres_pool() -> asyncpg.Pool:
     # Get password from secrets/env via CredentialProvider (Docker/K8s friendly)
     import os
     
-    host = pg_config.get("host", "localhost")
-    port = pg_config.get("port", 5432)
+    host = (
+        os.environ.get("AICO_PG_HOST")
+        or os.environ.get("AICO_POSTGRES_HOST")
+        or pg_config.get("host", "localhost")
+    )
+    port = int(
+        os.environ.get("AICO_PG_PORT")
+        or os.environ.get("AICO_POSTGRES_PORT")
+        or pg_config.get("port", 5432)
+    )
     database = (
         os.environ.get("AICO_TEST_DB_NAME")
         or os.environ.get("AICO_POSTGRES_DATABASE")
@@ -190,9 +198,17 @@ async def get_session_factory() -> async_sessionmaker:
     if not pg_config:
         raise RuntimeError("PostgreSQL configuration not found in postgres.yaml")
     
-    host = pg_config.get("host", "localhost")
     import os
-    port = pg_config.get("port", 5432)
+    host = (
+        os.environ.get("AICO_PG_HOST")
+        or os.environ.get("AICO_POSTGRES_HOST")
+        or pg_config.get("host", "localhost")
+    )
+    port = int(
+        os.environ.get("AICO_PG_PORT")
+        or os.environ.get("AICO_POSTGRES_PORT")
+        or pg_config.get("port", 5432)
+    )
     database = (
         os.environ.get("AICO_TEST_DB_NAME")
         or os.environ.get("AICO_POSTGRES_DATABASE")

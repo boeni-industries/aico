@@ -10,6 +10,7 @@ existing `database` command group (aico db ...).
 import sys
 import socket
 import subprocess
+import os
 from pathlib import Path
 
 import typer
@@ -26,6 +27,14 @@ else:
     shared_path = Path(__file__).parent.parent.parent / "shared"
 
 sys.path.insert(0, str(shared_path))
+
+# Ensure local CLI uses repo-shipped config defaults unless explicitly overridden.
+# Without this, ConfigurationManager defaults to OS user config dir (e.g. ~/Library/...)
+# where config/defaults/*.yaml may not exist.
+repo_root = Path(__file__).parent.parent.parent
+repo_config_dir = (repo_root / "config").resolve()
+if not os.getenv("AICO_CONFIG_DIR") and (repo_config_dir / "defaults").exists():
+    os.environ["AICO_CONFIG_DIR"] = str(repo_config_dir)
 
 from aico.core.config import ConfigurationManager
 from aico.core.paths import AICOPaths

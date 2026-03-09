@@ -113,7 +113,7 @@ async def list_backup_sets(
     user: Annotated[dict, Depends(get_current_user)],
 ) -> BackupSetListResponse:
     """List known backup sets."""
-    return backup_sets.list_backup_sets()
+    return await backup_sets.list_backup_sets_async()
 
 
 @router.get("/backup-sets/{backup_id}/status", response_model=BackupSetStatusResponse)
@@ -122,7 +122,7 @@ async def get_backup_set_status(
     user: Annotated[dict, Depends(get_current_user)],
 ) -> BackupSetStatusResponse:
     """Return backup set status and parsed manifest."""
-    return backup_sets.get_backup_set_status(backup_id)
+    return await backup_sets.get_backup_set_status_async(backup_id)
 
 
 @router.get("/backup-sets/{backup_id}/download")
@@ -140,7 +140,7 @@ async def delete_backup_set(
     user: Annotated[dict, Depends(get_current_user)],
 ) -> BackupSetDeleteResponse:
     """Delete a backup set (directory + tar.gz archive) and update the registry."""
-    return backup_sets.delete_backup_set(backup_id)
+    return await backup_sets.delete_backup_set_async(backup_id)
 
 
 @router.post("/backup-sets/prune", response_model=BackupSetPruneResponse)
@@ -149,7 +149,7 @@ async def prune_backup_sets(
     user: Annotated[dict, Depends(get_current_user)],
 ) -> BackupSetPruneResponse:
     """Prune old backup sets based on retention policy (supports dry-run)."""
-    return backup_sets.prune_backup_sets(request)
+    return await backup_sets.prune_backup_sets_async(request)
 
 
 @router.post("/backup-sets/upload", response_model=BackupSetUploadResponse)

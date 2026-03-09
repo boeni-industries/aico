@@ -350,6 +350,11 @@ class GatewayNATSClient:
     async def request_operations_backup_sets(self) -> Dict[str, Any]:
         """Request operations backup sets from core via NATS"""
         return await self._nats_request_with_trace("operations.backup_sets", b"{}")
+
+    async def request_operations_restore_backup(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Request backup restore from core via NATS."""
+        payload = json.dumps(request_data).encode("utf-8")
+        return await self._nats_request_with_trace("operations.backup.restore", payload, timeout=300.0)
     
     async def request_scheduler_expected_runs_today(self) -> Dict[str, Any]:
         """Request scheduler expected runs today from core via NATS"""

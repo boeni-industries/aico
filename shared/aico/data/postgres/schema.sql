@@ -1816,6 +1816,24 @@ CREATE INDEX IF NOT EXISTS idx_user_memories_temporal
   )
   WHERE temporal_metadata IS NOT NULL;
 
+CREATE TABLE IF NOT EXISTS backup_sets (
+    backup_id TEXT PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL,
+    completed_at TIMESTAMPTZ,
+    status TEXT NOT NULL,
+    included_json JSONB NOT NULL,
+    manifest_json JSONB,
+    object_key TEXT NOT NULL,
+    size_bytes BIGINT,
+    sha256 TEXT,
+    created_by_user_uuid TEXT,
+    deleted_at TIMESTAMPTZ,
+    deleted_by_user_uuid TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_backup_sets_created_at ON backup_sets(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_backup_sets_status ON backup_sets(status);
+
 -- ============================================================================
 -- System Health Monitoring Tables
 -- ============================================================================

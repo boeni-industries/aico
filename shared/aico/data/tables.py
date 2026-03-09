@@ -127,6 +127,25 @@ outbox_events = Table(
     Index('idx_outbox_events_created', 'created_at'),
 )
 
+backup_sets = Table(
+    "backup_sets",
+    metadata,
+    Column("backup_id", String, primary_key=True),
+    Column("created_at", TIMESTAMP(timezone=True), nullable=False),
+    Column("completed_at", TIMESTAMP(timezone=True)),
+    Column("status", String, nullable=False),
+    Column("included_json", JSONB, nullable=False),
+    Column("manifest_json", JSONB),
+    Column("object_key", String, nullable=False),
+    Column("size_bytes", BigInteger),
+    Column("sha256", String),
+    Column("created_by_user_uuid", String),
+    Column("deleted_at", TIMESTAMP(timezone=True)),
+    Column("deleted_by_user_uuid", String),
+    Index("idx_backup_sets_created_at", "created_at"),
+    Index("idx_backup_sets_status", "status"),
+)
+
 # ==========================================================================
 # Working Memory (Postgres-backed LMDB replacement)
 # ==========================================================================

@@ -38,23 +38,16 @@ def _get_key_manager():
     
     Uses a minimal config approach to avoid blocking ConfigurationManager initialization.
     """
-    import sys
-    print("DEBUG: _get_key_manager called", file=sys.stderr, flush=True)
-    
     # Create a minimal config object that only provides what AICOKeyManager needs
     class MinimalConfig:
         def get(self, key, default=None):
-            print(f"DEBUG: MinimalConfig.get({key}, {default})", file=sys.stderr, flush=True)
             # AICOKeyManager only needs security.keyring_service_name
             if key == "security.keyring_service_name":
                 return "AICO"
             return default
-    
-    print("DEBUG: Creating MinimalConfig", file=sys.stderr, flush=True)
+
     minimal_config = MinimalConfig()
-    print("DEBUG: Creating AICOKeyManager", file=sys.stderr, flush=True)
     key_manager = AICOKeyManager(minimal_config)
-    print("DEBUG: AICOKeyManager created successfully", file=sys.stderr, flush=True)
     return key_manager
 
 def security_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
@@ -478,23 +471,59 @@ def _get_docker_secrets_dir() -> Path:
 @sensitive("shows docker secrets from disk")
 def secrets_show(
     show_values: bool = typer.Option(False, "--show", "-s", help="Show secret values (redacted by default)"),
+    keyring: bool = typer.Option(
+        False,
+        "--keyring",
+        help="Show secrets from the system keyring (macOS Keychain) instead of docker/secrets/* (use this after secrets-sync)",
+    ),
 ):
     secrets_dir = _get_docker_secrets_dir()
     if not secrets_dir.exists():
         console.print(f"❌ [red]Secrets directory not found: {secrets_dir}[/red]")
         raise typer.Exit(1)
 
-    secret_files = [
-        "pg_password",
-        "api_gateway_jwt_secret",
-        "influx_admin_password",
-        "influx_admin_token",
-    ]
+    secret_files = [p.name for p in sorted(secrets_dir.iterdir()) if p.is_file()]
+
+    if keyring:
+        import keyring as _keyring
+
+        key_manager = _get_key_manager()
+        table = Table(title=f"Docker Secrets (in keyring): {key_manager.service_name}", show_header=True, header_style="bold blue", box=box.SIMPLE)
+        table.add_column("Secret", style="cyan")
+        table.add_column("Exists")
+        table.add_column("Value", overflow="fold")
+
+        full_values: dict[str, str] = {}
+
+        for name in secret_files:
+            value = None
+            try:
+                value = _keyring.get_password(key_manager.service_name, name)
+            except Exception:
+                value = None
+
+            exists = bool(value)
+            display_value = ""
+            if exists:
+                display_value = value if show_values else "********"
+                if show_values:
+                    full_values[name] = value
+            table.add_row(name, "✓" if exists else "✗", display_value)
+
+        console.print()
+        console.print(table)
+        if show_values:
+            console.print("\n💡 Tip: use 'aico security get-key <secret_name>' to copy the exact value to clipboard")
+            if full_values:
+                console.print("\n[dim]Full values (key=value) for copy/paste:[/dim]\n")
+                for k, v in full_values.items():
+                    console.print(f"[cyan]{k}[/cyan]=[green]{v}[/green]")
+        return
 
     table = Table(title=f"Docker Secrets (on disk): {secrets_dir}", show_header=True, header_style="bold blue", box=box.SIMPLE)
     table.add_column("Secret", style="cyan")
     table.add_column("Exists")
-    table.add_column("Value")
+    table.add_column("Value", overflow="fold")
 
     for name in secret_files:
         p = secrets_dir / name
@@ -509,6 +538,7 @@ def secrets_show(
 
     console.print()
     console.print(table)
+    console.print("\n💡 Tip: run 'aico security secrets-show --keyring' to verify what was synced into the system keyring")
 
 
 @app.command("secrets-sync", help="Sync docker/compose secrets (docker/secrets/*) into the system keyring")
@@ -529,37 +559,41 @@ def secrets_sync(
     pg_user = str(pg_cfg.get("user", "postgres"))
 
     synced = 0
+    skipped = 0
 
-    pg_path = secrets_dir / "pg_password"
-    if pg_path.exists():
-        pg_password = pg_path.read_text(encoding="utf-8").strip()
-        if pg_password:
-            key_manager.store_database_password(password=pg_password, database_type="postgres", username=pg_user)
+    for p in sorted(secrets_dir.iterdir()):
+        if not p.is_file():
+            continue
+
+        name = p.name
+
+        if name == "api_gateway_jwt_secret" and not include_jwt:
+            skipped += 1
+            continue
+
+        value = p.read_text(encoding="utf-8").strip()
+        if not value:
+            skipped += 1
+            continue
+
+        try:
+            keyring.set_password(key_manager.service_name, name, value)
             synced += 1
+        except Exception:
+            skipped += 1
+            continue
 
-    influx_pw_path = secrets_dir / "influx_admin_password"
-    if influx_pw_path.exists():
-        influx_admin_password = influx_pw_path.read_text(encoding="utf-8").strip()
-        if influx_admin_password:
-            key_manager.store_database_password(password=influx_admin_password, database_type="influx", username="admin_password")
-            synced += 1
-
-    influx_token_path = secrets_dir / "influx_admin_token"
-    if influx_token_path.exists():
-        influx_admin_token = influx_token_path.read_text(encoding="utf-8").strip()
-        if influx_admin_token:
-            key_manager.store_database_password(password=influx_admin_token, database_type="influx", username="admin_token")
-            synced += 1
-
-    if include_jwt:
-        jwt_path = secrets_dir / "api_gateway_jwt_secret"
-        if jwt_path.exists():
-            jwt_secret = jwt_path.read_text(encoding="utf-8").strip()
-            if jwt_secret:
-                keyring.set_password(key_manager.service_name, "api_gateway_jwt_secret", jwt_secret)
-                synced += 1
+        if name == "pg_password":
+            key_manager.store_database_password(password=value, database_type="postgres", username=pg_user)
+        elif name == "influx_admin_password":
+            key_manager.store_database_password(password=value, database_type="influx", username="admin_password")
+        elif name == "influx_admin_token":
+            key_manager.store_database_password(password=value, database_type="influx", username="admin_token")
 
     console.print(f"✅ [green]Synced {synced} secret(s) from {secrets_dir} into the keyring[/green]")
+    if skipped:
+        console.print(f"ℹ️ [dim]Skipped {skipped} item(s) (empty, not a file, disabled by flags, or failed to store)[/dim]")
+    console.print("💡 Verify with: aico security secrets-show --keyring")
 
 
 @app.command("pg-env", help="Export Postgres env vars for CI/CD and docker-compose")

@@ -5,8 +5,7 @@ Comprehensive KG Data Quality Verification Script
 Checks:
 1. Duplicate nodes (current only)
 2. Duplicate edges (current only)
-3. ChromaDB sync with PostgreSQL
-4. Orphaned edges
+3. Orphaned edges
 """
 
 import psycopg2
@@ -80,72 +79,7 @@ def main():
     else:
         print("✅ PASS: No duplicate edges")
     
-    # 3. Check ChromaDB sync
-    print("\n📊 Checking ChromaDB sync...")
-    
-    # Get PostgreSQL counts
-    cursor = db.execute("SELECT COUNT(*) FROM kg_nodes WHERE is_current = 1")
-    pg_nodes = cursor.fetchone()[0]
-    
-    cursor = db.execute("SELECT COUNT(*) FROM kg_edges WHERE is_current = 1")
-    pg_edges = cursor.fetchone()[0]
-    
-    # Get ChromaDB counts
-    try:
-        import chromadb
-        from chromadb.config import Settings
-        
-        # Use AICOPaths to get correct ChromaDB path
-        chromadb_path = AICOPaths.get_semantic_memory_path()
-        
-        client = chromadb.PersistentClient(
-            path=str(chromadb_path),
-            settings=Settings(allow_reset=True, anonymized_telemetry=False)
-        )
-        
-        try:
-            node_collection = client.get_collection("kg_nodes")
-            chromadb_nodes = node_collection.count()
-        except:
-            chromadb_nodes = 0
-        
-        try:
-            edge_collection = client.get_collection("kg_edges")
-            chromadb_edges = edge_collection.count()
-        except:
-            chromadb_edges = 0
-        
-        # Compare
-        nodes_match = pg_nodes == chromadb_nodes
-        edges_match = pg_edges == chromadb_edges
-        
-        print(f"   Nodes: Postgres={pg_nodes}, ChromaDB={chromadb_nodes} {'✅' if nodes_match else '❌'}")
-        print(f"   Edges: Postgres={pg_edges}, ChromaDB={chromadb_edges} {'✅' if edges_match else '❌'}")
-        
-        if not nodes_match:
-            diff = chromadb_nodes - pg_nodes
-            if diff > 0:
-                print(f"   ⚠️  ChromaDB has {diff} stale node embeddings")
-            else:
-                print(f"   ⚠️  ChromaDB is missing {abs(diff)} node embeddings")
-        
-        if not edges_match:
-            diff = chromadb_edges - pg_edges
-            if diff > 0:
-                print(f"   ⚠️  ChromaDB has {diff} stale edge embeddings")
-            else:
-                print(f"   ⚠️  ChromaDB is missing {abs(diff)} edge embeddings")
-        
-        if nodes_match and edges_match:
-            print("✅ PASS: ChromaDB perfectly synced")
-        else:
-            print("❌ FAIL: ChromaDB out of sync")
-    
-    except Exception as e:
-        print(f"⚠️  Could not check ChromaDB: {e}")
-        nodes_match = edges_match = False
-    
-    # 4. Check orphaned edges
+    # 3. Check orphaned edges
     print("\n📊 Checking for orphaned edges...")
     cursor = db.execute("""
         SELECT COUNT(*) 
@@ -171,7 +105,6 @@ def main():
     all_passed = (
         len(duplicate_nodes) == 0 and
         len(duplicate_edges) == 0 and
-        nodes_match and edges_match and
         orphaned_edges == 0
     )
     

@@ -7,17 +7,20 @@ import tarfile
 import time
 import uuid
 import os
+import tempfile
 from datetime import datetime, UTC
 from pathlib import Path
 from typing import Optional
 
 from fastapi import HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
+from fastapi.responses import StreamingResponse
 
 from aico.core.logging import get_logger
 from aico.core.paths import AICOPaths
 from aico.core.config import ConfigurationManager
 from aico.security.key_manager import AICOKeyManager
+from aico.data.postgres.connection import get_connection
 
 from backend.api.operations.schemas import (
     BackupSetCreateRequest,
@@ -41,6 +44,8 @@ _INFLUX_CONTAINER = "aico-influxdb"
 
 _backup_lock = asyncio.Lock()
 
+_BACKUP_ARCHIVE_OBJECT_PREFIX = "backups/backup_sets"
+
 
 def _safe_extract_tar(tf: tarfile.TarFile, dest_dir: Path) -> None:
     dest_dir = dest_dir.resolve()
@@ -59,7 +64,9 @@ def _utc_now_iso() -> str:
 
 
 def _backup_root() -> Path:
-    root = AICOPaths.get_data_directory() / "artifacts" / "backups" / "backup_sets"
+    # Filesystem is not an authoritative backup store anymore.
+    # We keep local disk usage strictly as ephemeral staging workspace.
+    root = AICOPaths.get_data_directory() / "tmp" / "backup_sets"
     root.mkdir(parents=True, exist_ok=True)
     return root
 
@@ -104,29 +111,41 @@ def _get_host_runtime_dir() -> Optional[Path]:
     return p if p.exists() else None
 
 
-def _registry_path() -> Path:
-    return _backup_root() / "backup_sets_registry.json"
-
-
 def _archives_root() -> Path:
+    # Archives are no longer persisted locally; returned path is only for temporary files.
     root = _backup_root() / "archives"
     root.mkdir(parents=True, exist_ok=True)
     return root
 
 
-def _load_registry() -> dict:
-    path = _registry_path()
-    if not path.exists():
-        return {"backup_sets": []}
+def _backup_archive_object_key(backup_id: str) -> str:
+    return f"{_BACKUP_ARCHIVE_OBJECT_PREFIX}/{backup_id}.tar.gz"
+
+
+def _get_artifact_store_client_or_none():
     try:
-        return json.loads(path.read_text())
+        from aico.data.artifact_store import get_artifact_store_client
+
+        return get_artifact_store_client()
     except Exception:
-        return {"backup_sets": []}
+        return None
 
 
-def _save_registry(registry: dict) -> None:
-    path = _registry_path()
-    path.write_text(json.dumps(registry, indent=2))
+async def _db_execute(query: str, *args) -> None:
+    async with get_connection() as conn:
+        await conn.execute(query, *args)
+
+
+async def _db_fetchrow(query: str, *args) -> dict | None:
+    async with get_connection() as conn:
+        row = await conn.fetchrow(query, *args)
+        return dict(row) if row else None
+
+
+async def _db_fetch(query: str, *args) -> list[dict]:
+    async with get_connection() as conn:
+        rows = await conn.fetch(query, *args)
+        return [dict(r) for r in rows]
 
 
 def _sha256_file(path: Path) -> str:
@@ -416,47 +435,88 @@ def _create_manifest_base(backup_id: str, include_influx: bool) -> dict:
 async def create_backup_set(request: BackupSetCreateRequest) -> BackupSetCreateResponse:
     async with _backup_lock:
         backup_id = str(uuid.uuid4())
-        root = _backup_root()
+        artifact_store = _get_artifact_store_client_or_none()
+        if artifact_store is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Artifact store not configured; cannot upload backup archive",
+            )
 
-        target_root = root
-        if request.output_path:
-            target_root = _validate_output_root(Path(request.output_path))
-        target_root.mkdir(parents=True, exist_ok=True)
-
-        backup_dir = target_root / backup_id
-        backup_dir.mkdir(parents=True, exist_ok=True)
+        # Enforce single-path behavior: MinIO is the only artifact store.
+        # Local filesystem is used for staging only and is always cleaned up.
+        staging_root = _backup_root()
 
         manifest = _create_manifest_base(backup_id, include_influx=request.include_influx)
 
-        try:
-            manifest["artifacts"]["postgres"] = await _postgres_dump(backup_dir)
+        key = _backup_archive_object_key(backup_id)
+        await _db_execute(
+            """
+            INSERT INTO aico_core.backup_sets (
+                backup_id, created_at, completed_at, status, included_json, manifest_json,
+                object_key, size_bytes, sha256, created_by_user_uuid, deleted_at
+            ) VALUES (
+                $1, NOW(), NULL, 'creating', $2::jsonb, NULL,
+                $3, NULL, NULL, NULL, NULL
+            );
+            """,
+            backup_id,
+            json.dumps(manifest.get("included") or {}),
+            key,
+        )
 
-            if request.include_influx:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail="InfluxDB backup is not supported in the dockerized setup yet",
+        try:
+            with tempfile.TemporaryDirectory(dir=str(staging_root)) as td:
+                backup_dir = Path(td) / backup_id
+                backup_dir.mkdir(parents=True, exist_ok=True)
+
+                manifest["artifacts"]["postgres"] = await _postgres_dump(backup_dir)
+
+                if request.include_influx:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail="InfluxDB backup is not supported in the dockerized setup yet",
+                    )
+
+                manifest["completed_at"] = _utc_now_iso()
+                (backup_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
+
+                info = BackupSetInfo(
+                    backup_id=backup_id,
+                    created_at=manifest["created_at"],
+                    path=key,
+                    included=manifest["included"],
                 )
 
-            manifest["completed_at"] = _utc_now_iso()
-            (backup_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
+                try:
+                    # Create archive and upload to artifact store (MinIO).
+                    tar_path = Path(td) / f"{backup_id}.tar.gz"
+                    with tarfile.open(tar_path, "w:gz") as tf:
+                        tf.add(backup_dir, arcname=backup_dir.name)
 
-            registry = _load_registry()
-            registry["backup_sets"].append(
-                {
-                    "backup_id": backup_id,
-                    "created_at": manifest["created_at"],
-                    "path": str(backup_dir),
-                    "included": manifest["included"],
-                }
-            )
-            _save_registry(registry)
-
-            info = BackupSetInfo(
-                backup_id=backup_id,
-                created_at=manifest["created_at"],
-                path=str(backup_dir),
-                included=manifest["included"],
-            )
+                    artifact_store.put_file(key=key, file_path=str(tar_path), content_type="application/gzip")
+                    await _db_execute(
+                        """
+                        UPDATE aico_core.backup_sets
+                        SET completed_at = NOW(),
+                            status = 'available',
+                            included_json = $2::jsonb,
+                            manifest_json = $3::jsonb,
+                            size_bytes = $4,
+                            sha256 = $5
+                        WHERE backup_id = $1 AND deleted_at IS NULL;
+                        """,
+                        backup_id,
+                        json.dumps(manifest.get("included") or {}),
+                        json.dumps(manifest),
+                        int(tar_path.stat().st_size),
+                        _sha256_file(tar_path),
+                    )
+                finally:
+                    try:
+                        if tar_path.exists():
+                            tar_path.unlink()
+                    except Exception:
+                        pass
 
             return BackupSetCreateResponse(
                 success=True,
@@ -467,89 +527,139 @@ async def create_backup_set(request: BackupSetCreateRequest) -> BackupSetCreateR
         except Exception as e:
             logger.error(f"Backup set creation failed: {e}")
             try:
-                shutil.rmtree(backup_dir)
+                await _db_execute(
+                    "UPDATE aico_core.backup_sets SET status = 'error' WHERE backup_id = $1;",
+                    backup_id,
+                )
             except Exception:
                 pass
             raise
 
 
 def list_backup_sets() -> BackupSetListResponse:
-    registry = _load_registry()
-    sets = [BackupSetInfo(**b) for b in registry.get("backup_sets", [])]
-    sets.sort(key=lambda s: s.created_at, reverse=True)
+    raise RuntimeError("list_backup_sets must be called via list_backup_sets_async")
+
+
+async def list_backup_sets_async() -> BackupSetListResponse:
+    rows = await _db_fetch(
+        """
+        SELECT backup_id, created_at, included_json, object_key
+        FROM aico_core.backup_sets
+        WHERE deleted_at IS NULL
+        ORDER BY created_at DESC;
+        """
+    )
+    sets: list[BackupSetInfo] = []
+    for r in rows:
+        included = r.get("included_json")
+        if isinstance(included, str):
+            try:
+                included = json.loads(included)
+            except Exception:
+                included = {}
+
+        sets.append(
+            BackupSetInfo(
+                backup_id=r["backup_id"],
+                created_at=r["created_at"].isoformat(),
+                path=str(r["object_key"]),
+                included=included or {},
+            )
+        )
     return BackupSetListResponse(backup_sets=sets, total_count=len(sets))
 
 
 def get_backup_set_status(backup_id: str) -> BackupSetStatusResponse:
-    registry = _load_registry()
-    match = next((b for b in registry.get("backup_sets", []) if b.get("backup_id") == backup_id), None)
-    if not match:
+    raise RuntimeError("get_backup_set_status must be called via get_backup_set_status_async")
+
+
+async def get_backup_set_status_async(backup_id: str) -> BackupSetStatusResponse:
+    row = await _db_fetchrow(
+        """
+        SELECT backup_id, created_at, included_json, manifest_json, object_key
+        FROM aico_core.backup_sets
+        WHERE backup_id = $1 AND deleted_at IS NULL
+        LIMIT 1;
+        """,
+        backup_id,
+    )
+    if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backup set not found")
 
-    manifest_path = Path(match["path"]) / "manifest.json"
-    manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else None
+    included = row.get("included_json")
+    if isinstance(included, str):
+        try:
+            included = json.loads(included)
+        except Exception:
+            included = {}
 
-    return BackupSetStatusResponse(
-        backup_set=BackupSetInfo(**match),
-        manifest=manifest,
+    manifest = row.get("manifest_json")
+    if isinstance(manifest, str):
+        try:
+            manifest = json.loads(manifest)
+        except Exception:
+            manifest = None
+
+    info = BackupSetInfo(
+        backup_id=row["backup_id"],
+        created_at=row["created_at"].isoformat(),
+        path=str(row["object_key"]),
+        included=included or {},
     )
+    return BackupSetStatusResponse(backup_set=info, manifest=manifest)
 
 
 def download_backup_set(backup_id: str) -> FileResponse:
-    registry = _load_registry()
-    match = next((b for b in registry.get("backup_sets", []) if b.get("backup_id") == backup_id), None)
-    if not match:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backup set not found")
+    artifact_store = _get_artifact_store_client_or_none()
+    if artifact_store is not None:
+        key = _backup_archive_object_key(backup_id)
+        if artifact_store.object_exists(key=key):
+            return StreamingResponse(
+                artifact_store.get_object_iter(key=key),
+                media_type="application/gzip",
+                headers={"Content-Disposition": f"attachment; filename={backup_id}.tar.gz"},
+            )
 
-    backup_dir = Path(match["path"])
-    if not backup_dir.exists():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backup set directory missing")
-
-    tar_path = _archives_root() / f"{backup_id}.tar.gz"
-
-    with tarfile.open(tar_path, "w:gz") as tf:
-        tf.add(backup_dir, arcname=backup_dir.name)
-
-    return FileResponse(
-        path=str(tar_path),
-        filename=tar_path.name,
-        media_type="application/gzip",
-    )
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backup archive not found")
 
 
 def delete_backup_set(backup_id: str) -> BackupSetDeleteResponse:
-    registry = _load_registry()
-    backup_sets = list(registry.get("backup_sets", []))
+    raise RuntimeError("delete_backup_set must be called via delete_backup_set_async")
 
-    match = next((b for b in backup_sets if b.get("backup_id") == backup_id), None)
-    if not match:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backup set not found")
 
-    backup_dir = Path(match["path"])
-
-    preferred_tar_path = _archives_root() / f"{backup_id}.tar.gz"
-    legacy_tar_path = backup_dir.parent / f"{backup_id}.tar.gz"
-
-    freed_bytes = (
-        _safe_dir_size_bytes(backup_dir)
-        + _safe_dir_size_bytes(preferred_tar_path)
-        + _safe_dir_size_bytes(legacy_tar_path)
+async def delete_backup_set_async(backup_id: str) -> BackupSetDeleteResponse:
+    row = await _db_fetchrow(
+        """
+        SELECT backup_id, object_key
+        FROM aico_core.backup_sets
+        WHERE backup_id = $1 AND deleted_at IS NULL
+        LIMIT 1;
+        """,
+        backup_id,
     )
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backup set not found")
 
     deleted_dir = False
     deleted_archive = False
 
-    if backup_dir.exists():
-        shutil.rmtree(backup_dir)
-        deleted_dir = True
+    # Best-effort: delete remote archive from artifact store (MinIO) so we don't
+    # accumulate orphaned objects.
+    artifact_store = _get_artifact_store_client_or_none()
+    if artifact_store is not None:
+        key = _backup_archive_object_key(backup_id)
+        try:
+            if artifact_store.object_exists(key=key):
+                artifact_store.delete_object(key=key)
+        except Exception:
+            pass
 
-    for tar_path in (preferred_tar_path, legacy_tar_path):
-        if tar_path.exists():
-            tar_path.unlink()
-            deleted_archive = True
+    freed_bytes = 0
 
-    registry["backup_sets"] = [b for b in backup_sets if b.get("backup_id") != backup_id]
-    _save_registry(registry)
+    await _db_execute(
+        "UPDATE aico_core.backup_sets SET deleted_at = NOW(), status = 'deleted' WHERE backup_id = $1;",
+        backup_id,
+    )
 
     return BackupSetDeleteResponse(
         success=True,
@@ -562,9 +672,19 @@ def delete_backup_set(backup_id: str) -> BackupSetDeleteResponse:
 
 
 def prune_backup_sets(request: BackupSetPruneRequest) -> BackupSetPruneResponse:
-    registry = _load_registry()
-    backup_sets = list(registry.get("backup_sets", []))
-    considered_count = len(backup_sets)
+    raise RuntimeError("prune_backup_sets must be called via prune_backup_sets_async")
+
+
+async def prune_backup_sets_async(request: BackupSetPruneRequest) -> BackupSetPruneResponse:
+    rows = await _db_fetch(
+        """
+        SELECT backup_id, created_at
+        FROM aico_core.backup_sets
+        WHERE deleted_at IS NULL
+        ORDER BY created_at DESC;
+        """
+    )
+    considered_count = len(rows)
 
     if request.keep_last_n is None and request.older_than_days is None:
         raise HTTPException(
@@ -573,17 +693,7 @@ def prune_backup_sets(request: BackupSetPruneRequest) -> BackupSetPruneResponse:
         )
 
     # Sort newest first using created_at (ISO-8601 string)
-    def _parse_created_at(entry: dict) -> datetime:
-        created_at = entry.get("created_at")
-        if not created_at:
-            return datetime.min
-        try:
-            # Accept both 'Z' and offset-aware strings
-            return datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-        except Exception:
-            return datetime.min
-
-    sorted_sets = sorted(backup_sets, key=_parse_created_at, reverse=True)
+    sorted_sets = rows
 
     to_delete_ids: set[str] = set()
 
@@ -600,10 +710,8 @@ def prune_backup_sets(request: BackupSetPruneRequest) -> BackupSetPruneResponse:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="older_than_days must be >= 0")
         cutoff = datetime.now(UTC).timestamp() - (request.older_than_days * 86400)
         for entry in sorted_sets:
-            created = _parse_created_at(entry)
-            if created is datetime.min:
-                continue
-            if created.timestamp() < cutoff:
+            created = entry.get("created_at")
+            if isinstance(created, datetime) and created.timestamp() < cutoff:
                 bid = entry.get("backup_id")
                 if bid:
                     to_delete_ids.add(bid)
@@ -614,20 +722,11 @@ def prune_backup_sets(request: BackupSetPruneRequest) -> BackupSetPruneResponse:
 
     if not request.dry_run:
         for bid in would_delete_backup_ids:
-            # Reuse delete logic and sum bytes
-            resp = delete_backup_set(bid)
+            resp = await delete_backup_set_async(bid)
             deleted_count += 1
             freed_bytes += int(resp.freed_bytes)
     else:
-        # Estimate bytes without deleting
-        id_to_entry = {b.get("backup_id"): b for b in backup_sets if b.get("backup_id")}
-        for bid in would_delete_backup_ids:
-            entry = id_to_entry.get(bid)
-            if not entry:
-                continue
-            backup_dir = Path(entry["path"])
-            tar_path = backup_dir.parent / f"{bid}.tar.gz"
-            freed_bytes += _safe_dir_size_bytes(backup_dir) + _safe_dir_size_bytes(tar_path)
+        freed_bytes = 0
 
     return BackupSetPruneResponse(
         success=True,
@@ -642,126 +741,143 @@ def prune_backup_sets(request: BackupSetPruneRequest) -> BackupSetPruneResponse:
 
 async def upload_backup_set(file: UploadFile, output_path: Optional[str]) -> BackupSetUploadResponse:
     async with _backup_lock:
-        import_id = str(uuid.uuid4())
-        root = _backup_root()
-        if output_path:
-            root = _validate_output_root(Path(output_path))
-        root.mkdir(parents=True, exist_ok=True)
+        artifact_store = _get_artifact_store_client_or_none()
+        if artifact_store is None:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Artifact store not configured")
 
-        staging_dir = root / f".upload_{import_id}"
-        staging_dir.mkdir(parents=True, exist_ok=True)
+        tmp_root = AICOPaths.get_data_directory() / "tmp" / "uploads"
+        tmp_root.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=str(tmp_root)) as td:
+            td_path = Path(td)
+            tar_path = td_path / "upload.tar.gz"
+            with open(tar_path, "wb") as f:
+                while True:
+                    chunk = await file.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    f.write(chunk)
 
-        tar_path = staging_dir / "upload.tar.gz"
-        with open(tar_path, "wb") as f:
-            while True:
-                chunk = await file.read(1024 * 1024)
-                if not chunk:
-                    break
-                f.write(chunk)
+            with tarfile.open(tar_path, "r:gz") as tf:
+                members = tf.getmembers()
+                manifest_member = next((m for m in members if m.name.endswith("/manifest.json") or m.name == "manifest.json"), None)
+                if manifest_member is None:
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded archive did not contain a manifest.json")
+                manifest_bytes = tf.extractfile(manifest_member).read()  # type: ignore[union-attr]
+                manifest = json.loads(manifest_bytes.decode("utf-8"))
 
-        with tarfile.open(tar_path, "r:gz") as tf:
-            _safe_extract_tar(tf, staging_dir)
+            included = manifest.get("included", {})
+            imported_backup_id = manifest.get("backup_id")
+            if not imported_backup_id:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="manifest.json missing backup_id")
 
-        extracted_dir = None
-        for p in staging_dir.iterdir():
-            if p.is_dir() and (p / "manifest.json").exists():
-                extracted_dir = p
-                break
+            key = _backup_archive_object_key(imported_backup_id)
+            await _db_execute(
+                """
+                INSERT INTO aico_core.backup_sets (
+                    backup_id, created_at, completed_at, status, included_json, manifest_json,
+                    object_key, size_bytes, sha256, created_by_user_uuid, deleted_at
+                ) VALUES (
+                    $1, NOW(), NOW(), 'available', $2::jsonb, $3::jsonb,
+                    $4, $5, $6, NULL, NULL
+                );
+                """,
+                imported_backup_id,
+                json.dumps(included),
+                json.dumps(manifest),
+                key,
+                int(tar_path.stat().st_size),
+                _sha256_file(tar_path),
+            )
+            artifact_store.put_file(key=key, file_path=str(tar_path), content_type="application/gzip")
 
-        if extracted_dir is None:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded archive did not contain a manifest.json")
-
-        manifest = json.loads((extracted_dir / "manifest.json").read_text())
-        included = manifest.get("included", {})
-        imported_backup_id = manifest.get("backup_id") or extracted_dir.name
-
-        final_dir = root / imported_backup_id
-        if final_dir.exists():
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Backup set already exists")
-        shutil.move(str(extracted_dir), str(final_dir))
-        shutil.rmtree(staging_dir, ignore_errors=True)
-
-        registry = _load_registry()
-        registry["backup_sets"].append(
-            {
-                "backup_id": imported_backup_id,
-                "created_at": manifest.get("created_at") or _utc_now_iso(),
-                "path": str(final_dir),
-                "included": included,
-            }
-        )
-        _save_registry(registry)
-
-        return BackupSetUploadResponse(
-            success=True,
-            backup_id=imported_backup_id,
-            message="Backup set uploaded",
-        )
+            return BackupSetUploadResponse(success=True, backup_id=imported_backup_id, message="Backup set uploaded")
 
 
 async def restore_backup_set(request: BackupSetRestoreRequest) -> BackupSetRestoreResponse:
     async with _backup_lock:
-        registry = _load_registry()
-        match = next((b for b in registry.get("backup_sets", []) if b.get("backup_id") == request.backup_id), None)
-        if not match:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backup set not found")
-
-        backup_dir = Path(match["path"])
-        manifest_path = backup_dir / "manifest.json"
-        if not manifest_path.exists():
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Backup set missing manifest.json")
-
-        manifest = json.loads(manifest_path.read_text())
-
         if not request.confirm_destroy_existing:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="confirm_destroy_existing must be true for restore operations",
             )
 
-        artifacts = manifest.get("artifacts", {})
+        backup_dir: Path | None = None
+        manifest: dict | None = None
 
-        pg_dump_rel = artifacts.get("postgres", {}).get("path")
-        if not pg_dump_rel:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Backup set missing postgres artifact")
+        artifact_store = _get_artifact_store_client_or_none()
+        if artifact_store is not None:
+            key = _backup_archive_object_key(request.backup_id)
+            if artifact_store.object_exists(key=key):
+                tmp_root = AICOPaths.get_data_directory() / "tmp" / "restore"
+                tmp_root.mkdir(parents=True, exist_ok=True)
+                with tempfile.TemporaryDirectory(dir=str(tmp_root)) as td:
+                    td_path = Path(td)
+                    tar_path = td_path / f"{request.backup_id}.tar.gz"
+                    with open(tar_path, "wb") as f:
+                        for chunk in artifact_store.get_object_iter(key=key):
+                            f.write(chunk)
 
-        pg_dump_path = backup_dir / pg_dump_rel
+                    with tarfile.open(tar_path, "r:gz") as tf:
+                        _safe_extract_tar(tf, td_path)
 
-        restore_primary = bool(request.restore_to_primary)
+                    extracted = None
+                    for p in td_path.iterdir():
+                        if p.is_dir() and (p / "manifest.json").exists():
+                            extracted = p
+                            break
 
-        await _postgres_restore_to(_POSTGRES_SHADOW_CONTAINER, pg_dump_path)
-        await _verify_postgres_container(_POSTGRES_SHADOW_CONTAINER)
+                    if extracted is None:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Backup archive did not contain a manifest.json",
+                        )
 
-        if restore_primary:
-            await _postgres_restore_to(_POSTGRES_PRIMARY_CONTAINER, pg_dump_path)
-            await _verify_postgres_container(_POSTGRES_PRIMARY_CONTAINER)
+                    backup_dir = extracted
+                    manifest = json.loads((backup_dir / "manifest.json").read_text())
 
-        if manifest.get("included", {}).get("influxdb"):
-            if request.restore_influx:
-                url, org, bucket, token = _get_influx_connection_info()
+                    # Proceed with restore while the temp dir exists.
+                    artifacts = manifest.get("artifacts", {})
+                    pg_dump_rel = artifacts.get("postgres", {}).get("path")
+                    if not pg_dump_rel:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Backup set missing postgres artifact",
+                        )
 
-                influx_dir_rel = artifacts.get("influxdb", {}).get("path")
-                if influx_dir_rel:
-                    influx_host_dir = backup_dir / influx_dir_rel
-                    container_tmp_dir = "/tmp/aico_influx_restore"
-                    container_backup_dir = f"{container_tmp_dir}/backup"
+                    pg_dump_path = backup_dir / pg_dump_rel
+                    restore_primary = bool(request.restore_to_primary)
 
-                    await _docker_exec(_INFLUX_CONTAINER, ["rm", "-rf", container_tmp_dir])
-                    await _docker_exec(_INFLUX_CONTAINER, ["mkdir", "-p", container_tmp_dir])
-                    # docker cp copies the source directory into the destination directory
-                    await _docker_cp_to(_INFLUX_CONTAINER, influx_host_dir, container_backup_dir)
+                    await _postgres_restore_to(_POSTGRES_SHADOW_CONTAINER, pg_dump_path)
+                    await _verify_postgres_container(_POSTGRES_SHADOW_CONTAINER)
 
-                    await _docker_exec(
-                        _INFLUX_CONTAINER,
-                        [
-                            "sh",
-                            "-lc",
-                            f"influx restore {container_backup_dir} --org {org} --host http://127.0.0.1:8086 --token $INFLUX_TOKEN",
-                        ],
-                        env={"INFLUX_TOKEN": token},
-                    )
+                    if restore_primary:
+                        await _postgres_restore_to(_POSTGRES_PRIMARY_CONTAINER, pg_dump_path)
+                        await _verify_postgres_container(_POSTGRES_PRIMARY_CONTAINER)
 
-        return BackupSetRestoreResponse(
-            success=True,
-            message="Backup set restored",
-        )
+                    if manifest.get("included", {}).get("influxdb") and request.restore_influx:
+                        url, org, bucket, token = _get_influx_connection_info()
+
+                        influx_dir_rel = artifacts.get("influxdb", {}).get("path")
+                        if influx_dir_rel:
+                            influx_host_dir = backup_dir / influx_dir_rel
+                            container_tmp_dir = "/tmp/aico_influx_restore"
+                            container_backup_dir = f"{container_tmp_dir}/backup"
+
+                            await _docker_exec(_INFLUX_CONTAINER, ["rm", "-rf", container_tmp_dir])
+                            await _docker_exec(_INFLUX_CONTAINER, ["mkdir", "-p", container_tmp_dir])
+                            await _docker_cp_to(_INFLUX_CONTAINER, influx_host_dir, container_backup_dir)
+
+                            await _docker_exec(
+                                _INFLUX_CONTAINER,
+                                [
+                                    "sh",
+                                    "-lc",
+                                    f"influx restore {container_backup_dir} --org {org} --host http://127.0.0.1:8086 --token $INFLUX_TOKEN",
+                                ],
+                                env={"INFLUX_TOKEN": token},
+                            )
+
+                    return BackupSetRestoreResponse(success=True, message="Backup set restored")
+
+        # Legacy fallback (restore from local filesystem)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backup archive not found")

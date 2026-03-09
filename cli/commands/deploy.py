@@ -184,6 +184,18 @@ def _generate_secure_password(length: int = 32) -> str:
     return secrets.token_urlsafe(length)
 
 
+def _generate_access_key(*, length: int = 20) -> str:
+    """Generate a short, URL-safe access key suitable for S3-style credentials."""
+    # MinIO access keys are commonly constrained; keep it deterministic/simple.
+    # 20 hex chars => 10 bytes of entropy.
+    if length <= 0:
+        raise ValueError("length must be > 0")
+    if length % 2 != 0:
+        # token_hex requires an even length; round up.
+        length += 1
+    return secrets.token_hex(length // 2)[:length]
+
+
 def _ensure_all_secrets() -> dict[str, str]:
     """
     Ensure ALL required secrets exist before any service starts.
@@ -212,6 +224,13 @@ def _ensure_all_secrets() -> dict[str, str]:
         "influx_admin_password": 32,
         "influx_admin_token": 48,
         "api_gateway_jwt_secret": 48,
+        # MinIO (artifact store)
+        # Root user is an access key; keep it short-ish for compatibility.
+        "minio_root_user": 0,
+        "minio_root_password": 48,
+        # Application access credentials (used by gateway/core).
+        "artifact_store_access_key": 0,
+        "artifact_store_secret_key": 48,
     }
 
     resolved: dict[str, str] = {}
@@ -236,7 +255,10 @@ def _ensure_all_secrets() -> dict[str, str]:
                 console.print(format_info(f"Imported legacy secret {name} from docker/.env"))
                 continue
 
-        value = _generate_secure_password(length)
+        if name in {"minio_root_user", "artifact_store_access_key"}:
+            value = _generate_access_key(length=20)
+        else:
+            value = _generate_secure_password(length)
         _write_secret_file(p, value)
         resolved[name] = value
         updated = True
@@ -745,6 +767,44 @@ def _get_compose_file() -> Path:
     """Return path to the local docker-compose file for DB services."""
     root = Path(__file__).parent.parent.parent
     return root / "docker" / "docker-compose.local.yml"
+
+
+def _get_minio_mc_image() -> str | None:
+    """Best-effort extract the minio/mc image reference from docker-compose.local.yml."""
+    compose_file = _get_compose_file()
+    if not compose_file.exists():
+        return None
+    try:
+        import re
+
+        text = compose_file.read_text(encoding="utf-8")
+        m = re.search(r"^\s*image:\s*(minio/mc:[^\s]+)\s*$", text, flags=re.MULTILINE)
+        return m.group(1) if m else None
+    except Exception:
+        return None
+
+
+def _nuke_minio() -> None:
+    _run_compose(["rm", "-sf", "minio", "minio-init"]) 
+    try:
+        subprocess.run(
+            ["docker", "rm", "-f", "aico-minio"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        pass
+
+    try:
+        subprocess.run(
+            ["docker", "volume", "rm", "-f", "aico-miniodata"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        pass
 
 
 async def _ensure_system_user_async() -> None:
@@ -1576,6 +1636,10 @@ def deploy_help(ctx: typer.Context):
         console.print("  [bold cyan]otel-collector[/bold cyan]")
         console.print("    OpenTelemetry Collector (telemetry aggregation)")
         console.print("    [dim]Example: aico deploy otel-collector[/dim]\n")
+
+        console.print("  [bold cyan]minio[/bold cyan]")
+        console.print("    MinIO artifact store (S3-compatible)")
+        console.print("    [dim]Example: aico deploy minio[/dim]\n")
         
         # Core services
         console.print("[bold]Core Services:[/bold]")
@@ -1752,6 +1816,7 @@ def deploy_system(
     console.print("\n[bold cyan]Deploying Infrastructure Backends...[/bold cyan]")
     deploy_valkey(nuke=False)
     deploy_nats(nuke=False)
+    deploy_minio(nuke=False)
     deploy_influx(nuke=False)
     deploy_loki(nuke=False)
     deploy_prometheus(nuke=False)
@@ -2674,6 +2739,76 @@ def deploy_nats(
     console.print(format_success("✅ NATS deployment completed successfully!"))
     console.print(format_info("💡 Client port: 4222"))
     console.print(format_info("💡 Monitoring: http://localhost:8222"))
+    console.print("")
+
+
+@app.command("minio", help="Provision MinIO artifact store (S3-compatible), optionally with --nuke for full reset")
+def deploy_minio(
+    nuke: bool = typer.Option(
+        False,
+        "--nuke",
+        help="Destroy MinIO container + volume before provisioning (DANGEROUS).",
+    )
+):
+    """Deploy MinIO artifact store.
+
+    Fully automated:
+    - Ensures secrets exist in docker/secrets/
+    - Starts MinIO container
+    - Runs minio-init to create bucket and application user
+    """
+
+    console.print("\n" + "=" * 60)
+    console.print("🗄️  [bold cyan]AICO MinIO Deployment[/bold cyan]")
+    console.print("=" * 60 + "\n")
+
+    if nuke:
+        console.print(format_warning("⚠️  --nuke flag detected: Will destroy existing data!"))
+        _nuke_minio()
+
+    _ensure_all_secrets()
+    _ensure_docker_volume("aico-miniodata")
+
+    console.print("🚀 [cyan]Starting MinIO container...[/cyan]")
+    code = _run_compose(["up", "-d", "minio"])
+    if code != 0:
+        console.print(format_error("Failed to start MinIO container"))
+        raise typer.Exit(code)
+
+    console.print("⚙️  [cyan]Initializing buckets/users...[/cyan]")
+    code = _run_compose(
+        [
+            "up",
+            "--no-deps",
+            "--force-recreate",
+            "--abort-on-container-exit",
+            "--exit-code-from",
+            "minio-init",
+            "minio-init",
+        ]
+    )
+    if code != 0:
+        console.print(format_error("Failed to initialize MinIO (minio-init)"))
+        raise typer.Exit(code)
+
+    # Cleanup: minio-init is a one-shot bootstrap job. Remove the stopped container
+    # and (best-effort) the pulled minio/mc image to keep installs tidy.
+    _run_compose(["rm", "-f", "minio-init"])
+    try:
+        mc_image = _get_minio_mc_image()
+        if mc_image:
+            subprocess.run(
+                ["docker", "image", "rm", "-f", mc_image],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+    except FileNotFoundError:
+        pass
+
+    console.print("")
+    console.print(format_success("✅ MinIO deployment completed successfully!"))
+    console.print(format_info("💡 S3 endpoint (internal): http://minio:9000"))
     console.print("")
 
 

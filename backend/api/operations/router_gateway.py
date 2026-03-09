@@ -346,9 +346,9 @@ async def get_backup_set_status(
     Gateway directly calls core function for simple data retrieval.
     """
     try:
-        from backend.api.operations.backup_sets import get_backup_set_status as core_status
-        
-        return core_status(backup_id)
+        from backend.api.operations.backup_sets import get_backup_set_status_async as core_status_async
+
+        return await core_status_async(backup_id)
         
     except Exception as e:
         raise_api_error(
@@ -381,6 +381,24 @@ async def download_backup_set(
         )
 
 
+@router.delete("/backup-sets/{backup_id}")
+async def delete_backup_set(
+    backup_id: str,
+    _auth: bool = Depends(require_admin_access)
+):
+    """Delete a backup set and its remote archive (gateway direct call)."""
+    try:
+        from backend.api.operations.backup_sets import delete_backup_set_async as core_delete_async
+
+        return await core_delete_async(backup_id)
+    except Exception as e:
+        raise_api_error(
+            status_code=500,
+            error_code="OPERATIONS_DELETE_BACKUP_FAILED",
+            message=f"Failed to delete backup: {str(e)}",
+        )
+
+
 @router.post("/backup-sets/restore")
 async def restore_backup_set(
     request: Dict[str, Any],
@@ -389,14 +407,14 @@ async def restore_backup_set(
     """
     Restore a backup set.
     
-    Gateway directly calls core function for restore operations.
+    Gateway proxies this request to core via NATS request/reply.
     """
     try:
-        from backend.api.operations.backup_sets import restore_backup_set as core_restore
-        from backend.api.operations.schemas import BackupSetRestoreRequest
-        
-        restore_request = BackupSetRestoreRequest(**request)
-        return await core_restore(restore_request)
+        from backend.api_gateway.core.nats_client import get_gateway_nats_client
+
+        nats_client = get_gateway_nats_client()
+        data = await nats_client.request_operations_restore_backup(request)
+        return data
         
     except Exception as e:
         raise_api_error(

@@ -174,7 +174,7 @@ class RichReporter:
     def _get_test_areas(self, scenario):
         """Get list of V2 test areas for scenario"""
         areas = []
-        if scenario.tests_working_memory: areas.append("Working Memory (LMDB)")
+        if scenario.tests_working_memory: areas.append("Working Memory")
         if scenario.tests_semantic_memory: areas.append("Semantic Memory (Semantic Search + KG)")
         if scenario.tests_fact_extraction: areas.append("Fact Extraction (GLiNER + LLM)")
         if scenario.tests_entity_extraction: areas.append("Entity Extraction")

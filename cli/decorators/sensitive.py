@@ -47,6 +47,12 @@ def sensitive(arg=None, *, reason: str = "sensitive operation"):
             from aico.core.config import ConfigurationManager
             config = ConfigurationManager()
             config.initialize(lightweight=True)
+
+            try:
+                if isinstance(getattr(config, "config_cache", None), dict):
+                    config.config_cache.setdefault("security", {}).setdefault("keyring_service_name", "AICO")
+            except Exception:
+                pass
             key_manager = AICOKeyManager(config)
 
             try:
@@ -98,6 +104,12 @@ def destructive(arg=None, *, reason: str = "dangerous operation"):
             from aico.core.config import ConfigurationManager
             config = ConfigurationManager()
             config.initialize(lightweight=True)
+
+            try:
+                if isinstance(getattr(config, "config_cache", None), dict):
+                    config.config_cache.setdefault("security", {}).setdefault("keyring_service_name", "AICO")
+            except Exception:
+                pass
             key_manager = AICOKeyManager(config)
             
             try:

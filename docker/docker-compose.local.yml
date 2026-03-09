@@ -3,6 +3,78 @@
 name: aico
 
 services:
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    container_name: aico-minio
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER_FILE: /run/secrets/minio_root_user
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password
+    ports:
+      - "9000:9000" # S3 API (optional to expose; used by host tools)
+      - "9001:9001" # Console UI (optional)
+    secrets:
+      - minio_root_user
+      - minio_root_password
+    volumes:
+      - aico-miniodata:/data
+    networks:
+      default:
+        aliases:
+          - minio
+          - aico-minio
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "minio"
+      com.aico.service.type: "storage"
+      com.aico.service.role: "artifact-store"
+      org.opencontainers.image.title: "AICO MinIO"
+      org.opencontainers.image.description: "S3-compatible artifact store for backups and exports"
+      org.opencontainers.image.vendor: "AICO"
+      com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev"
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    container_name: aico-minio-init
+    restart: "no"
+    depends_on:
+      - minio
+    secrets:
+      - minio_root_user
+      - minio_root_password
+      - artifact_store_access_key
+      - artifact_store_secret_key
+    entrypoint:
+      - sh
+      - -lc
+      - |
+        set -e
+        ROOT_USER="$(cat /run/secrets/minio_root_user | tr -d '\012')"
+        ROOT_PASS="$(cat /run/secrets/minio_root_password | tr -d '\012')"
+        APP_ACCESS="$(cat /run/secrets/artifact_store_access_key | tr -d '\012')"
+        APP_SECRET="$(cat /run/secrets/artifact_store_secret_key | tr -d '\012')"
+        for i in $(seq 1 30); do
+          if mc alias set aico http://minio:9000 "$$ROOT_USER" "$$ROOT_PASS" >/dev/null 2>&1; then
+            break
+          fi
+          echo "Waiting for MinIO... ($$i/30)"
+          sleep 1
+        done
+        mc alias set aico http://minio:9000 "$$ROOT_USER" "$$ROOT_PASS"
+        mc mb --ignore-existing aico/aico-artifacts
+        mc admin user add aico "$$APP_ACCESS" "$$APP_SECRET" || true
+        mc admin policy attach aico readwrite --user "$$APP_ACCESS" || true
+        echo "MinIO initialized"
+    labels:
+      com.aico.project: "aico"
+      com.aico.component: "minio-init"
+      com.aico.service.type: "bootstrap"
+      com.aico.service.role: "artifact-store-init"
+      com.aico.managed-by: "aico-cli"
+      com.aico.deployment.type: "local-dev"
+
   nats:
     image: nats:2.10
     container_name: aico-nats
@@ -58,6 +130,8 @@ services:
       AICO_DATA_DIR: /var/lib/aico
       AICO_CACHE_DIR: /var/cache/aico
       AICO_RUNTIME_DIR: /run/aico
+      AICO_ARTIFACT_STORE_ENDPOINT: http://minio:9000
+      AICO_ARTIFACT_STORE_BUCKET: aico-artifacts
       AICO_NATS_URL: nats://nats:4222
       AICO_VALKEY_URL: redis://valkey:6379/0
       AICO_INSTRUMENTATION_ENABLED: "true"
@@ -71,10 +145,11 @@ services:
     secrets:
       - pg_password
       - api_gateway_jwt_secret
+      - artifact_store_access_key
+      - artifact_store_secret_key
     volumes:
       - aico-gateway-state:/var/lib/aico
       - aico-gateway-cache:/var/cache/aico
-      - aico-backups:/var/lib/aico/artifacts/backups
       - /var/run/docker.sock:/var/run/docker.sock
     tmpfs:
       - /run/aico
@@ -109,6 +184,8 @@ services:
       AICO_DATA_DIR: /var/lib/aico
       AICO_CACHE_DIR: /var/cache/aico
       AICO_RUNTIME_DIR: /run/aico
+      AICO_ARTIFACT_STORE_ENDPOINT: http://minio:9000
+      AICO_ARTIFACT_STORE_BUCKET: aico-artifacts
       AICO_NATS_URL: nats://nats:4222
       AICO_VALKEY_URL: redis://valkey:6379/0
       AICO_INSTRUMENTATION_ENABLED: "true"
@@ -118,10 +195,11 @@ services:
     secrets:
       - pg_password
       - api_gateway_jwt_secret
+      - artifact_store_access_key
+      - artifact_store_secret_key
     volumes:
       - aico-core-state:/var/lib/aico
       - aico-core-cache:/var/cache/aico
-      - aico-backups:/var/lib/aico/artifacts/backups
       - /var/run/docker.sock:/var/run/docker.sock
     tmpfs:
       - /run/aico
@@ -415,6 +493,10 @@ services:
       com.aico.deployment.type: "local-dev"
 
 volumes:
+  aico-miniodata:
+    external: true
+    name: aico-miniodata
+
   aico-natsdata:
     external: true
     name: aico-natsdata
@@ -440,10 +522,6 @@ volumes:
   aico-gateway-cache:
     external: true
     name: aico-gateway-cache
-
-  aico-backups:
-    external: true
-    name: aico-backups
   aico-core-state:
     external: true
     name: aico-core-state
@@ -470,3 +548,11 @@ secrets:
     file: ./secrets/pg_password
   api_gateway_jwt_secret:
     file: ./secrets/api_gateway_jwt_secret
+  minio_root_user:
+    file: ./secrets/minio_root_user
+  minio_root_password:
+    file: ./secrets/minio_root_password
+  artifact_store_access_key:
+    file: ./secrets/artifact_store_access_key
+  artifact_store_secret_key:
+    file: ./secrets/artifact_store_secret_key

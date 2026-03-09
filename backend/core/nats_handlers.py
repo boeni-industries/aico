@@ -2438,58 +2438,42 @@ class CoreNATSHandlers:
                 "backup_set": None,
                 "message": str(e)
             }
+
+    async def handle_operations_restore_backup_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle backup restore request from gateway"""
+        try:
+            from backend.api.operations.backup_sets import restore_backup_set
+            from backend.api.operations.schemas import BackupSetRestoreRequest
+
+            restore_request = BackupSetRestoreRequest(
+                backup_id=request_data.get("backup_id"),
+                confirm_destroy_existing=bool(request_data.get("confirm_destroy_existing", False)),
+                restore_to_primary=bool(request_data.get("restore_to_primary", False)),
+                restore_influx=bool(request_data.get("restore_influx", False)),
+            )
+
+            response = await restore_backup_set(restore_request)
+            return {
+                "success": bool(response.success),
+                "message": str(response.message),
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to restore backup: {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": str(e),
+            }
     
     async def handle_operations_backup_sets_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Handle operations backup sets request from gateway"""
         try:
-            import pathlib
-            from datetime import datetime, UTC
+            from backend.api.operations.backup_sets import list_backup_sets_async
 
-            root = pathlib.Path("/var/lib/aico/artifacts/backups/backup_sets")
-            if not root.exists():
-                return {"backup_sets": [], "total_count": 0}
-
-            backup_sets: list[dict[str, Any]] = []
-
-            for entry in root.iterdir():
-                if not entry.is_dir():
-                    continue
-                if entry.name == "archives":
-                    continue
-
-                manifest_path = entry / "manifest.json"
-                created_at = None
-                included = {"postgres": False, "chromadb": False}
-
-                if manifest_path.exists():
-                    try:
-                        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-                        created_at = manifest.get("created_at")
-                        inc = manifest.get("included") or {}
-                        included = {
-                            "postgres": bool(inc.get("postgres")),
-                            "chromadb": bool(inc.get("chromadb")),
-                        }
-                    except Exception:
-                        created_at = None
-
-                if not created_at:
-                    try:
-                        created_at = datetime.fromtimestamp(entry.stat().st_mtime, tz=UTC).isoformat()
-                    except Exception:
-                        created_at = datetime.now(UTC).isoformat()
-
-                backup_sets.append(
-                    {
-                        "backup_id": entry.name,
-                        "created_at": created_at,
-                        "path": str(entry),
-                        "included": included,
-                    }
-                )
-
-            backup_sets.sort(key=lambda b: b.get("created_at") or "", reverse=True)
-            return {"backup_sets": backup_sets, "total_count": len(backup_sets)}
+            resp = await list_backup_sets_async()
+            return {
+                "backup_sets": [b.model_dump() for b in resp.backup_sets],
+                "total_count": int(resp.total_count),
+            }
         except Exception as e:
             self.logger.error(f"Failed to get backup sets: {e}", exc_info=True)
             return {
@@ -2565,27 +2549,20 @@ class CoreNATSHandlers:
             
         except Exception as e:
             self.logger.error(f"Failed to get system metrics: {e}", exc_info=True)
-            return {
-                "error": "SYSTEM_METRICS_FAILED",
-                "message": str(e)
-            }
-    
+
     async def handle_system_overview_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Handle system overview request from gateway"""
         try:
-            # Return stub overview data
-            return {
-                "version": "0.5.2",
-                "uptime_seconds": 0,
-                "status": "healthy"
-            }
+            from backend.api.system.router import get_system_overview
+
+            uow = self.container.get_service("uow")
+            user = {"user_id": "system", "uuid": "system", "role": "admin"}
+
+            resp = await get_system_overview(user=user, uow=uow)
+            return resp.model_dump()
         except Exception as e:
             self.logger.error(f"Failed to get system overview: {e}", exc_info=True)
-            return {
-                "error": "SYSTEM_OVERVIEW_FAILED",
-                "message": str(e)
-            }
-    
+            return {"error": "SYSTEM_OVERVIEW_FAILED", "message": str(e)}
     async def handle_system_health_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Handle system health request from gateway"""
         handlers = await self._get_system_handlers()
@@ -3109,6 +3086,13 @@ class CoreNATSHandlers:
             cb=make_handler(self.handle_operations_create_backup_request, "operations.backup.create.reply")
         )
         self.logger.info(f"✅ Subscribed to operations.backup.create (sid={sid10a})")
+
+        self.logger.info("Subscribing to operations.backup.restore...")
+        sid10b = await message_bus_client._nats.subscribe(
+            "operations.backup.restore",
+            cb=make_handler(self.handle_operations_restore_backup_request, "operations.backup.restore.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to operations.backup.restore (sid={sid10b})")
         
         self.logger.info("Subscribing to operations.backup_sets...")
         sid10 = await message_bus_client._nats.subscribe(
