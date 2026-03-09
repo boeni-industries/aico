@@ -91,8 +91,7 @@ AICO employs a **specialized multi-database architecture** optimized for differe
 | **PostgreSQL 18.1** | Core application data | ACID transactions, referential integrity, JSON support. Stores users, conversations, knowledge graph, agency data |
 | **Loki 2.9** | Log aggregation | Purpose-built log storage with LogQL queries. Stores structured application logs with 30-day retention |
 | **InfluxDB 2.x (Pro/Enterprise)** | Time-series metrics | High-performance metrics storage. Stores system metrics, API latency, model performance data |
-| **ChromaDB 1.0.16+** | Vector embeddings | Semantic search with cosine similarity. Stores conversation embeddings, KG entity embeddings |
-| **LMDB** | Working memory (30-day TTL) | Memory-mapped key-value store for active session data, sub-millisecond access |
+| **pgvector (PostgreSQL extension)** | Vector embeddings | Single-stack vector search in the same Postgres instance as core data; enables tenant-scoped semantic retrieval without dual-write |
 | **DuckDB** | Analytics (planned) | OLAP queries for conversation analysis and reporting |
 
 ### Database Architecture Patterns
@@ -112,7 +111,7 @@ AICO employs a **specialized multi-database architecture** optimized for differe
 | **psycopg2-binary** | CLI tools (sync) | Synchronous PostgreSQL driver for admin tools |
 | **requests** | Loki log writes | HTTP client for Loki push API and LogQL queries |
 | **influxdb-client** | Metrics writes | InfluxDB 2.x Python client for time-series metrics |
-| **chromadb** | Vector operations | Persistent vector storage with metadata filtering |
+| **pgvector** | Vector operations | PostgreSQL extension used for embedding storage and similarity search |
 
 ### Encryption & Security
 
@@ -126,8 +125,8 @@ AICO employs a **specialized multi-database architecture** optimized for differe
 
 | Technology | Purpose | Justification |
 |------------|---------|---------------|
-| **ZeroMQ 27.0+** | Internal message bus | Lightweight, embedded pub/sub messaging for all core modules |
-| **CurveZMQ** | Message bus encryption | 100% encrypted ZMQ with mandatory mutual authentication |
+| **NATS** | Internal message bus | Single broker abstraction for pub/sub, request/reply, and streaming; supports local-first and enterprise deployments |
+| **JetStream** | Durable messaging | Selectively used for correctness-critical flows (work queues, durable notifications, replay) |
 | **FastAPI 0.116+** | API framework | Modern, fast Python web framework powering the service gateway |
 | **Uvicorn 0.35+** | ASGI server | High-performance async server for FastAPI |
 | **REST API** | UI/adapter protocol | Standard HTTP API for commands, queries, and configuration |
@@ -141,7 +140,6 @@ AICO employs a **specialized multi-database architecture** optimized for differe
 | Technology | Purpose | Justification |
 |------------|---------|---------------|
 | **SQLCipher** | Frontend database encryption | AES-256-GCM encryption for Drift databases (Flutter message cache) |
-| **CurveZMQ** | Transport encryption | Elliptic curve encryption for all ZMQ message bus traffic |
 | **Argon2id** | Key derivation | Memory-hard KDF for master key derivation from password |
 | **PBKDF2** | Key derivation | Additional KDF for database encryption keys (100k iterations) |
 | **NaCl/libsodium** | Frontend cryptography | Modern cryptographic library for Flutter (Ed25519, X25519) |
@@ -164,7 +162,6 @@ AICO employs a **specialized multi-database architecture** optimized for differe
 | **PostgreSQL 18.1 (Docker)** | Core database container | ✅ Production deployment |
 | **Loki 2.9 (Docker)** | Log aggregation container | ✅ Production deployment |
 | **InfluxDB 2.x (Docker)** | Metrics database container | ✅ Pro/Enterprise deployments |
-| **ChromaDB (planned)** | Vector database container | 🚧 Future containerization |
 | **Docker Compose** | Multi-container orchestration | 🚧 Planned for full stack deployment |
 
 ### Application Runtime
@@ -205,12 +202,11 @@ AICO employs a **specialized multi-database architecture** optimized for differe
 | **Rich 13.7** | Output formatting  | Beautiful, readable, Unicode-rich CLI output with tables and progress bars |
 | **PyInstaller** | Packaging         | Creates single-file, dependency-free, cross-platform executables |
 | **Platformdirs 4.0** | Config management  | Cross-platform config/cache path handling |
-| **ZeroMQ (pyzmq)** | Message bus integration | Direct backend communication for admin/automation |
 | **Requests 2.31** | API communication | HTTP client for REST API integration |
 | **Cron-Descriptor** | Cron parsing | Human-readable cron schedule descriptions |
 
 **CLI Features:**
-- **15 Command Groups**: security, database, gateway, ollama, kg, scheduler, logs, config, bus, chroma, lmdb, dev, version, modelservice
+- **15 Command Groups**: security, database, gateway, ollama, kg, scheduler, logs, config, bus, dev, version, modelservice
 - **100+ Subcommands**: Comprehensive admin tooling for all AICO subsystems
 - **Cross-platform**: Windows, macOS, Linux with consistent UX
 - **Production-ready**: v1.1.0 with extensive real-world testing

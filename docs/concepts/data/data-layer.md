@@ -12,8 +12,7 @@ AICO's data layer implements **Clean Architecture** principles with a multi-data
 - ✅ **PostgreSQL 18.1** (Docker): Core application data (users, conversations, knowledge graph, agency)
 - ✅ **Loki 2.9** (Docker): Log aggregation with LogQL queries
 - ✅ **InfluxDB 2.x (Pro/Enterprise)** (Docker): Time-series metrics (performance data, telemetry)
-- ✅ **ChromaDB**: Vector embeddings for semantic search
-- ✅ **LMDB**: Working memory with 30-day TTL
+- ✅ **pgvector (PostgreSQL extension)**: Vector embeddings for semantic search
 
 **Planned:**
 - ⏳ **DuckDB**: Analytics engine for conversation analysis
@@ -31,8 +30,7 @@ Each database serves a specific purpose optimized for its workload:
 - **PostgreSQL**: ACID transactions, referential integrity, relational data
 - **Loki**: Purpose-built log aggregation, LogQL queries, label-based indexing
 - **InfluxDB**: High-performance time-series metrics, automatic downsampling
-- **ChromaDB**: Vector similarity search, semantic retrieval
-- **LMDB**: Fast key-value working memory, sub-millisecond access
+- **pgvector**: Vector similarity search inside Postgres
 
 ---
 
@@ -196,60 +194,25 @@ write_api.write(bucket="aico_telemetry", record=point)
 
 ---
 
-## ChromaDB - Vector Embeddings
+## pgvector - Vector Embeddings
 
 **Purpose**: Semantic search and similarity matching
 
-**Collections**:
-- `conversation_segments`: Conversation history with embeddings
-- `kg_node_embeddings`: Knowledge graph entity embeddings
-- `kg_edge_embeddings`: Relationship embeddings
-
 **Technology Stack**:
-- ChromaDB (persistent mode)
+- PostgreSQL extension
 - Sentence-transformers via modelservice
-- Cosine similarity search
-- Metadata filtering
-
-**Access Pattern**:
-```python
-import chromadb
-
-client = chromadb.PersistentClient(path="/path/to/chroma")
-collection = client.get_or_create_collection("conversation_segments")
-
-# Store with embeddings
-collection.upsert(
-    ids=["msg_123"],
-    embeddings=[[0.1, 0.2, ...]],  # From modelservice
-    documents=["User message text"],
-    metadatas=[{"user_id": "uuid"}]
-)
-
-# Semantic search
-results = collection.query(
-    query_embeddings=[[0.1, 0.2, ...]],
-    n_results=10
-)
-```
+- Cosine/inner-product distance (index-dependent)
+- Tenant/user scoping enforced via standard relational filters
 
 ---
 
-## LMDB - Working Memory
+## Working Memory and Conversation History
 
-**Purpose**: High-performance ephemeral storage for active conversation context
-
-**Features**:
-- 30-day TTL for conversation continuity
-- Sub-millisecond read/write latency
-- Memory-mapped for performance
-- Named databases for different data types
+**Purpose**: Authoritative storage for conversations and message history.
 
 **Implementation**:
-- Database: `session_memory`
-- Storage: `/data/lmdb/`
-- Integration: WorkingMemoryStore in `/shared/aico/ai/memory/working.py`
-- Coordination: PostgreSQL tracks LMDB sessions via `session_metadata` table
+- Stored in PostgreSQL as the system of record.
+- Tenant-scoped via `tenant_id` on authoritative tables.
 
 ---
 
@@ -319,25 +282,21 @@ async with UnitOfWork() as uow:
 ## Database Integration Flow
 
 **Write Flow** (New conversation message):
-1. **LMDB**: Store in working memory (immediate access)
-2. **PostgreSQL**: Create metadata record with conversation_id, user_id, timestamp
-3. **Modelservice**: Generate 768-dim embedding via sentence-transformers
-4. **ChromaDB**: Store embedding with metadata for semantic search
+1. **PostgreSQL**: Persist user message (source of truth; idempotent per request)
+2. **Modelservice**: Generate embeddings as needed
+3. **PostgreSQL + pgvector**: Store embeddings and metadata for semantic search
 
 **Read Flow** (Retrieve relevant context):
 1. **Query**: User asks question
 2. **Modelservice**: Generate query embedding
-3. **ChromaDB**: Semantic search returns top-N similar segments
-4. **PostgreSQL**: Fetch full metadata for returned segment IDs
-5. **LMDB**: Check working memory for recent context
-6. **Fusion**: Combine semantic + recency + relationship scores
+3. **PostgreSQL + pgvector**: Semantic search returns top-N relevant items (tenant/user scoped)
+4. **Fusion**: Combine semantic + recency + relationship scores
 
 **Why This Architecture**:
 - **PostgreSQL**: ACID guarantees for metadata, referential integrity for relationships
 - **Loki**: Purpose-built for logs, label-based indexing, efficient storage
 - **InfluxDB**: Optimized for time-series metrics, automatic retention policies
-- **ChromaDB**: Optimized for vector similarity search (cosine distance)
-- **LMDB**: Ultra-fast access for active conversations
+- **pgvector**: Optimized vector search inside Postgres
 - **Separation**: Each database handles what it does best
 
 ---
@@ -351,15 +310,13 @@ async with UnitOfWork() as uow:
 | **PostgreSQL** | High | Structured queries | ~1-10ms |
 | **Loki** | Very High | Log writes | ~1-5ms |
 | **InfluxDB** | Very High | Metrics writes | ~1-5ms |
-| **ChromaDB** | High | Semantic search | ~10-50ms |
-| **LMDB** | Very High | Working memory | <1ms |
+| **pgvector** | High | Semantic search | ~5-50ms |
 
 **Characteristics**:
 - **PostgreSQL**: ACID transactions, connection pooling
 - **Loki**: Label-based indexing, LogQL queries, 70% storage reduction vs InfluxDB
 - **InfluxDB**: High-throughput writes, automatic downsampling
-- **ChromaDB**: Cosine similarity, hybrid search (BM25 + semantic)
-- **LMDB**: Memory-mapped, multi-reader/single-writer
+- **pgvector**: Cosine/inner-product similarity search with Postgres indexing
 
 ---
 
@@ -371,8 +328,7 @@ Choose the right database for your use case:
 - **PostgreSQL**: User data, conversations, knowledge graph, agency data
 - **Loki**: Application logs, structured logging, log queries
 - **InfluxDB**: Metrics, performance data, time-series telemetry
-- **ChromaDB**: Embeddings, semantic search, similarity matching
-- **LMDB**: Active session data, conversation context, temporary cache
+- **pgvector**: Embeddings, semantic search, similarity matching
 
 ### Repository Usage
 

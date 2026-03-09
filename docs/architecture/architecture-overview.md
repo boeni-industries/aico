@@ -45,9 +45,9 @@ AICO's features are organized into logical modules for development and deploymen
 
 ### 🗣️ Conversation & Memory
 **Production Implementation:**
-- **Three-Tier Memory Architecture**: Working (LMDB) + Semantic (ChromaDB) + Adaptive (AMS)
+- **Three-Tier Memory Architecture**: Conversation history + semantic retrieval + adaptive learning (PostgreSQL + pgvector as the storage backbone)
 - **Hybrid Search V3**: Semantic embeddings + BM25 keyword + IDF filtering + RRF fusion
-- **Working Memory**: 30-day TTL, sub-millisecond access, conversation-scoped
+- **Conversation Storage**: PostgreSQL is the source of truth for conversation history and message ordering
 - **Knowledge Graph**: Full property graph with temporal reasoning and multi-hop queries
 - **Memory Album**: User-curated memories (conversation + message level) with emotional tone
 - **Memory Consolidation**: Background "sleep phases" integrate experiences without forgetting
@@ -110,7 +110,7 @@ AICO's features are organized into logical modules for development and deploymen
 ### 🔒 Privacy & Security
 **Production Implementation:**
 - **Secrets**: OS keychain/keyring-backed secret storage
-- **CurveZMQ**: 100% encrypted message bus with mandatory mutual authentication
+- **Broker Security**: NATS authentication/authorization and deployment-level transport security
 - **Argon2id**: Memory-hard KDF for master key derivation
 - **PBKDF2**: Database encryption key derivation (100k iterations)
 - **NaCl/libsodium**: Modern cryptography for frontend (Ed25519, X25519)
@@ -150,12 +150,13 @@ AICO's features are organized into logical modules for development and deploymen
 ## Architectural Decisions
 
 **Implemented:**
-- **CurveZMQ Message Bus** - 100% encrypted pub/sub with mandatory mutual authentication
+- **NATS Message Bus** - Single broker abstraction for pub/sub, request/reply, and streaming
+- **Tenant Scoping** - `tenant_id` is mandatory end-to-end (JWT, message bus subjects, persistence)
 - **Protocol Buffers 6.32** - High-performance binary serialization for backend (5.0 for Flutter)
 - **Topic-Based Pub/Sub** - Hierarchical topics with prefix-based routing
-- **Three-Tier Memory** - Working (LMDB) + Semantic (ChromaDB) + Adaptive (AMS)
+- **Three-Tier Memory** - PostgreSQL-backed storage + semantic retrieval + AMS
 - **Hybrid Search V3** - Semantic + BM25 + IDF filtering + RRF fusion
-- **Property Graph** - NetworkX + PostgreSQL + ChromaDB for knowledge graph with temporal reasoning
+- **Property Graph** - NetworkX + PostgreSQL for knowledge graph with temporal reasoning
 - **Thompson Sampling** - Contextual bandit for skill selection and behavioral learning
 - **Qwen3 Abliterated 8B** - Uncensored foundation model for character consistency
 - **Plugin Architecture** - Modular backend with lifecycle management
@@ -343,7 +344,7 @@ The AICO system consists of the following main parts:
 
 ### Backend Service
 Python-based persistent service providing core AICO functionality:
-- **Plugin-based architecture** with FastAPI and ZeroMQ message bus
+- **Plugin-based architecture** with FastAPI and NATS message bus
 - **Transactional storage** using PostgreSQL (Repository + UnitOfWork per request)
 - **Continuous operation** enabling autonomous agency and background processing
 - **Modular design** with lifecycle management and dependency injection
@@ -366,7 +367,7 @@ Lightweight LLM inference service:
 Professional command-line interface:
 - **Rich output formatting** with tables and colors
 - **Cross-platform executables** via PyInstaller
-- **Direct backend integration** through ZeroMQ and REST APIs
+- **Direct backend integration** through REST APIs
 - **Administrative functions** for system management
 
 ## Architecture Patterns
@@ -375,7 +376,7 @@ AICO's core architecture is designed to maximize modularity and maintain low cou
 
 ### Modular Message-Driven Design
 - **Each domain/module is a distinct code package or subsystem** with its own internal state, logic, and strict interface.
-- **All communication between backend modules is via the internal message bus (ZeroMQ) using Protocol Buffers for high-performance binary serialization. External API communication with the frontend uses JSON over HTTP/WebSocket for web-standard compatibility.**
+- **All communication between backend modules is via the internal message bus (NATS) using Protocol Buffers for high-performance binary serialization. External API communication with the frontend uses JSON over HTTP/WebSocket for web-standard compatibility.**
 - **No direct function calls or shared state between modules** (except for startup/configuration)—all data exchange is through published/subscribed messages.
 - **Each module subscribes to topics and publishes outputs on its own topics**, using versioned, validated Protocol Buffer schemas.
 - **Modules can be developed, tested, and even replaced independently** as long as they honor the message contracts.
@@ -401,7 +402,7 @@ flowchart LR
     end
 
     subgraph Gateway [API Gateway Layer]
-        APIGW["API Gateway<br/>(REST/WebSocket/ZeroMQ)"]
+        APIGW["API Gateway<br/>(REST/WebSocket)"]
     end
 
     subgraph Backend [Backend Domains & Modules]
@@ -415,7 +416,7 @@ flowchart LR
     end
 
     subgraph Infra [Cross-Cutting]
-        BUS["Message Bus<br/>(ZeroMQ, Protocol Buffers)"]
+        BUS["Message Bus<br/>(NATS/JetStream, Protocol Buffers)"]
     end
 
     %% Connections
@@ -444,14 +445,14 @@ flowchart LR
 **Communication Flow:**
 
 1. **Frontend → API Gateway**: HTTP/WebSocket calls for user interactions
-2. **API Gateway → Message Bus**: Publishes events to appropriate topics
+2. **API Gateway → Message Bus**: Publishes events to appropriate subjects (tenant-scoped)
 3. **Message Bus → Modules**: Distributes messages to subscribed backend modules
 4. **Module → Module**: Inter-module communication via message bus only
 5. **Backend → Frontend**: Real-time updates via WebSocket notifications
 
 **Key Architectural Principles:**
 
-- **🔄 Message-Driven**: All backend communication via ZeroMQ pub/sub
+- **🔄 Message-Driven**: All backend communication via NATS/JetStream
 - **🏗️ Modular Design**: Independent modules with clear boundaries
 - **🔌 Loose Coupling**: Modules only depend on message contracts
 - **⚡ Responsive UI**: Frontend never blocks on backend processing
@@ -566,7 +567,7 @@ Note: InfluxDB telemetry is available in Pro/Enterprise deployments.
 - LogQL queries for tails, filters, and aggregations
 - Queried from the CLI via `aico logs ...`
 
-### 4. ChromaDB - Vector Embeddings
+### 4. pgvector - Vector Embeddings
 
 **Purpose**: Semantic memory and similarity search
 - Conversation segment embeddings
@@ -574,9 +575,9 @@ Note: InfluxDB telemetry is available in Pro/Enterprise deployments.
 - Semantic search and retrieval
 
 **Technology Stack**:
-- ChromaDB with persistent storage
+- pgvector (PostgreSQL extension)
 - Sentence-transformers for embeddings
-- Cosine similarity search
+- Cosine/inner-product similarity (index-dependent)
 
 **Key Features**:
 - Hybrid search (semantic + keyword)
@@ -590,8 +591,7 @@ Note: InfluxDB telemetry is available in Pro/Enterprise deployments.
 #### Data & Storage Layer
 
 - **Primary Storage (PostgreSQL):** Core transactional storage, accessed via Repository + UnitOfWork per request
-- **Vector Database (ChromaDB):** Embedding storage for semantic search
-- **Working Memory (LMDB):** Fast TTL-based short-term memory store
+- **Vector Search (pgvector):** Embedding storage and similarity search in Postgres
 - **Log Storage (Loki):** Structured logs with LogQL queries
 - **Telemetry (InfluxDB):** Optional time-series metrics (Pro/Enterprise)
 
@@ -645,7 +645,7 @@ aico/
 │       ├── __init__.py         # Namespace package declaration
 │       ├── core/               # Core utilities
 │       │   ├── config.py       # Configuration management
-│       │   ├── logging.py      # Structured logging with ZMQ transport
+│       │   ├── logging.py      # Structured logging
 │       │   ├── bus.py          # Message bus client
 │       │   ├── paths.py        # Cross-platform path management
 │       │   └── process.py      # Process and PID management
@@ -688,8 +688,8 @@ The current backend follows this initialization sequence:
    - Setup FastAPI integration with single lifespan context and domain routing
 
 3. **Plugin Lifecycle**:
-   - Message bus broker starts on ports 5555/5556
-   - Log consumer service begins ZMQ subscription
+   - Message bus client connects to NATS/JetStream
+   - Log/metrics/tracing pipelines start as configured
    - Protocol adapters register endpoints
    - Middleware plugins configure security stack
 

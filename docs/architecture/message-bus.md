@@ -4,7 +4,7 @@
 
 The Core Message Bus is the central nervous system of AICO, enabling modular, event-driven communication between all system components. It implements a publish-subscribe (pub/sub) pattern that allows modules to communicate without direct dependencies, supporting AICO's core principles of modularity, autonomy, and extensibility.
 
-**🔒 Security First:** All message bus communication is encrypted using CurveZMQ with mandatory authentication. There is no plaintext fallback - the system enforces secure communication or fails completely.
+**🔒 Security First:** All message bus communication is secured via NATS authentication/authorization and deployment-level transport security; there is no plaintext fallback mode in production deployments.
 
 **⚠️ CRITICAL: Logging Recursion Prevention** - Avoid standard logging within message bus operations to prevent infinite recursion loops.
 
@@ -65,29 +65,29 @@ All message formats are explicitly versioned to enable:
 
 ### Message Bus Architecture
 
-The Core Message Bus implements a **hybrid broker pattern** with the backend service acting as the central message coordinator:
+The Core Message Bus implements a **brokered messaging pattern** using **NATS** as the central broker, with **JetStream** used selectively for durability where required.
 
 **Internal Communication (Backend Modules):**
-- **Protocol**: ZeroMQ with Protocol Buffers 6.32
-- **Transport**: TCP for all communication (inproc/ipc not used)
-- **Pattern**: Pub/Sub with topic hierarchy and prefix-based routing
-- **Broker**: Backend service runs central ZeroMQ broker on ports 5555 (frontend) and 5556 (backend)
-- **Encryption**: Mandatory CurveZMQ with no plaintext fallback
+- **Protocol**: NATS with Protocol Buffers payloads
+- **Transport**: NATS subjects for pub/sub and request/reply
+- **Pattern**: Pub/Sub + request/reply (correlation + reply subjects) + streaming chunk fanout
+- **Broker**: NATS server (single node for local-first, clustered for enterprise)
+- **Durability**: JetStream for correctness-critical flows (e.g. work queues, durable notifications)
 
 **External Communication (Subsystems):**
-- **Frontend (Flutter)**: REST API (Dio client) + WebSocket for streaming, Protocol Buffers 5.0 (wire-compatible)
-- **CLI (Python)**: Direct ZeroMQ with CurveZMQ encryption, REST API fallback
+- **Frontend (Flutter)**: REST API + WebSocket for realtime delivery; HTTP catch-up is always available
+- **CLI (Python)**: REST API (admin/ops) and internal messaging only where explicitly required
 - **Studio (React)**: REST API for admin operations (early development)
 - **Transport**: All external clients connect to backend's API Gateway on port 8771
 
 ### Message Bus Technology
 
-The Core Message Bus uses **ZeroMQ** with **CurveZMQ encryption**:
+The Core Message Bus uses **NATS**:
 
 - **High-performance:** Asynchronous messaging with minimal overhead
-- **Secure by default:** Mandatory CurveZMQ encryption for all communication
-- **Flexible patterns:** Pub/sub with hierarchical topic routing
-- **Embedded:** No external message broker dependencies
+- **Secure by default:** Centralized authentication/authorization at the broker
+- **Flexible patterns:** Pub/sub, request/reply, and JetStream-backed durable streams
+- **Operationally simple:** Single broker abstraction used across local-first and enterprise deployments
 
 ### Message Format
 
@@ -106,7 +106,7 @@ Messages are validated through Protocol Buffers' built-in validation:
 - Required fields enforcement
 - Automatic versioning support
 
-## Topic Hierarchy
+### Topic Hierarchy
 
 The message bus uses a hierarchical topic structure that organizes messages by functional domain and purpose:
 
@@ -114,65 +114,13 @@ The message bus uses a hierarchical topic structure that organizes messages by f
 
 **IMPORTANT**: AICO uses a centralized topic registry (`AICOTopics`) with slash-based notation for all message bus topics.
 
-### ZeroMQ Subscription Behavior
+### Subject Naming and Tenancy
 
-#### Critical Considerations
+Subjects are **tenant-scoped** to enforce hard isolation in multi-tenant deployments.
 
-1. **ZeroMQ uses prefix matching only**
-   - When you subscribe to a pattern, ZeroMQ converts it to a prefix filter
-   - Example: `logs/*` becomes ZMQ filter `logs/`
-   - This means ZeroMQ will deliver ANY message whose topic starts with that prefix
-
-2. **AICO subscription matching is prefix-based**
-   - AICO stores subscription patterns and matches incoming topics using prefix checks
-   - Special cases: `*` and `**` subscribe to all topics (empty ZMQ filter)
-   - There is no glob-style wildcard semantics (no `*` / `**` matching inside a pattern)
-
-#### ZeroMQ Prefix Matching
-
-ZeroMQ uses simple prefix matching (no wildcards):
-
-| Pattern | ZMQ Filter | Behavior | Matches |
-|---------|------------|----------|----------|
-| `logs/backend` | `logs/backend` | Exact prefix match | `logs/backend`, `logs/backend/main`, `logs/backend/api` |
-| `logs/` | `logs/` | Prefix match | All topics starting with `logs/` |
-| `*` or `**` | `""` (empty) | Match all | Every message on the bus |
-
-#### Common Subscription Patterns
-
-| Use Case | Pattern | ZMQ Filter | Matches |
-|----------|---------|------------|----------|
-| All logs | `logs/` | `logs/` | All topics starting with `logs/` |
-| Backend logs | `logs/backend/` | `logs/backend/` | All topics starting with `logs/backend/` |
-| Specific module | `logs/backend/main` | `logs/backend/main` | Topics starting with `logs/backend/main` |
-| All messages | `*` or `**` | `""` (empty) | Every message on the bus |
-
-#### Best Practices
-
-1. **Use prefix patterns for hierarchical subscriptions**
-   - Subscribe to `logs/` to receive all log messages
-   - Subscribe to `logs/backend/` to receive all backend logs
-   - Be specific with prefixes to avoid unnecessary message delivery
-
-2. **Understand ZeroMQ's prefix behavior**
-   - ZeroMQ delivers ANY message whose topic starts with your filter
-   - Design topics carefully to leverage prefix matching effectively
-
-#### Common Pitfalls
-
-1. **Expecting wildcard behavior**
-   - ZeroMQ does NOT support `*` or `**` wildcards
-   - `logs/*` is treated as literal prefix `logs/*`, not a wildcard
-   - Use proper prefixes like `logs/` instead
-
-2. **Over-subscribing with broad prefixes**
-   - Subscribing to `logs/` delivers ALL log messages
-   - This can cause performance issues with high message volume
-   - Use specific prefixes when possible
-
-3. **Inconsistent topic structure**
-   - Design hierarchical topics to work well with prefix matching
-   - Use consistent separators (slashes) for topic hierarchy
+- **Subject format**: `aico.<tenant_id>.<domain>.<action>`
+- **User scoping**: user identity is passed via message metadata attributes (not by exploding subjects)
+- **JetStream streams**: configured with tenant-scoped wildcards (e.g. `aico.*.conversation.>`)
 
 - **emotion/** - Emotion simulation related messages
   - `emotion/state/current` - Current emotional state
@@ -325,22 +273,14 @@ The Plugin Manager mediates plugin access to the message bus:
 
 ### Message Security
 
-1. **CurveZMQ Encryption**:
-   - **Mandatory encryption**: All message bus communication uses CurveZMQ with no plaintext fallback
-   - **Deterministic key derivation**: Keys derived from master key using Argon2id + Z85 encoding
-   - **Mutual authentication**: Both broker and clients authenticate using public key cryptography
-   - **Fail-secure behavior**: System fails completely rather than falling back to plaintext
+1. **Authentication**:
+   - NATS enforces client authentication at the broker boundary.
+   - Production deployments do not run an unauthenticated broker.
 
-2. **Authentication**:
-   - All modules authenticate to the message bus using CurveZMQ certificates
-   - Broker validates specific client public keys (no CURVE_ALLOW_ANY)
-   - Unauthorized connections are rejected with comprehensive security logging
-   - Plugin authentication uses separate CurveZMQ credentials
-
-3. **Authorization**:
-   - Topic-level access control limits which modules can publish/subscribe
-   - Sensitive topics have restricted access
-   - Plugin access is limited to approved topics
+2. **Authorization**:
+   - Subject-level authorization is enforced at the broker boundary.
+   - Tenancy is primarily enforced via tenant-scoped subjects (`aico.<tenant_id>....`).
+   - User identity is carried via message metadata attributes for routing and policy checks.
 
 ### Privacy Protection
 
@@ -349,11 +289,9 @@ The Plugin Manager mediates plugin access to the message bus:
    - Sensitive data is filtered before publication
    - User identifiers are anonymized where possible
 
-2. **End-to-End Encryption**:
-   - **Transport encryption**: All message bus traffic encrypted with CurveZMQ
-   - **Message payload encryption**: Sensitive payloads additionally encrypted at application level
-   - **Zero plaintext transmission**: No unencrypted data crosses network boundaries
-   - **Key management**: Automatic key derivation with secure storage integration
+2. **Transport and Payload Protection**:
+   - Transport security is provided by the deployment (NATS configuration + environment).
+   - Sensitive payloads should be treated as sensitive even on internal subjects; minimize content and rely on Postgres as the system of record.
 
 ## Performance Considerations
 
@@ -416,55 +354,30 @@ The build process automatically generates language-specific code from these defi
 2. Dart classes for Flutter frontend
 3. Additional language bindings as needed
 
-### CurveZMQ Implementation
+### NATS Security Model
 
-AICO's message bus implements mandatory CurveZMQ encryption for all inter-component communication with the following core principles:
-
-1. **Mandatory Encryption**: No plaintext fallback – system fails securely if encryption cannot be established.
-2. **Mutual Authentication**: Broker and clients authenticate using public key cryptography.
-3. **Deterministic Key Derivation**: All keys derived from the master key using Argon2id + Z85 encoding.
-4. **Fail-Secure Design**: Encryption failures result in system failure, not insecure fallback.
-
-Key management, broker/client configuration, socket options, and security logging are all encapsulated in `MessageBusBroker`, `MessageBusClient`, and `AICOKeyManager`, so most code only needs to create a client and connect.
+NATS security (authentication + authorization) is enforced at the broker boundary; application code should treat the message bus as a trusted internal fabric and rely on tenant-scoped subjects plus metadata for routing and policy enforcement.
 
 ### Testing and Validation
 
-Encryption and message bus behavior can be verified via the existing test script (`scripts/test_curve_zmq.py`) and the `aico bus` CLI commands (`test`, `monitor`, `stats`). Detailed command output is omitted here to keep the architecture doc focused.
+Message bus behavior can be verified via the `aico bus` CLI commands (`test`, `monitor`, `stats`) and integration tests that validate tenant scoping and JetStream durability policies.
 
 ### Migration from Plaintext
 
 #### Removed Components
 1. **Plaintext fallback code**: All fallback mechanisms removed
-2. **CURVE_ALLOW_ANY**: Replaced with explicit client authentication
-3. **Raw ZMQ sockets**: All components use encrypted MessageBusClient
-4. **IPC adapter**: Unused ZeroMQ IPC adapter removed
+2. **Mixed message bus stacks**: Legacy broker paths are not supported in the current architecture.
 
 #### Breaking Changes
 - **No backward compatibility**: Old plaintext clients cannot connect
-- **Master key required**: All components require master key for operation
-- **Fail-secure only**: No graceful degradation to plaintext mode
+- **Fail-secure only**: No insecure fallback modes
 
 ### Troubleshooting
 
 #### Common Issues
 
-**Authentication Failures:**
-```
-[SECURITY] CRITICAL: Failed to setup CurveZMQ authentication
-```
-**Solution**: Verify master key is available and AICOKeyManager is properly configured.
-
-**Key Derivation Errors:**
-```
-[SECURITY] CRITICAL: Failed to setup CurveZMQ encryption
-```
-**Solution**: Check master key authentication and key manager initialization.
-
-**Connection Refused:**
-```
-MessageBusError: CurveZMQ socket configuration failed
-```
-**Solution**: Ensure broker is running and client public key is in authorized list.
+**Authentication/Authorization Failures:**
+Verify NATS connectivity, credentials, and subject permissions for the service.
 
 #### Debug Logging
 
@@ -473,29 +386,28 @@ Debug logging for the message bus can be enabled via the standard Python logging
 ### Security Guarantees
 
 #### What is Protected
-✅ **All message bus traffic encrypted**  
-✅ **Mutual authentication between all components**  
-✅ **No plaintext fallback possible**  
-✅ **Deterministic key derivation from master key**  
-✅ **Comprehensive security logging**  
+✅ **Broker-authenticated clients**  
+✅ **Subject-level authorization**  
+✅ **Tenant-scoped subjects for isolation**  
+✅ **No insecure fallback modes in production**  
 
 #### What is NOT Protected
 ❌ **Application-level message content** (use additional encryption if needed)  
-❌ **Topic names** (visible in ZeroMQ subscription filters)  
+❌ **Subject names** (metadata for routing/operations)  
 ❌ **Message timing/frequency** (traffic analysis still possible)  
 
 ### Performance Impact
 
 #### Encryption Overhead
-- **CPU**: ~5-10% overhead for CurveZMQ encryption/decryption
+- **CPU**: depends on the chosen transport security configuration
 - **Memory**: Minimal additional memory usage
-- **Latency**: <1ms additional latency per message
+- **Latency**: typically sub-millisecond per message on local networks
 - **Throughput**: >95% of plaintext performance maintained
 
 #### Optimization Tips
 1. **Reuse connections**: Avoid frequent connect/disconnect cycles
 2. **Batch messages**: Group small messages when possible
-3. **Monitor key derivation**: Cache derived keys when appropriate
+3. **Monitor connection churn**: Prefer long-lived connections where possible
 
 ## Conclusion
 
@@ -508,6 +420,6 @@ The Core Message Bus architecture is fundamental to AICO's modular, event-driven
 - **Autonomy**: Modules can operate independently based on events
 - **Performance**: Binary serialization optimizes for speed and size
 - **Cross-Platform**: Consistent message format across all platforms and devices
-- **Security**: Mandatory CurveZMQ encryption ensures all communication is protected
+- **Security**: Broker-enforced authentication/authorization and tenant scoping
 
 By providing a standardized, secure communication backbone, the message bus facilitates the complex interactions required for AICO's proactive agency, emotional presence, personality consistency, and multi-modal embodiment across its federated device network.
