@@ -2351,9 +2351,22 @@ class CoreNATSHandlers:
             version_detector = get_version_detector()
             db_versions = await version_detector.get_all_versions()
             
-            # Calculate backend uptime
-            backend_uptime_seconds = time.time() - start_time
-            backend_uptime_str = format_uptime(backend_uptime_seconds)
+            # Get backend container uptime (Gateway and Core run in same container)
+            backend_uptime_str = "N/A"
+            try:
+                result = await asyncio.to_thread(
+                    subprocess.run,
+                    ["docker", "inspect", "--format={{.State.StartedAt}}", "aico-core"],
+                    capture_output=True, text=True, timeout=2
+                )
+                if result.returncode == 0:
+                    started_at = datetime.fromisoformat(result.stdout.strip().replace('Z', '+00:00'))
+                    uptime_seconds = (datetime.now(started_at.tzinfo) - started_at).total_seconds()
+                    backend_uptime_str = format_uptime(uptime_seconds)
+            except Exception:
+                # Fallback to process uptime if docker inspect fails
+                backend_uptime_seconds = time.time() - start_time
+                backend_uptime_str = format_uptime(backend_uptime_seconds)
             
             # Get modelservice uptime
             modelservice_uptime_str = "N/A"
