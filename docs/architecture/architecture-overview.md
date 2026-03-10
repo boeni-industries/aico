@@ -584,6 +584,31 @@ Note: InfluxDB telemetry is available in Pro/Enterprise deployments.
 - Automatic embedding generation
 - Metadata filtering
 
+### 5. MinIO - Object Storage & Artifact Store
+
+**Purpose**: Binary artifact storage for backup sets
+- Backup archive storage (tar.gz files)
+- Soft-delete trash management
+- Large file storage outside PostgreSQL
+
+**Technology Stack**:
+- MinIO (S3-compatible object storage, Docker container)
+- boto3/aioboto3 for S3 API integration
+- Docker volume for persistent object storage
+
+**Key Features**:
+- S3-compatible API
+- Bucket-based organization (`backups/backup_sets/`, `backups/trash/`)
+- Soft-delete via object key prefixes (active vs trash)
+- Metadata stored in PostgreSQL, artifacts in MinIO
+- Efficient large file handling
+
+**Backup Architecture**:
+- **Metadata**: PostgreSQL `aico_core.backup_sets` table (backup_id, status, created_at, deleted_at, audit fields)
+- **Artifacts**: MinIO objects at `backups/backup_sets/<backup_id>.tar.gz` (active) or `backups/trash/backup_sets/<backup_id>.tar.gz` (soft-deleted)
+- **Lifecycle**: Create → Soft-delete (move to trash) → Purge (permanent deletion)
+- **Audit Trail**: `created_by_user_uuid` and `deleted_by_user_uuid` for compliance
+
 #### Learning System
 - **Continual Learning:** Ongoing learning from interactions and experiences.
 - **Skill Acquisition:** Learning new capabilities and behaviors.
@@ -592,6 +617,7 @@ Note: InfluxDB telemetry is available in Pro/Enterprise deployments.
 
 - **Primary Storage (PostgreSQL):** Core transactional storage, accessed via Repository + UnitOfWork per request
 - **Vector Search (pgvector):** Embedding storage and similarity search in Postgres
+- **Object Storage (MinIO):** S3-compatible artifact store for backup sets and large files
 - **Log Storage (Loki):** Structured logs with LogQL queries
 - **Telemetry (InfluxDB):** Optional time-series metrics (Pro/Enterprise)
 

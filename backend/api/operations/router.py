@@ -405,17 +405,77 @@ async def get_system_topology(
                 logger.debug(f"Could not get PostgreSQL uptime: {e}")
             return "N/A"
         
+        async def check_minio_health():
+            try:
+                import httpx
+                async with httpx.AsyncClient(timeout=2.0) as client:
+                    response = await client.get("http://localhost:9000/minio/health/live")
+                    if response.status_code == 200:
+                        return "healthy"
+            except Exception as e:
+                logger.debug(f"Could not check MinIO health: {e}")
+            return "offline"
+        
+        async def get_minio_version():
+            try:
+                import subprocess
+                result = await asyncio.to_thread(
+                    subprocess.run,
+                    ["docker", "exec", "aico-minio", "minio", "--version"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2
+                )
+                if result.returncode == 0:
+                    # Parse version from output like "minio version RELEASE.2024-01-01T00-00-00Z"
+                    version_line = result.stdout.strip()
+                    if "RELEASE" in version_line:
+                        timestamp = version_line.split("RELEASE.")[1].split()[0] if len(version_line.split("RELEASE.")) > 1 else ""
+                        if timestamp and "T" in timestamp:
+                            return timestamp.split("T")[0]  # Extract just the date part (YYYY-MM-DD)
+                        return timestamp if timestamp else "unknown"
+            except Exception as e:
+                logger.debug(f"Could not get MinIO version: {e}")
+            return "unknown"
+        
+        async def get_minio_uptime():
+            try:
+                import subprocess
+                from datetime import datetime, UTC
+                
+                result = await asyncio.to_thread(
+                    subprocess.run,
+                    ["docker", "inspect", "--format={{.State.StartedAt}}", "aico-minio"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2
+                )
+                if result.returncode == 0:
+                    started_at_str = result.stdout.strip()
+                    started_at = datetime.fromisoformat(started_at_str.replace('Z', '+00:00'))
+                    uptime_seconds = (datetime.now(started_at.tzinfo) - started_at).total_seconds()
+                    return format_uptime(uptime_seconds)
+            except Exception as e:
+                logger.debug(f"Could not get MinIO uptime: {e}")
+            return "N/A"
+        
         # Execute all checks in parallel
         (
             modelservice_uptime_str,
             vllm_status,
             studio_uptime_str,
-            postgres_uptime_str
+            postgres_uptime_str,
+            minio_status,
+            minio_version,
+            minio_uptime_str
         ) = await asyncio.gather(
             get_modelservice_uptime(),
             check_vllm_status(),
             get_studio_uptime(),
             get_postgres_uptime(),
+            check_minio_health(),
+            get_minio_version(),
+            get_minio_uptime(),
             return_exceptions=False
         )
         
@@ -523,6 +583,16 @@ async def get_system_topology(
                 port=int(config.get("llm.vllm.port", 8774)) if config else 8774,
                 uptime=vllm_uptime_str
             ),
+            ServiceNode(
+                id="minio",
+                name="MinIO",
+                type="database",
+                status=minio_status,
+                version=minio_version,
+                host="localhost",
+                port=9000,
+                uptime=minio_uptime_str
+            ),
         ]
         
         # Define connections
@@ -619,6 +689,14 @@ async def get_system_topology(
                 to_service="loki",
                 protocol="HTTP",
                 port=3100,
+                status="active"
+            ),
+            # Core -> MinIO (backup artifacts)
+            ServiceConnection(
+                from_service="core",
+                to_service="minio",
+                protocol="S3",
+                port=9000,
                 status="active"
             ),
         ]
