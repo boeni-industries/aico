@@ -31,6 +31,11 @@ This file tracks all changes to the frozen API contracts in `/contracts/`.
 
 ## [Unreleased]
 
+### 2026-03-11 - Contract Gate Split-Repo Alignment
+- **CI Gates**: Updated contract workflows and helper scripts to run from the split-era `gateway/` package instead of the removed `backend/` directory.
+- **WebSocket v1**: Refreshed frozen adapter metadata in `contracts/websocket/v1.json` to match the current gateway adapter path.
+- **Compatibility**: Non-breaking contract/tooling alignment only; no request/response shape changes.
+
 ### 2026-03-05 - Scheduler Run Ledger Endpoints
 - **Added (Scheduler)**: Run-ledger endpoints for deterministic planned-run accounting:
   - `GET /api/v1/scheduler/runs`

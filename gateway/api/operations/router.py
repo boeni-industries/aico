@@ -6,7 +6,9 @@ These endpoints validate auth and proxy requests to core via NATS request/reply.
 """
 
 from typing import Annotated, Dict, Any
-from fastapi import APIRouter, Depends, Query
+import httpx
+from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from aico.common.errors import raise_api_error
@@ -247,19 +249,71 @@ async def download_backup_set(
     """
     Download a backup set archive.
     
-    Gateway returns a short-lived pre-signed artifact store URL produced by Core.
+    Gateway streams the backup archive using a short-lived pre-signed artifact
+    store URL produced by Core.
     """
     try:
         from gateway.core.nats_client import get_gateway_nats_client
 
         nats_client = get_gateway_nats_client()
-        return await nats_client.request_operations_backup_download_url(backup_id=str(backup_id), expires_seconds=300)
+        data = await nats_client.request_operations_backup_download_url(
+            backup_id=str(backup_id),
+            expires_seconds=300,
+        )
+        url = str((data or {}).get("url") or "").strip()
+        if not url:
+            raise_api_error(
+                status_code=502,
+                error_code="OPERATIONS_BACKUP_DOWNLOAD_URL_MISSING",
+                message="Core did not return a download URL",
+            )
+
+        client = httpx.AsyncClient(follow_redirects=True, timeout=300.0)
+        upstream_request = client.build_request("GET", url, headers={"Accept": "application/gzip"})
+        upstream_response = await client.send(upstream_request, stream=True)
+
+        if upstream_response.status_code >= 400:
+            error_body = await upstream_response.aread()
+            await upstream_response.aclose()
+            await client.aclose()
+            error_text = error_body.decode("utf-8", errors="replace").strip()
+            raise_api_error(
+                status_code=502,
+                error_code="OPERATIONS_BACKUP_DOWNLOAD_UPSTREAM_FAILED",
+                message=error_text or f"Artifact store returned HTTP {upstream_response.status_code}",
+            )
+
+        content_length = upstream_response.headers.get("content-length")
+
+        response_headers = {
+            "Content-Disposition": f'attachment; filename="{backup_id}.tar.gz"',
+            "Cache-Control": "no-store",
+        }
+        if content_length:
+            response_headers["Content-Length"] = content_length
+
+        return StreamingResponse(
+            _stream_backup_download(upstream_response, client),
+            media_type="application/gzip",
+            headers=response_headers,
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         raise_api_error(
             status_code=500,
             error_code="OPERATIONS_BACKUP_DOWNLOAD_FAILED",
             message=f"Failed to download backup: {str(e)}",
         )
+
+
+async def _stream_backup_download(response: httpx.Response, client: httpx.AsyncClient):
+    try:
+        async for chunk in response.aiter_bytes():
+            yield chunk
+    finally:
+        await response.aclose()
+        await client.aclose()
 
 
 @router.delete("/backup-sets/{backup_id}")
