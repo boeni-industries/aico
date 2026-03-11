@@ -20,13 +20,13 @@ jobs:
         uses: astral-sh/setup-uv@v3
 
       - name: Sync dependencies
-        working-directory: backend
+        working-directory: gateway
         run: uv sync --frozen
 
       - name: Verify OpenAPI artifact is up to date
-        working-directory: backend
+        working-directory: gateway
         run: uv run python ../scripts/generate_openapi_public.py --check --output ../contracts/openapi/v1.json
 
       - name: Verify internal OpenAPI artifact is up to date
-        working-directory: backend
+        working-directory: gateway
         run: uv run python ../scripts/generate_openapi_internal.py --check --output ../contracts/openapi/internal-v1.json

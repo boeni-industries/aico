@@ -362,7 +362,7 @@
     ]
   },
   "gateway_websocket_adapter": {
-    "description": "Protocol-level WS server implemented in backend/api_gateway/adapters/websocket_adapter.py (websockets library).",
+    "description": "Protocol-level WS server implemented in gateway/adapters/websocket_adapter.py (websockets library).",
     "incoming_messages": {
       "auth": {
         "additionalProperties": true,
