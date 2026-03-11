@@ -1,9 +1,0 @@
-"""
-Admin Management API Domain
-
-Provides REST API endpoints for administrative operations.
-"""
-
-from .router import router
-
-__all__ = ["router"]

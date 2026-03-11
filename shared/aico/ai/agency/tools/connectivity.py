@@ -8,6 +8,7 @@ import httpx
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
 from aico.core.paths import AICOPaths
+from core.services.modelservice_client import get_modelservice_client
 from aico.data.uow import UnitOfWork
 from .registry import ToolDefinition, get_tool_registry
 
@@ -72,10 +73,6 @@ async def tool_modelservice_ping() -> Dict[str, Any]:
 
     start = datetime.now(UTC)
     try:
-        # Importing backend.services from shared is acceptable here; this tool is
-        # only used in backend contexts for maintenance.
-        from backend.services import get_modelservice_client
-
         config = ConfigurationManager()
         config.initialize(lightweight=True)
         client = get_modelservice_client(config)

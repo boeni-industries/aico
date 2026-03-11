@@ -35,6 +35,27 @@
     "protocols": {
       "type": "object"
     },
+    "auth": {
+      "type": "object",
+      "properties": {
+        "jwt": {
+          "type": "object",
+          "properties": {
+            "algorithm": {
+              "type": "string",
+              "default": "HS256"
+            },
+            "expiry_hours": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 24
+            }
+          },
+          "required": ["algorithm", "expiry_hours"]
+        }
+      },
+      "required": ["jwt"]
+    },
     "cors": {
       "type": "object",
       "properties": {

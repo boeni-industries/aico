@@ -1,0 +1,51 @@
+FROM python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# System deps (minimal - Gateway doesn't need PostgreSQL client or Docker)
+# Note: build-essential needed for hnswlib (ChromaDB dependency)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    build-essential \
+    g++ \
+  && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
+
+# Copy dependency metadata + shared module
+COPY shared /app/shared
+COPY gateway /app/gateway
+COPY gateway/pyproject.toml /app/gateway/pyproject.toml
+COPY README.md VERSIONS /app/
+
+# Install deps (without installing the local project)
+WORKDIR /app/gateway
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project
+
+WORKDIR /app
+
+# Copy config (Gateway needs minimal config for NATS, JWT)
+COPY config /app/config
+
+# Copy entrypoint script
+COPY docker/entrypoint-gateway.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Install the local gateway project
+WORKDIR /app/gateway
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install -e .
+
+WORKDIR /app/gateway
+
+EXPOSE 8771
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["/app/gateway/.venv/bin/python", "-m", "gateway.main"]

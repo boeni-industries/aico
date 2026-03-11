@@ -121,7 +121,7 @@ services:
   gateway:
     build:
       context: ..
-      dockerfile: docker/Dockerfile.backend
+      dockerfile: docker/Dockerfile.gateway
     container_name: aico-gateway
     restart: unless-stopped
     environment:
@@ -130,35 +130,30 @@ services:
       AICO_DATA_DIR: /var/lib/aico
       AICO_CACHE_DIR: /var/cache/aico
       AICO_RUNTIME_DIR: /run/aico
-      AICO_ARTIFACT_STORE_ENDPOINT: http://minio:9000
-      AICO_ARTIFACT_STORE_BUCKET: aico-artifacts
       AICO_NATS_URL: nats://nats:4222
-      AICO_VALKEY_URL: redis://valkey:6379/0
+      AICO_NATS_HOST: nats
+      AICO_NATS_PORT: "4222"
+      AICO_PG_HOST: postgres
       AICO_INSTRUMENTATION_ENABLED: "true"
       AICO_INSTRUMENTATION_MODE: "prod"
       AICO_LOKI_URL: http://loki:3100
       AICO_REST_HOST: 0.0.0.0
-      AICO_PG_HOST: postgres
       AICO_TRANSPORT_ENCRYPTION_ENABLED: "true"
       AICO_GATEWAY_ENCRYPTION_PLUGIN_ENABLED: "true"
       AICO_GATEWAY_SECURITY_PLUGIN_ENABLED: "true"
     secrets:
-      - pg_password
       - api_gateway_jwt_secret
-      - artifact_store_access_key
-      - artifact_store_secret_key
+      - pg_password
     volumes:
       - aico-gateway-state:/var/lib/aico
       - aico-gateway-cache:/var/cache/aico
-      - /var/run/docker.sock:/var/run/docker.sock
     tmpfs:
       - /run/aico
     ports:
       - "8771:8771"
     depends_on:
-      - postgres
       - nats
-      - valkey
+      - core
     labels:
       com.aico.project: "aico"
       com.aico.component: "gateway"
@@ -173,11 +168,9 @@ services:
   core:
     build:
       context: ..
-      dockerfile: docker/Dockerfile.backend
+      dockerfile: docker/Dockerfile.core
     container_name: aico-core
     restart: unless-stopped
-    working_dir: /app/backend
-    command: ["/app/backend/.venv/bin/python", "core_main.py"]
     environment:
       AICO_ENV: development
       AICO_CONFIG_DIR: /app/config
@@ -194,7 +187,6 @@ services:
       AICO_PG_HOST: postgres
     secrets:
       - pg_password
-      - api_gateway_jwt_secret
       - artifact_store_access_key
       - artifact_store_secret_key
     volumes:
@@ -207,6 +199,7 @@ services:
       - postgres
       - nats
       - valkey
+      - minio
     labels:
       com.aico.project: "aico"
       com.aico.component: "core"

@@ -71,6 +71,13 @@ class ArtifactStoreClient:
             if chunk:
                 yield chunk
 
+    def generate_presigned_get_url(self, *, key: str, expires_seconds: int = 300) -> str:
+        return self._s3.generate_presigned_url(
+            ClientMethod="get_object",
+            Params={"Bucket": self._cfg.bucket, "Key": key},
+            ExpiresIn=int(expires_seconds),
+        )
+
 
 _client: ArtifactStoreClient | None = None
 

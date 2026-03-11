@@ -1,0 +1,1090 @@
+"""
+Encryption Middleware for AICO API Gateway
+
+Provides transparent libsodium encryption for HTTP/WebSocket communication
+while maintaining JSON API compatibility.
+"""
+
+import json
+import os
+import asyncio
+import secrets
+import time as time_module
+from typing import Dict, Any, Optional, Callable, Tuple
+from fastapi import FastAPI, Request, Response, HTTPException
+from fastapi.responses import JSONResponse
+from starlette.types import ASGIApp, Receive, Send, Scope
+import hashlib
+
+from aico.core.logging import get_logger
+from aico.security.key_manager import AICOKeyManager
+from aico.security.transport import TransportIdentityManager, SecureTransportChannel
+from aico.security.exceptions import EncryptionError, DecryptionError
+
+
+class EncryptionMiddleware:
+    """
+    Pure ASGI middleware for transparent JSON payload encryption
+    
+    Handles handshake negotiation and encrypts/decrypts JSON payloads
+    while maintaining standard HTTP semantics. Uses pure ASGI to avoid
+    BaseHTTPMiddleware Content-Length calculation bugs.
+    """
+    
+    def __init__(self, app: ASGIApp, key_manager: AICOKeyManager):
+        self.app = app
+        self.key_manager = key_manager
+        self.logger = get_logger("backend.api_gateway.encryption")
+        
+        # Load transport encryption configuration
+        from aico.core.config import ConfigurationManager
+        config_manager = ConfigurationManager()
+        config_manager.initialize()
+        config = config_manager.get("security.transport.encryption", {})
+        self.config = config
+        self.enabled = config.get("enabled", True)
+        
+        if not self.enabled:
+            self.logger.info("Transport encryption disabled in configuration")
+            return
+        
+        # Initialize transport security components
+        self.identity_manager = TransportIdentityManager(key_manager)
+        # Create secure channel using the identity manager's method
+        self.secure_channel = self.identity_manager.create_secure_channel("api_gateway")
+        
+        # Session management from configuration
+        session_config = config.get("session", {})
+        self.sessions: Dict[str, Dict[str, Any]] = {}
+        self.session_timeout = session_config.get("timeout_seconds", 3600)
+        self.handshake_timeout = session_config.get("handshake_timeout_seconds", 30)
+        self.max_sessions_per_client = session_config.get("max_sessions_per_client", 5)
+        
+        # Message settings
+        message_config = config.get("message", {})
+        self.max_payload_size = message_config.get("max_payload_size", 1048576)
+        self.compression_enabled = message_config.get("compression_enabled", True)
+        self.compression_threshold = message_config.get("compression_threshold", 1024)
+        
+        # Configuration
+        # Encryption is required by default for all protected endpoints.
+        # This can be overridden in configuration with security.transport_encryption.require_encryption.
+        self.require_encryption = config.get("require_encryption", True)
+        self.handshake_path = "/api/v1/handshake"
+        
+        # Initialize channels dictionary for session management
+        self.channels: Dict[str, Any] = {}
+        
+        self.logger.info("Encryption middleware initialized")
+    
+    def build_middleware_stack(self):
+        """
+        Compatibility shim for OpenTelemetry FastAPI instrumentation.
+        
+        This is a pure ASGI middleware (not BaseHTTPMiddleware) to avoid
+        Content-Length calculation bugs. OpenTelemetry's introspection expects
+        this method, so we provide a no-op that returns self.
+        """
+        return self
+    
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Handle incoming request"""
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path = scope.get("path", "")
+        trace_interactions = path.startswith("/api/v1/interactions/")
+        trace_start = time_module.perf_counter() if trace_interactions else 0.0
+        scope["_aico_trace_interactions"] = trace_interactions
+        scope["_aico_trace_start"] = trace_start
+        if trace_interactions:
+            self.logger.info(
+                "[ENCRYPTION_TRACE] request_start",
+                extra={
+                    "method": scope.get("method"),
+                    "path": path,
+                },
+            )
+        
+        # Skip encryption if disabled
+        if not self.enabled:
+            print(f"[ENCRYPTION MIDDLEWARE] Encryption middleware disabled, passing through")
+            self.logger.debug("Encryption middleware disabled, passing through")
+            await self.app(scope, receive, send)
+            return
+        
+        # Create request object for processing
+        request = Request(scope, receive)
+        path = request.url.path
+        normalized_path = path.rstrip("/") or "/"
+        client_ip = request.client.host if request.client else "unknown"
+
+        # Always pass CORS preflight requests through to FastAPI so CORSMiddleware
+        # can generate the correct Access-Control-* headers.
+        if scope.get("method", "").upper() == "OPTIONS":
+            await self.app(scope, receive, send)
+            return
+        
+        # Memory requests handled normally
+        
+        # Handshake must go through FastAPI routing so CORSMiddleware can attach
+        # Access-Control-Allow-* headers.
+        if normalized_path == "/api/v1/handshake":
+            response = await self._handle_handshake(request)
+            await response(scope, receive, send)
+            return
+
+        # Skip encryption for health checks only
+        if self._should_skip_encryption(request):
+            await self.app(scope, receive, send)
+            return
+        
+        # Handle encrypted requests
+        await self._handle_encrypted_request(scope, receive, send)
+    
+    async def _handle_encrypted_request(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Handle encrypted request by decrypting and forwarding"""
+        path = scope.get("path", "")
+        trace_interactions = bool(scope.get("_aico_trace_interactions", False))
+        trace_start = float(scope.get("_aico_trace_start", 0.0))
+        try:
+            # Read request body to check for encryption and client_id
+            request = Request(scope, receive)
+            body = await request.body()
+            # IMPORTANT:
+            # We consumed the ASGI receive stream by reading request.body(). If we later
+            # forward the request without replacing receive, downstream handlers may see
+            # an empty body. Always forward using a receive wrapper that replays `body`.
+            message_sent = False
+
+            async def replay_receive():
+                nonlocal message_sent
+                if not message_sent:
+                    message_sent = True
+                    return {
+                        "type": "http.request",
+                        "body": body,
+                        "more_body": False,
+                    }
+                return await receive()
+            
+            # Try to get client_id from request body first (for encrypted requests)
+            client_id = None
+            channel = None
+            
+            if body:
+                try:
+                    request_data = json.loads(body)
+                    if "client_id" in request_data:
+                        client_id = request_data["client_id"]
+                        channel = self.channels.get(client_id)
+                except:
+                    pass
+            
+            # Check X-Client-ID header for any method
+            if not channel:
+                header_client_id = request.headers.get("x-client-id")
+                if header_client_id:
+                    client_id = header_client_id
+                    channel = self.channels.get(client_id)
+                    self.logger.debug(f"Found client_id in X-Client-ID header: {client_id}")
+            
+            # For GET requests, also allow query parameter as fallback
+            if not channel and request.method == "GET":
+                query_client_id = request.query_params.get("client_id")
+                if query_client_id:
+                    client_id = query_client_id
+                    channel = self.channels.get(client_id)
+                    self.logger.debug(f"Found client_id in query params: {client_id}")
+            
+            # Fallback to generated client_id if not found in request
+            if not channel:
+                client_id = self._get_client_id(request)
+                channel = self.channels.get(client_id)
+                self.logger.debug(f"Using generated client_id: {client_id}")
+
+            # Expose resolved encryption context to downstream FastAPI endpoints
+            # so routers can access request.state.encryption_channel/client_id.
+            # NOTE: Starlette Request.state is backed by scope["state"].
+            scope_state = scope.setdefault("state", {})
+            scope_state["encryption_client_id"] = client_id
+            scope_state["encryption_channel"] = channel
+
+            if trace_interactions:
+                self.logger.info(
+                    "[ENCRYPTION_TRACE] body_read",
+                    extra={
+                        "method": scope.get("method"),
+                        "path": path,
+                        "elapsed_ms": int((time_module.perf_counter() - trace_start) * 1000),
+                        "has_channel": channel is not None,
+                        "body_len": len(body) if body else 0,
+                    },
+                )
+            
+            self.logger.debug(f"Available channels: {list(self.channels.keys())}")
+            self.logger.debug(f"Client ID: {client_id}")
+            self.logger.debug(f"Channel found: {channel is not None}")
+
+            allowlist_prefixes = (
+                "/api/v1/health",
+                "/api/v1/system/health",
+                "/api/v1/system/remediate",
+                "/api/v1/system/metrics",
+            )
+            if path.startswith(allowlist_prefixes):
+                await self.app(scope, receive, send)
+                return
+            
+            if not channel or not channel.is_session_valid():
+                if self.require_encryption:
+                    # Log the rejected request at debug level
+                    client_ip = request.client.host if request.client else "unknown"
+                    self.logger.debug(
+                        f"Encryption rejected: {request.method} {request.url.path} from {client_ip} - No valid session",
+                        extra={
+                            "event_type": "encryption_rejected",
+                            "method": request.method,
+                            "path": request.url.path,
+                            "client_ip": client_ip,
+                            "reason": "no_valid_session",
+                            "status_code": 401
+                        }
+                    )
+                    # Build a CORS-friendly 401 response so browser clients
+                    # receive proper Access-Control-* headers.
+                    origin = request.headers.get("origin")
+                    headers = {}
+                    if origin:
+                        headers["Access-Control-Allow-Origin"] = origin
+                        headers["Access-Control-Allow-Credentials"] = "true"
+                        # Echo requested headers/methods for robustness
+                        req_headers = request.headers.get("access-control-request-headers")
+                        if req_headers:
+                            headers["Access-Control-Allow-Headers"] = req_headers
+                        headers["Access-Control-Allow-Methods"] = request.headers.get(
+                            "access-control-request-method", request.method
+                        )
+
+                    response = JSONResponse(
+                        status_code=401,
+                        content={
+                            "error": "Encryption required",
+                            "message": "Perform handshake at /api/v1/handshake first"
+                        },
+                        headers=headers or None,
+                    )
+                    await response(scope, receive, send)
+                    return
+                else:
+                    # Allow unencrypted requests - pass through
+                    await self.app(scope, receive, send)
+                    return
+            
+            # Create response interceptor for encryption (for all requests with valid session)
+            response_start_sent = False
+            cached_start_message = None
+            is_streaming_response = False
+            is_binary_encrypted_stream = False
+            binary_seq = 0
+            binary_final_sent = False
+            ndjson_buffer = b""
+            
+            async def encrypt_send(message):
+                nonlocal response_start_sent, cached_start_message, is_streaming_response, is_binary_encrypted_stream, binary_seq, binary_final_sent
+                nonlocal ndjson_buffer
+                
+                if message["type"] == "http.response.start":
+                    # Check if this is a streaming response
+                    headers = dict(message.get("headers", []))
+                    content_type = headers.get(b"content-type", b"").decode().lower()
+                    content_disposition = headers.get(b"content-disposition", b"").decode().lower()
+                    
+                    # Detect streaming responses
+                    is_streaming_response = (
+                        "application/x-ndjson" in content_type or
+                        "text/event-stream" in content_type or
+                        "application/stream+json" in content_type or
+                        headers.get(b"transfer-encoding") == b"chunked"
+                    )
+
+                    # Binary/file responses (e.g. FileResponse) often arrive in multiple body chunks.
+                    # If we cache the start message and update Content-Length per chunk, clients
+                    # will truncate the download. To preserve encryption guarantees without
+                    # relying on incorrect Content-Length, we treat binary responses as a
+                    # streaming encrypted NDJSON response.
+                    is_binary_encrypted_stream = (
+                        not is_streaming_response
+                        and (
+                            "application/gzip" in content_type
+                            or "application/octet-stream" in content_type
+                            or "application/x-tar" in content_type
+                            or "attachment" in content_disposition
+                        )
+                    )
+
+                    if is_binary_encrypted_stream:
+                        # Rewrite headers for NDJSON streaming of encrypted chunks.
+                        updated_headers = []
+                        for name, value in message.get("headers", []):
+                            lname = name.lower()
+                            if lname in (b"content-length", b"content-type"):
+                                continue
+                            updated_headers.append((name, value))
+                        updated_headers.append((b"content-type", b"application/x-ndjson"))
+                        updated_headers.append((b"transfer-encoding", b"chunked"))
+                        message["headers"] = updated_headers
+
+                        await send(message)
+                        response_start_sent = True
+                        return
+                    
+                    if is_streaming_response:
+                        # For streaming responses, send start immediately and encrypt each chunk
+                        await send(message)
+                        response_start_sent = True
+                    else:
+                        # For regular responses, cache the start message
+                        cached_start_message = message
+                        
+                elif message["type"] == "http.response.body":
+                    body = message.get("body", b"")
+                    more_body = bool(message.get("more_body", False))
+                    
+                    if is_binary_encrypted_stream:
+                        encrypted_body = body
+                        if body:
+                            try:
+                                import base64
+                                encoded_body = base64.b64encode(body).decode()
+                                encrypted_payload = channel.encrypt_json_payload(
+                                    {
+                                        "raw_data": encoded_body,
+                                        "seq": binary_seq,
+                                        "final": not more_body,
+                                    }
+                                )
+                                binary_seq += 1
+                                if not more_body:
+                                    binary_final_sent = True
+                                encrypted_chunk = {
+                                    "encrypted": True,
+                                    "payload": encrypted_payload,
+                                    "encryption": "xchacha20poly1305",
+                                    "type": "raw",
+                                }
+                                encrypted_body = (json.dumps(encrypted_chunk) + "\n").encode()
+                            except Exception:
+                                # If encryption fails for some reason, we must not leak raw data.
+                                # Return a hard error chunk.
+                                error_payload = channel.encrypt_json_payload(
+                                    {"error": "binary_chunk_encryption_failed", "seq": binary_seq}
+                                )
+                                encrypted_body = (json.dumps({
+                                    "encrypted": True,
+                                    "payload": error_payload,
+                                    "encryption": "xchacha20poly1305",
+                                    "type": "error",
+                                }) + "\n").encode()
+                                binary_seq += 1
+                        elif not more_body and not binary_final_sent:
+                            # Some servers terminate streaming responses with an empty final chunk.
+                            # Emit an explicit encrypted final frame so clients can reliably
+                            # detect completion.
+                            try:
+                                encrypted_payload = channel.encrypt_json_payload(
+                                    {
+                                        "raw_data": "",
+                                        "seq": binary_seq,
+                                        "final": True,
+                                    }
+                                )
+                                binary_seq += 1
+                                binary_final_sent = True
+                                encrypted_body = (
+                                    json.dumps(
+                                        {
+                                            "encrypted": True,
+                                            "payload": encrypted_payload,
+                                            "encryption": "xchacha20poly1305",
+                                            "type": "raw",
+                                        }
+                                    )
+                                    + "\n"
+                                ).encode()
+                            except Exception:
+                                # If we can't encrypt the final marker, emit nothing (connection
+                                # will close) rather than leak data.
+                                encrypted_body = b""
+
+                        message["body"] = encrypted_body or b""
+                        await send(message)
+                        return
+
+                    if is_streaming_response:
+                        # Streaming NDJSON: body chunks may contain multiple lines or partial lines.
+                        # Buffer and encrypt each complete JSON line as its own encrypted NDJSON frame.
+                        if body:
+                            ndjson_buffer += body
+
+                        encrypted_frames: list[bytes] = []
+                        while b"\n" in ndjson_buffer:
+                            line, ndjson_buffer = ndjson_buffer.split(b"\n", 1)
+                            line = line.strip()
+                            if not line:
+                                continue
+                            try:
+                                chunk_data = json.loads(line.decode("utf-8"))
+                                encrypted_payload = channel.encrypt_json_payload(chunk_data)
+                                encrypted_frames.append(
+                                    (json.dumps({
+                                        "encrypted": True,
+                                        "payload": encrypted_payload,
+                                        "encryption": "xchacha20poly1305",
+                                    }) + "\n").encode("utf-8")
+                                )
+                            except Exception:
+                                # If we can't parse a line as JSON, do NOT leak it.
+                                # Emit an encrypted error frame instead.
+                                error_payload = channel.encrypt_json_payload({
+                                    "type": "error",
+                                    "error": "stream_ndjson_parse_failed",
+                                })
+                                encrypted_frames.append(
+                                    (json.dumps({
+                                        "encrypted": True,
+                                        "payload": error_payload,
+                                        "encryption": "xchacha20poly1305",
+                                    }) + "\n").encode("utf-8")
+                                )
+
+                        # If stream is ending, flush remaining buffer if it contains a final JSON line.
+                        if not more_body and ndjson_buffer.strip():
+                            try:
+                                chunk_data = json.loads(ndjson_buffer.strip().decode("utf-8"))
+                                encrypted_payload = channel.encrypt_json_payload(chunk_data)
+                                encrypted_frames.append(
+                                    (json.dumps({
+                                        "encrypted": True,
+                                        "payload": encrypted_payload,
+                                        "encryption": "xchacha20poly1305",
+                                    }) + "\n").encode("utf-8")
+                                )
+                                ndjson_buffer = b""
+                            except Exception:
+                                # Drop remainder silently to avoid leaking malformed plaintext.
+                                ndjson_buffer = b""
+
+                        message["body"] = b"".join(encrypted_frames)
+                        await send(message)
+                        
+                    else:
+                        # Regular response: encrypt complete body as JSON
+                        encrypted_body = body  # Default to original body
+                        
+                        try:
+                            if body:
+                                response_data = json.loads(body.decode())
+                                encrypted_payload = channel.encrypt_json_payload(response_data)
+                                encrypted_response = {
+                                    "encrypted": True,
+                                    "payload": encrypted_payload,
+                                    "encryption": "xchacha20poly1305"
+                                }
+                                encrypted_body = json.dumps(encrypted_response).encode()
+                        except (json.JSONDecodeError, Exception):
+                            # Not JSON or encryption failed, use original body
+                            pass
+                        
+                        # Update Content-Length in cached start message if we have one
+                        if cached_start_message and not response_start_sent:
+                            headers = list(cached_start_message.get("headers", []))
+                            updated_headers = []
+                            
+                            for name, value in headers:
+                                if name.lower() == b"content-length":
+                                    updated_headers.append((name, str(len(encrypted_body or b"")).encode()))
+                                else:
+                                    updated_headers.append((name, value))
+                            
+                            cached_start_message["headers"] = updated_headers
+                            await send(cached_start_message)
+                            response_start_sent = True
+                        
+                        # Send the body (ensure it's not None)
+                        message["body"] = encrypted_body or b""
+                        await send(message)
+                else:
+                    await send(message)
+            
+            # Check if request is encrypted and decrypt if needed
+            if body:
+                try:
+                    request_data = json.loads(body)
+                    is_legacy_encrypted = request_data.get("encrypted") and "payload" in request_data
+                    is_encrypted_payload = "encrypted_payload" in request_data
+                    if is_legacy_encrypted or is_encrypted_payload:
+                        # Decrypt the payload
+                        encrypted_payload = (
+                            request_data["payload"] if is_legacy_encrypted else request_data["encrypted_payload"]
+                        )
+                        
+                        try:
+                            # Validate session before attempting decryption
+                            if not channel.session_established:
+                                self.logger.error("Decryption attempted but session not established")
+                                raise DecryptionError("Session not established")
+                            
+                            if not channel.session_box:
+                                self.logger.error("Decryption attempted but session_box is None")
+                                raise DecryptionError("Session box not initialized")
+                            
+                            # Check session timeout
+                            import time
+                            if time.time() - channel.session_timestamp > channel.session_timeout:
+                                self.logger.error(f"Session expired (age: {time.time() - channel.session_timestamp}s, timeout: {channel.session_timeout}s)")
+                                raise DecryptionError("Session expired")
+                            
+                            decrypted_data = channel.decrypt_json_payload(encrypted_payload)
+                            
+                            # Replace the request body with decrypted data
+                            decrypted_body = json.dumps(decrypted_data).encode()
+                            
+                            # Create new scope with updated content-length but preserve all headers
+                            new_scope = scope.copy()
+                            # Preserve state (incl. encryption_channel) for downstream endpoints
+                            new_scope["state"] = dict(scope.get("state", {}))
+                            headers = list(scope.get("headers", []))
+                            
+                            # Update content-length header
+                            updated_headers = []
+                            content_length_updated = False
+                            for name, value in headers:
+                                if name.lower() == b"content-length":
+                                    updated_headers.append((name, str(len(decrypted_body)).encode()))
+                                    content_length_updated = True
+                                else:
+                                    updated_headers.append((name, value))
+                            
+                            # Add content-length if not present
+                            if not content_length_updated:
+                                updated_headers.append((b"content-length", str(len(decrypted_body)).encode()))
+                            
+                            new_scope["headers"] = updated_headers
+                            
+                            # Create a new receive callable with the decrypted body
+                            message_sent = False
+                            async def new_receive():
+                                nonlocal message_sent
+                                if not message_sent:
+                                    message_sent = True
+                                    return {
+                                        "type": "http.request",
+                                        "body": decrypted_body,
+                                        "more_body": False
+                                    }
+                                else:
+                                    # For subsequent calls (like streaming disconnect detection), 
+                                    # delegate to original receive
+                                    return await receive()
+                            
+                            if trace_interactions:
+                                self.logger.info(
+                                    "[ENCRYPTION_TRACE] decrypted_forward",
+                                    extra={
+                                        "method": scope.get("method"),
+                                        "path": path,
+                                        "elapsed_ms": int((time_module.perf_counter() - trace_start) * 1000),
+                                    },
+                                )
+
+                            # Forward the request with decrypted body and encrypted response
+                            await self.app(new_scope, new_receive, encrypt_send)
+                            if trace_interactions:
+                                self.logger.info(
+                                    "[ENCRYPTION_TRACE] downstream_returned",
+                                    extra={
+                                        "method": scope.get("method"),
+                                        "path": path,
+                                        "elapsed_ms": int((time_module.perf_counter() - trace_start) * 1000),
+                                    },
+                                )
+                            return
+                            
+                        except DecryptionError as e:
+                            self.logger.error(f"Decryption failed: {e}")
+                            # Clear the invalid session
+                            if client_id in self.channels:
+                                del self.channels[client_id]
+                                self.logger.info(f"Cleared invalid session for client {client_id}")
+                            # Return 401 to trigger handshake retry
+                            response = JSONResponse(
+                                status_code=401,
+                                content={
+                                    "error": "Session invalid",
+                                    "message": "Please perform handshake again at /api/v1/handshake"
+                                }
+                            )
+                            await response(scope, receive, send)
+                            return
+                        except HTTPException as e:
+                            if e.status_code >= 500:
+                                self.logger.error(f"Downstream HTTPException: {e.status_code}: {e.detail}", exc_info=True)
+                            else:
+                                self.logger.warning(f"Downstream HTTPException: {e.status_code}: {e.detail}")
+                            response = JSONResponse(status_code=e.status_code, content={"detail": e.detail})
+                            await response(scope, receive, encrypt_send)
+                            return
+                        except Exception as e:
+                            self.logger.error(f"Unexpected decryption error: {e}", exc_info=True)
+                            raise
+                except json.JSONDecodeError:
+                    # Not JSON, pass through
+                    pass
+            
+            if trace_interactions:
+                self.logger.info(
+                    "[ENCRYPTION_TRACE] passthrough_forward",
+                    extra={
+                        "method": scope.get("method"),
+                        "path": path,
+                        "elapsed_ms": int((time_module.perf_counter() - trace_start) * 1000),
+                        "has_channel": channel is not None,
+                    },
+                )
+
+            # Pass through unencrypted requests but encrypt responses for valid sessions
+            await self.app(scope, replay_receive, encrypt_send)
+
+            if trace_interactions:
+                self.logger.info(
+                    "[ENCRYPTION_TRACE] downstream_returned",
+                    extra={
+                        "method": scope.get("method"),
+                        "path": path,
+                        "elapsed_ms": int((time_module.perf_counter() - trace_start) * 1000),
+                    },
+                )
+            
+        except (EncryptionError, DecryptionError) as e:
+            self.logger.error(
+                f"Encryption middleware error: {e}",
+                extra={
+                    "method": scope.get("method"),
+                    "path": path,
+                    "elapsed_ms": int((time_module.perf_counter() - trace_start) * 1000) if trace_interactions else None,
+                },
+            )
+            origin = request.headers.get("origin") if "request" in locals() else None
+            headers = {}
+            if origin:
+                headers["Access-Control-Allow-Origin"] = origin
+                headers["Access-Control-Allow-Credentials"] = "true"
+                req_headers = request.headers.get("access-control-request-headers") if "request" in locals() else None
+                if req_headers:
+                    headers["Access-Control-Allow-Headers"] = req_headers
+                headers["Access-Control-Allow-Methods"] = request.headers.get("access-control-request-method") or "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+            response = JSONResponse(
+                status_code=400,
+                content={"error": "Encryption error", "detail": str(e)},
+                headers=headers or None,
+            )
+            await response(scope, receive, send)
+        except Exception as e:
+            # Full trace is required here: this is the main source of "silent" failures
+            # that prevent requests from reaching the router.
+            self.logger.exception(
+                "Encryption middleware unhandled exception",
+                extra={
+                    "method": scope.get("method"),
+                    "path": path,
+                    "elapsed_ms": int((time.perf_counter() - trace_start) * 1000) if trace_interactions else None,
+                },
+            )
+            origin = request.headers.get("origin") if "request" in locals() else None
+            headers = {}
+            if origin:
+                headers["Access-Control-Allow-Origin"] = origin
+                headers["Access-Control-Allow-Credentials"] = "true"
+                req_headers = request.headers.get("access-control-request-headers") if "request" in locals() else None
+                if req_headers:
+                    headers["Access-Control-Allow-Headers"] = req_headers
+                headers["Access-Control-Allow-Methods"] = request.headers.get("access-control-request-method") or "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+            response = JSONResponse(
+                status_code=500,
+                content={"error": "Internal server error"},
+                headers=headers or None,
+            )
+            await response(scope, receive, send)
+        finally:
+            if trace_interactions:
+                self.logger.info(
+                    "[ENCRYPTION_TRACE] request_end",
+                    extra={
+                        "method": scope.get("method"),
+                        "path": path,
+                        "elapsed_ms": int((time_module.perf_counter() - trace_start) * 1000),
+                    },
+                )
+    
+    def _should_skip_encryption(self, request: Request) -> bool:
+        """Check if request should skip encryption"""
+        path = request.url.path
+        
+        # Public endpoints that don't require encryption
+        public_endpoints = [
+            "/api/v1/health",              # Health check endpoint
+            "/api/v1/health/",             # Health check endpoint (with trailing slash)
+            "/api/v1/health/detailed",     # Detailed health check endpoint
+            "/api/v1/health/detailed/",    # Detailed health check endpoint (with trailing slash)
+            "/api/v1/handshake",           # Encryption session establishment
+            "/api/v1/handshake/"           # Encryption session establishment (with trailing slash)
+        ]
+        
+        # Check exact matches for public endpoints
+        if path in public_endpoints:
+            return True
+        
+        # Allow scheduler trigger endpoint with JWT authentication (no encryption needed)
+        if path.startswith("/api/v1/scheduler/tasks/") and path.endswith("/trigger"):
+            return True
+        
+        # NEVER skip encryption for admin endpoints - they contain sensitive data
+        if path.startswith("/api/v1/admin/"):
+            return False
+
+        # Studio operations endpoints use standard HTTP (JWT) and are allowed to run
+        # without transport encryption. This keeps browser fetches working in Studio
+        # without requiring an encryption handshake.
+        if path.startswith("/api/v1/operations/"):
+            return True
+            
+        # All other /api/v1/ endpoints require encryption by default
+        if path.startswith("/api/v1/"):
+            return False
+            
+        # Non-API paths can skip encryption (static files, etc.)
+        return True
+    
+    def _get_client_id(self, request: Request) -> str:
+        """Get unique client identifier"""
+        # Use combination of IP and User-Agent for client identification
+        # In production, this could be enhanced with client certificates
+        client_ip = request.client.host
+        user_agent = request.headers.get("user-agent", "unknown")
+        # IMPORTANT: Do not use Python's built-in hash() here.
+        # hash() is salted per-process (PYTHONHASHSEED) and is not stable across restarts.
+        # An unstable client_id breaks encryption session lookup and causes downstream
+        # 401s / handshake loops / decrypt failures.
+        ua_digest = hashlib.sha256(user_agent.encode("utf-8")).hexdigest()
+        return f"{client_ip}:{ua_digest}"
+    
+    async def _handle_handshake(self, request: Request) -> Response:
+        """Handle encryption handshake"""
+        try:
+            if request.method != "POST":
+                origin = request.headers.get("origin")
+                headers = {"Access-Control-Allow-Origin": origin, "Access-Control-Allow-Credentials": "true"} if origin else None
+                return JSONResponse(
+                    status_code=405,
+                    content={"error": "Method not allowed"},
+                    headers=headers
+                )
+            
+            # Parse handshake request
+            body = await request.body()
+            handshake_data = json.loads(body)
+            
+            if "handshake_request" in handshake_data:
+                # Extract handshake request data
+                handshake_request = handshake_data["handshake_request"]
+                
+                # Studio sends minimal handshake requests - generate required fields if missing
+                import time
+                from nacl.public import PrivateKey
+                from nacl.signing import SigningKey
+                from nacl.utils import random
+                import base64
+                
+                # Always use current server time for handshake timestamp (client timestamp may be 0 or stale)
+                handshake_request['timestamp'] = time.time()
+                
+                if 'component' not in handshake_request:
+                    handshake_request['component'] = 'studio'
+                
+                if 'challenge' not in handshake_request:
+                    challenge = random(32)
+                    handshake_request['challenge'] = base64.b64encode(challenge).decode()
+                
+                if 'public_key' not in handshake_request:
+                    # Generate ephemeral keypair for this client session
+                    client_private_key = PrivateKey.generate()
+                    client_public_key = client_private_key.public_key
+                    handshake_request['public_key'] = base64.b64encode(bytes(client_public_key)).decode()
+                
+                if 'identity_key' not in handshake_request:
+                    # Generate ephemeral identity key for this client
+                    client_signing_key = SigningKey.generate()
+                    client_verify_key = client_signing_key.verify_key
+                    handshake_request['identity_key'] = base64.b64encode(bytes(client_verify_key)).decode()
+                
+                if 'signature' not in handshake_request:
+                    # Sign the challenge with the ephemeral signing key
+                    challenge_bytes = base64.b64decode(handshake_request['challenge'])
+                    signature = client_signing_key.sign(challenge_bytes).signature
+                    handshake_request['signature'] = base64.b64encode(signature).decode()
+                
+                # Process handshake and get client_id and response data
+                client_id, response_data, channel = self.identity_manager.process_handshake_and_create_channel(
+                    handshake_request, "backend"
+                )
+                
+                # Store the channel for the client
+                self.channels[client_id] = channel
+                self.logger.info(f"Stored channel for client_id: {client_id}")
+                
+                # Return handshake response in transit security test format
+                origin = request.headers.get("origin")
+                headers = {"Access-Control-Allow-Origin": origin, "Access-Control-Allow-Credentials": "true"} if origin else None
+                return JSONResponse(
+                    status_code=200,
+                    content={
+                        "status": "session_established",
+                        "handshake_response": response_data
+                    },
+                    headers=headers
+                )
+            
+            origin = request.headers.get("origin")
+            headers = {"Access-Control-Allow-Origin": origin, "Access-Control-Allow-Credentials": "true"} if origin else None
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Invalid handshake format"},
+                headers=headers
+            )
+        
+        except Exception as e:
+            self.logger.error(f"Handshake error: {e}")
+            origin = request.headers.get("origin")
+            headers = {"Access-Control-Allow-Origin": origin, "Access-Control-Allow-Credentials": "true"} if origin else None
+            return JSONResponse(
+                status_code=500,
+                content={"error": "Handshake processing failed"},
+                headers=headers
+            )
+    
+    async def _decrypt_request(self, request: Request, channel: SecureTransportChannel) -> Request:
+        """Decrypt request body"""
+        try:
+            body = await request.body()
+            if not body:
+                return request
+            
+            # Check if body is encrypted (base64 encoded)
+            try:
+                request_data = json.loads(body)
+                if "encrypted_payload" in request_data:
+                    # Decrypt payload
+                    decrypted_data = channel.decrypt_json_payload(
+                        request_data["encrypted_payload"]
+                    )
+                    
+                    # Replace request body with decrypted data
+                    new_body = json.dumps(decrypted_data).encode()
+                    
+                    # Create new request with decrypted body
+                    scope = request.scope.copy()
+                    scope["body"] = new_body
+                    
+                    # Update content-length header
+                    headers = dict(request.headers)
+                    headers["content-length"] = str(len(new_body))
+                    scope["headers"] = [(k.encode(), v.encode()) for k, v in headers.items()]
+                    
+                    return Request(scope)
+                
+            except json.JSONDecodeError:
+                # Not JSON, return as-is
+                pass
+            
+            return request
+            
+        except Exception as e:
+            self.logger.error(f"Request decryption failed: {e}")
+            raise DecryptionError(f"Failed to decrypt request: {e}")
+    
+    async def _encrypt_response(self, response: Response, channel: SecureTransportChannel) -> Response:
+        """Encrypt response body"""
+        try:
+            # Get response body
+            body = b""
+            async for chunk in response.body_iterator:
+                body += chunk
+            
+            if not body:
+                return response
+            
+            # Parse JSON response
+            try:
+                response_data = json.loads(body)
+                
+                # Encrypt the response data
+                encrypted_payload = channel.encrypt_json_payload(response_data)
+                
+                # Create encrypted response
+                encrypted_response = {
+                    "encrypted_payload": encrypted_payload,
+                    "encryption": "xchacha20poly1305"
+                }
+                
+                # Create new response
+                new_body = json.dumps(encrypted_response).encode()
+                
+                return Response(
+                    content=new_body,
+                    status_code=response.status_code,
+                    headers=dict(response.headers),
+                    media_type="application/json"
+                )
+                
+            except json.JSONDecodeError:
+                # Not JSON, return as-is
+                return response
+            
+        except Exception as e:
+            self.logger.error(f"Response encryption failed: {e}")
+            raise EncryptionError(f"Failed to encrypt response: {e}")
+    
+    def _is_json_response(self, response: Response) -> bool:
+        """Check if response is JSON"""
+        content_type = response.headers.get("content-type", "")
+        return "application/json" in content_type
+    
+    def cleanup_expired_channels(self):
+        """Clean up expired channels"""
+        expired_clients = [
+            client_id for client_id, channel in self.channels.items()
+            if not channel.is_session_valid()
+        ]
+        
+        for client_id in expired_clients:
+            del self.channels[client_id]
+            self.logger.debug(f"Cleaned up expired channel for {client_id}")
+
+
+class WebSocketEncryptionHandler:
+    """
+    WebSocket encryption handler for secure real-time communication
+    
+    Handles WebSocket upgrade with encryption handshake and message encryption.
+    """
+    
+    def __init__(self, key_manager: AICOKeyManager):
+        self.key_manager = key_manager
+        self.identity_manager = TransportIdentityManager(key_manager)
+        self.logger = get_logger("backend.api_gateway.websocket_encryption")
+        
+        # Active channels per WebSocket connection
+        self.channels: Dict[str, SecureTransportChannel] = {}
+    
+    async def handle_connection(self, websocket, client_id: str):
+        """Handle WebSocket connection with encryption"""
+        try:
+            # Accept WebSocket connection
+            await websocket.accept()
+            
+            # Perform handshake
+            channel = await self._perform_websocket_handshake(websocket, client_id)
+            if not channel:
+                await websocket.close(code=4000, reason="Handshake failed")
+                return
+            
+            # Store channel
+            self.channels[client_id] = channel
+            
+            self.logger.info("Secure WebSocket connection established", extra={
+                "client_id": client_id
+            })
+            
+            # Handle encrypted messages
+            await self._handle_encrypted_messages(websocket, channel)
+            
+        except Exception as e:
+            self.logger.error(f"WebSocket encryption error: {e}")
+            await websocket.close(code=4001, reason="Encryption error")
+        finally:
+            # Cleanup
+            if client_id in self.channels:
+                del self.channels[client_id]
+    
+    async def _perform_websocket_handshake(self, websocket, client_id: str) -> Optional[SecureTransportChannel]:
+        """Perform encryption handshake over WebSocket"""
+        try:
+            # Create channel
+            channel = self.identity_manager.create_secure_channel("backend")
+            
+            # Wait for handshake request
+            handshake_request = await websocket.receive_json()
+            
+            if "handshake_request" not in handshake_request:
+                await websocket.send_json({"error": "Invalid handshake format"})
+                return None
+            
+            # Process handshake
+            response_data = channel.process_handshake_request(
+                handshake_request["handshake_request"]
+            )
+            
+            # Send response
+            await websocket.send_json({
+                "handshake_response": response_data,
+                "status": "session_established"
+            })
+            
+            return channel
+            
+        except Exception as e:
+            self.logger.error(f"WebSocket handshake failed: {e}")
+            return None
+    
+    async def _handle_encrypted_messages(self, websocket, channel: SecureTransportChannel):
+        """Handle encrypted WebSocket messages"""
+        try:
+            while True:
+                # Receive message
+                message = await websocket.receive_json()
+                
+                if "encrypted_payload" in message:
+                    # Decrypt message
+                    decrypted_data = channel.decrypt_json_payload(
+                        message["encrypted_payload"]
+                    )
+                    
+                    # Process decrypted message (this would integrate with message bus)
+                    response_data = await self._process_message(decrypted_data)
+                    
+                    # Encrypt and send response
+                    if response_data:
+                        encrypted_payload = channel.encrypt_json_payload(response_data)
+                        await websocket.send_json({
+                            "encrypted_payload": encrypted_payload,
+                            "encryption": "xchacha20poly1305"
+                        })
+                
+                else:
+                    # Unencrypted message (could be control message)
+                    await websocket.send_json({"error": "Encryption required"})
+                    
+        except Exception as e:
+            self.logger.error(f"WebSocket message handling error: {e}")
+    
+    async def _process_message(self, message_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Process decrypted WebSocket message"""
+        # This would integrate with the AICO message bus
+        # For now, return echo response
+        return {
+            "type": "response",
+            "data": message_data,
+            "timestamp": asyncio.get_event_loop().time()
+        }

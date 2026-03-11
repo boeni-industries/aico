@@ -10,6 +10,7 @@ from typing import Dict, Any
 
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
+from core.services.modelservice_client import get_modelservice_client
 from .registry import ToolDefinition, get_tool_registry
 
 
@@ -23,8 +24,6 @@ async def tool_modelservice_scan_health() -> Dict[str, Any]:
     """
     start = datetime.now(UTC)
     try:
-        from backend.services import get_modelservice_client
-        
         config = ConfigurationManager()
         config.initialize(lightweight=True)
         client = get_modelservice_client(config)
