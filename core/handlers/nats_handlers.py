@@ -87,10 +87,30 @@ class CoreNATSHandlers:
             )
         return self.system_handlers
     
+    async def _ensure_scheduler_run_ledger_reconciled(self, *, reference_time: datetime | None = None) -> None:
+        """Best-effort reconciliation so scheduler run-ledger reads reflect current day-view expectations."""
+        scheduler = self.container.get_service("task_scheduler")
+        if scheduler is None:
+            return
+
+        reconcile_fn = getattr(scheduler, "_reconcile_planned_runs", None)
+        if reconcile_fn is None:
+            return
+
+        current_now = datetime.now(UTC)
+        now = reference_time or current_now
+        if now > current_now:
+            now = current_now
+        try:
+            await reconcile_fn(now=now)
+        except Exception as exc:
+            self.logger.warning(f"Best-effort scheduler run reconciliation failed before read: {exc}")
+    
     @trace_nats_handler("scheduler.status")
     async def handle_scheduler_status_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Handle scheduler status request from gateway"""
         try:
+            await self._ensure_scheduler_run_ledger_reconciled()
             scheduler = self.container.get_service("task_scheduler")
             if scheduler is None:
                 return {
@@ -733,6 +753,8 @@ class CoreNATSHandlers:
             start_dt = datetime.fromisoformat(str(start_time).replace("Z", "+00:00"))
             end_dt = datetime.fromisoformat(str(end_time).replace("Z", "+00:00"))
 
+            await self._ensure_scheduler_run_ledger_reconciled(reference_time=end_dt)
+
             from aico.data.postgres.connection import get_session_factory
             from aico.data.uow import UnitOfWork
             from aico.services.scheduler_service import SchedulerService
@@ -847,6 +869,8 @@ class CoreNATSHandlers:
 
             start_dt = datetime.fromisoformat(str(start_time).replace("Z", "+00:00"))
             end_dt = datetime.fromisoformat(str(end_time).replace("Z", "+00:00"))
+
+            await self._ensure_scheduler_run_ledger_reconciled(reference_time=end_dt)
 
             from aico.data.postgres.connection import get_session_factory
             from aico.data.uow import UnitOfWork

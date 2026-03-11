@@ -240,6 +240,29 @@ class RESTAdapter:
                 return value.isoformat()
             return str(value)
 
+        def _session_is_currently_active(session: Any, now: datetime) -> bool:
+            expires_at = getattr(session, "expires_at", None)
+            return bool(getattr(session, "is_active", False)) and bool(expires_at and expires_at > now)
+
+        def _format_session_time_remaining(expires_at: Any, now: datetime) -> str:
+            if expires_at is None:
+                return "Expired"
+
+            remaining = expires_at - now
+            total_seconds = int(remaining.total_seconds())
+            if total_seconds <= 0:
+                return "Expired"
+
+            days, rem = divmod(total_seconds, 86400)
+            hours, rem = divmod(rem, 3600)
+            minutes, _ = divmod(rem, 60)
+
+            if days > 0:
+                return f"{days}d {hours}h"
+            if hours > 0:
+                return f"{hours}h {minutes}m"
+            return f"{minutes}m"
+
         @self.app.post(f"{prefix}/users/authenticate")
         async def users_authenticate(request: Request):
             auth_manager = get_auth_manager(request)
@@ -585,6 +608,7 @@ class RESTAdapter:
         async def users_sessions_users(_user: Dict[str, Any] = Depends(get_current_user), uow: UnitOfWork = Depends(get_uow)):
             users = await uow.users.list(limit=10000)
             sessions = await uow.sessions.list(limit=10000)
+            now = datetime.now(timezone.utc)
 
             active_session_counts: Dict[str, int] = {}
             total_session_counts: Dict[str, int] = {}
@@ -595,7 +619,7 @@ class RESTAdapter:
                 if not user_uuid:
                     continue
                 total_session_counts[user_uuid] = total_session_counts.get(user_uuid, 0) + 1
-                if getattr(session, "is_active", False):
+                if _session_is_currently_active(session, now):
                     active_session_counts[user_uuid] = active_session_counts.get(user_uuid, 0) + 1
 
                 created_at = getattr(session, "created_at", None)
@@ -635,13 +659,15 @@ class RESTAdapter:
             sessions = await uow.sessions.list(limit=10000)
             users = await uow.users.list(limit=10000)
             users_by_uuid = {getattr(user, "uuid", None): user for user in users}
+            now = datetime.now(timezone.utc)
 
             response_sessions = []
             active_sessions = 0
             for session in sessions:
                 user_uuid = getattr(session, "user_uuid", None)
                 user = users_by_uuid.get(user_uuid)
-                is_active = bool(getattr(session, "is_active", False))
+                expires_at = getattr(session, "expires_at", None)
+                is_active = _session_is_currently_active(session, now)
                 if is_active:
                     active_sessions += 1
 
@@ -651,10 +677,10 @@ class RESTAdapter:
                         "user_uuid": user_uuid,
                         "device_uuid": getattr(session, "device_uuid", None),
                         "session_type": getattr(session, "session_type", None) or "web",
-                        "expires_at": _iso_or_none(getattr(session, "expires_at", None)),
+                        "expires_at": _iso_or_none(expires_at),
                         "created_at": _iso_or_none(getattr(session, "created_at", None)),
                         "is_active": is_active,
-                        "time_remaining": None,
+                        "time_remaining": _format_session_time_remaining(expires_at, now),
                         "user_full_name": getattr(user, "full_name", None) or "Unknown User",
                         "user_nickname": getattr(user, "nickname", None),
                         "user_type": str(getattr(user, "user_type", "user")) if user else "user",
@@ -674,6 +700,7 @@ class RESTAdapter:
             sessions = await uow.sessions.list(limit=10000)
             users = await uow.users.list(limit=10000)
             users_by_uuid = {getattr(user, "uuid", None): user for user in users}
+            now = datetime.now(timezone.utc)
 
             active_sessions = 0
             expired_sessions = 0
@@ -688,7 +715,7 @@ class RESTAdapter:
                 device_type = "unknown"
                 sessions_by_device_type[device_type] = sessions_by_device_type.get(device_type, 0) + 1
 
-                is_active = bool(getattr(session, "is_active", False))
+                is_active = _session_is_currently_active(session, now)
                 if is_active:
                     active_sessions += 1
                 else:
@@ -736,16 +763,17 @@ class RESTAdapter:
             active_sessions = []
             expired_sessions = 0
             for session in sessions:
-                is_currently_active = bool(getattr(session, "is_active", False)) and bool(getattr(session, "expires_at", now) > now)
+                expires_at = getattr(session, "expires_at", None)
+                is_currently_active = _session_is_currently_active(session, now)
                 session_payload = {
                     "uuid": getattr(session, "uuid", None),
                     "user_uuid": getattr(session, "user_uuid", None),
                     "device_uuid": getattr(session, "device_uuid", None),
                     "session_type": getattr(session, "session_type", None) or "web",
-                    "expires_at": _iso_or_none(getattr(session, "expires_at", None)),
+                    "expires_at": _iso_or_none(expires_at),
                     "created_at": _iso_or_none(getattr(session, "created_at", None)),
-                    "is_active": bool(getattr(session, "is_active", False)),
-                    "time_remaining": None,
+                    "is_active": is_currently_active,
+                    "time_remaining": _format_session_time_remaining(expires_at, now),
                 }
                 if is_currently_active:
                     active_sessions.append(session_payload)
@@ -768,7 +796,7 @@ class RESTAdapter:
                         default=None,
                     ),
                     "is_active": any(
-                        bool(getattr(session, "is_active", False)) and bool(getattr(session, "expires_at", now) > now)
+                        _session_is_currently_active(session, now)
                         for session in sessions
                         if getattr(session, "device_uuid", None) == device_id
                     ),

@@ -854,7 +854,6 @@ class TaskExecutor:
         self.logger.info(f"Cancelled task {task_id}")
         return True
 
-
 class TaskScheduler(BaseService if BACKEND_AVAILABLE else object):
     """Main scheduler that coordinates task discovery, scheduling, and execution"""
     
@@ -864,6 +863,7 @@ class TaskScheduler(BaseService if BACKEND_AVAILABLE else object):
         else:
             self.name = name
             self.container = container
+        self.config_manager = getattr(container, "config", None)
         
         # Core components
         self.task_registry = None
@@ -886,6 +886,12 @@ class TaskScheduler(BaseService if BACKEND_AVAILABLE else object):
 
         self._bus_client = None
     
+    def get_config(self, key: str, default: Any = None) -> Any:
+        """Get configuration value from config manager."""
+        if self.config_manager is None:
+            return default
+        return self.config_manager.get(key, default)
+    
     async def initialize(self) -> None:
         """Initialize scheduler components"""
         # Database not needed - PostgreSQL uses UoW pattern per request
@@ -901,7 +907,7 @@ class TaskScheduler(BaseService if BACKEND_AVAILABLE else object):
         self.priority_queue = PriorityTaskQueue(max_queue_size=max_queue_size)
         
         self.logger.debug("Task scheduler initialized with priority queue")
-    
+
     async def start(self) -> None:
         """Start the scheduler"""
         if self.running:
