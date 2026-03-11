@@ -94,16 +94,41 @@ class ModelServiceClient:
     
     async def _ensure_connection(self):
         """Ensure message bus connection is established."""
-        if self.bus_client is None:
-            self.bus_client = MessageBusClient(
-                client_id="backend_modelservice_client",
-                config_manager=self.config_manager
-            )
-            await self.bus_client.connect()
-            self.logger.info(
-                "Connected to message bus for modelservice communication",
+        is_connected = (
+            self.bus_client is not None
+            and getattr(self.bus_client, "running", False)
+            and getattr(self.bus_client, "connected", False)
+            and getattr(self.bus_client, "_nats", None) is not None
+        )
+
+        if is_connected:
+            return
+
+        if self.bus_client is not None:
+            self.logger.warning(
+                "Modelservice bus client exists but is disconnected; recreating connection",
                 extra={"topic": AICOTopics.LOGS_ENTRY}
             )
+
+        new_bus_client = MessageBusClient(
+            client_id="backend_modelservice_client",
+            config_manager=self.config_manager
+        )
+
+        try:
+            await new_bus_client.connect()
+        except Exception:
+            # Do not keep a stale/disconnected client instance around after a failed connect
+            self.bus_client = None
+            raise
+
+        self.bus_client = new_bus_client
+        # New bus connection means prior NATS subscriptions are gone
+        self.subscribed_topics.clear()
+        self.logger.info(
+            "Connected to message bus for modelservice communication",
+            extra={"topic": AICOTopics.LOGS_ENTRY}
+        )
     
     async def _send_request(
         self,
