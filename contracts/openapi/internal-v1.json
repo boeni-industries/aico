@@ -11252,7 +11252,7 @@
     },
     "/api/v1/operations/backup-sets/{backup_id}/download": {
       "get": {
-        "description": "Download a backup set archive.\n\nGateway returns a short-lived pre-signed artifact store URL produced by Core.",
+        "description": "Download a backup set archive.\n\nGateway streams the backup archive using a short-lived pre-signed artifact\nstore URL produced by Core.",
         "operationId": "download_backup_set_api_v1_operations_backup_sets__backup_id__download_get",
         "parameters": [
           {
