@@ -148,20 +148,22 @@ class LokiLogHandler(logging.Handler):
         
         Returns dict with labels and log line.
         """
-        # Infer service from logger name if not explicitly set
+        # Infer service from logger name when it clearly maps to a runtime.
+        # Otherwise keep the initialized host service so logs from shared packages
+        # are attributed to the hosting process instead of a synthetic shared bucket.
         inferred_service = self.service_name
         if isinstance(record.name, str):
-            if record.name.startswith("backend."):
-                inferred_service = "backend"
+            if record.name.startswith("gateway."):
+                inferred_service = "gateway"
+            elif record.name.startswith("core."):
+                inferred_service = "core"
             elif record.name.startswith("modelservice."):
                 inferred_service = "modelservice"
             elif record.name.startswith("cli."):
                 inferred_service = "cli"
-            elif record.name.startswith("shared.") or record.name.startswith("aico."):
-                inferred_service = "shared"
 
         # Extract logger prefix (first 2 segments) for low-cardinality label
-        # Skip service name prefix to avoid duplication (e.g., backend.backend.main -> backend.main)
+        # Skip service name prefix to avoid duplication (e.g., gateway.gateway.main -> gateway.main)
         logger_prefix = "unknown"
         if isinstance(record.name, str) and "." in record.name:
             parts = record.name.split(".")

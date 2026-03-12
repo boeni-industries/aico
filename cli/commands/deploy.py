@@ -2237,9 +2237,10 @@ def deploy_grafana(
 
     config = ConfigurationManager()
     config.initialize(lightweight=True)
+    grafana_cfg = config.get("grafana", {}) or {}
     grafana_url = (
         os.getenv("AICO_GRAFANA_URL")
-        or config.get_optional("grafana.url")
+        or grafana_cfg.get("url")
         or "http://127.0.0.1:3001"
     )
     

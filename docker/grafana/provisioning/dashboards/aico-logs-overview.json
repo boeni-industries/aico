@@ -610,7 +610,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum by(service) (count_over_time({service=~\".+\", level=~\"$level\"} |~ \"$search\" [$__range]))",
+          "expr": "sum by(service) (count_over_time({service=~\"$service\", level=~\"$level\"} |~ \"$search\" [$__range]))",
           "legendFormat": "{{service}}",
           "queryType": "instant",
           "refId": "A",
@@ -746,7 +746,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum by(level) (count_over_time({service=~\".+\"} |~ \"$search\" [$__range]))",
+          "expr": "sum by(level) (count_over_time({service=~\"$service\", level=~\"$level\"} |~ \"$search\" [$__range]))",
           "legendFormat": "{{level}}",
           "queryType": "instant",
           "refId": "A",
@@ -1267,7 +1267,6 @@
         "options": [],
         "query": "label_values(service)",
         "refresh": 2,
-        "regex": "^(gateway|core|modelservice)$",
         "skipUrlSync": false,
         "sort": 1,
         "type": "query"

@@ -1643,7 +1643,7 @@ async def count_logs(
     if label_filters:
         logql_query = "{" + ", ".join(label_filters) + "}"
     else:
-        logql_query = '{job=~".+"}'
+        logql_query = '{service=~".+"}'
 
     # Add line filter for search
     if search:
