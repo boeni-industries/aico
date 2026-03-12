@@ -6,6 +6,10 @@ Provides request/reply helpers for gateway endpoints to communicate with core se
 
 import json
 from typing import Any, Dict, Optional
+
+from fastapi import HTTPException, status
+from nats.errors import NoRespondersError
+
 from aico.core.logging import get_logger
 from aico.core.bus import MessageBusClient, MessageBusTimeoutError, MessageBusError
 from google.protobuf.struct_pb2 import Struct
@@ -63,6 +67,16 @@ class GatewayNATSClient:
                 span.set_attribute("messaging.response_size_bytes", len(reply_msg.data))
                 return response_data
                 
+            except NoRespondersError as e:
+                span.set_status(trace.Status(trace.StatusCode.ERROR, "No responders available"))
+                span.record_exception(e)
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail={
+                        "error_code": "upstream_service_unavailable",
+                        "message": f"No NATS responder available for '{subject}'",
+                    },
+                )
             except MessageBusTimeoutError as e:
                 span.set_status(trace.Status(trace.StatusCode.ERROR, "Request timed out"))
                 span.record_exception(e)

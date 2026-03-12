@@ -135,7 +135,7 @@ class IntentClassificationProcessor(BaseAIProcessor):
         """Get ModelService client (lazy initialization)"""
         if self._modelservice_client is None:
             try:
-                from backend.services.modelservice_client import ModelServiceClient
+                from core.services.modelservice_client import ModelServiceClient
                 self._modelservice_client = ModelServiceClient(self.config_manager)
                 logger.debug("[INTENT_CLASSIFIER] ModelService client initialized")
             except Exception as e:
