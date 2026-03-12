@@ -166,7 +166,7 @@
           "refId": "LokiVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,
-        "regex": "",
+        "regex": "^(gateway|core|modelservice)$",
         "skipUrlSync": false,
         "sort": 1,
         "type": "query"

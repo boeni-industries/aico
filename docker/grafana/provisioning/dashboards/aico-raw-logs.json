@@ -128,7 +128,7 @@
         "options": [],
         "query": "label_values(service)",
         "refresh": 2,
-        "regex": "",
+        "regex": "^(gateway|core|modelservice)$",
         "skipUrlSync": false,
         "sort": 1,
         "type": "query"

@@ -1225,7 +1225,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{service=\"backend\"} |~ \"Slow request\" |~ \"$search\" | json | line_format \"{{ if .msg }}{{ .msg }}{{ else }}{{ __line__ }}{{ end }}\"",
+          "expr": "{service=~\"$service\"} |~ \"Slow request\" |~ \"$search\" | json | line_format \"{{ if .msg }}{{ .msg }}{{ else }}{{ __line__ }}{{ end }}\"",
           "queryType": "range",
           "refId": "A"
         }
@@ -1267,7 +1267,7 @@
         "options": [],
         "query": "label_values(service)",
         "refresh": 2,
-        "regex": "",
+        "regex": "^(gateway|core|modelservice)$",
         "skipUrlSync": false,
         "sort": 1,
         "type": "query"

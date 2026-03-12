@@ -308,7 +308,7 @@
           "refId": "PromQuery"
         },
         "refresh": 1,
-        "regex": "",
+        "regex": "^(gateway|core|modelservice)$",
         "skipUrlSync": false,
         "sort": 1,
         "type": "query",
