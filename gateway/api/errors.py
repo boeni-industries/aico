@@ -12,7 +12,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from aico.core.logging import get_logger
 
-logger = get_logger("backend.api.errors")
+logger = get_logger("gateway.api.errors")
 
 # Context variable to store request_id across async contexts
 request_id_context: ContextVar[Optional[str]] = ContextVar("request_id", default=None)

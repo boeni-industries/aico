@@ -32,7 +32,7 @@ class MessageValidator:
     """
     
     def __init__(self):
-        self.logger = get_logger("backend.api_gateway.validator")
+        self.logger = get_logger("gateway.middleware.validator")
         
         # Message schemas (would be loaded from schema files in production)
         self.schemas = self._load_schemas()

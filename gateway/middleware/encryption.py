@@ -34,7 +34,7 @@ class EncryptionMiddleware:
     def __init__(self, app: ASGIApp, key_manager: AICOKeyManager):
         self.app = app
         self.key_manager = key_manager
-        self.logger = get_logger("backend.api_gateway.encryption")
+        self.logger = get_logger("gateway.middleware.encryption")
         
         # Load transport encryption configuration
         from aico.core.config import ConfigurationManager
@@ -983,7 +983,7 @@ class WebSocketEncryptionHandler:
     def __init__(self, key_manager: AICOKeyManager):
         self.key_manager = key_manager
         self.identity_manager = TransportIdentityManager(key_manager)
-        self.logger = get_logger("backend.api_gateway.websocket_encryption")
+        self.logger = get_logger("gateway.middleware.websocket_encryption")
         
         # Active channels per WebSocket connection
         self.channels: Dict[str, SecureTransportChannel] = {}

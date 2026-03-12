@@ -12,7 +12,7 @@ from core.services.scheduler.tasks.base import BaseTask, TaskContext, TaskResult
 from core.services.issue_detection_service import IssueDetectionService
 
 
-logger = get_logger("backend.scheduler.tasks.issue_detection")
+logger = get_logger("core.scheduler.tasks.issue_detection")
 
 
 class IssueDetectionTask(BaseTask):

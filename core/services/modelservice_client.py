@@ -44,7 +44,7 @@ class ModelServiceClient:
         else:
             self.config = config
             
-        self.logger = get_logger("backend.services.modelservice_client")
+        self.logger = get_logger("core.services.modelservice_client")
         self.bus_client: Optional[MessageBusClient] = None
         
         # Track pending requests by correlation_id to route responses correctly
@@ -904,7 +904,7 @@ def get_modelservice_client(config_manager: ConfigurationManager) -> ModelServic
     
     if _modelservice_client is None:
         _modelservice_client = ModelServiceClient(config_manager)
-        logger = get_logger("backend.services.modelservice_client")
+        logger = get_logger("core.services.modelservice_client")
         logger.info("Created modelservice client - Note: this does not guarantee the modelservice is running")
         print("[i] Created modelservice client - use check_modelservice_health() to verify service availability")
     

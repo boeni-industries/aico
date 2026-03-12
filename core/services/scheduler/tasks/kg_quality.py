@@ -18,7 +18,7 @@ from collections import defaultdict
 from aico.core.logging import get_logger
 from aico.ai.knowledge_graph.models import Node, Edge, PropertyGraph
 
-logger = get_logger("backend.scheduler.tasks.kg_quality")
+logger = get_logger("core.scheduler.tasks.kg_quality")
 
 
 def _coerce_utc_datetime(value: Any) -> Optional[datetime]:

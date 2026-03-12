@@ -17,7 +17,7 @@ from typing import Dict, Any
 from aico.core.logging import get_logger
 from .base import BaseTask, TaskContext, TaskResult
 
-logger = get_logger("backend.scheduler.tasks.ams_trajectory_cleanup")
+logger = get_logger("core.scheduler.tasks.ams_trajectory_cleanup")
 
 
 class TrajectoryCleanupTask(BaseTask):

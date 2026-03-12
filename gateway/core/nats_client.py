@@ -16,7 +16,7 @@ from google.protobuf.struct_pb2 import Struct
 from google.protobuf.any_pb2 import Any as ProtoAny
 from opentelemetry import trace
 
-logger = get_logger("backend.api_gateway.nats_client")
+logger = get_logger("gateway.core.nats_client")
 tracer = trace.get_tracer(__name__)
 
 

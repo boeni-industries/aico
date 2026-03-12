@@ -11,7 +11,7 @@ from typing import Dict, Any
 from core.services.scheduler.tasks.base import BaseTask, TaskContext, TaskResult
 from aico.core.logging import get_logger
 
-logger = get_logger("backend.scheduler.tasks.agency_plan_executor")
+logger = get_logger("core.scheduler.tasks.agency_plan_executor")
 
 
 class AgencyPlanExecutorTask(BaseTask):

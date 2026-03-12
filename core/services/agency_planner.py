@@ -21,7 +21,7 @@ from aico.ai.agency.templates import PLAN_SHAPES, PlanShape
 from core.services.modelservice_client import ModelServiceClient
 
 
-logger = get_logger("backend.services.agency_planner")
+logger = get_logger("core.services.agency_planner")
 
 
 class LLMPlanningHelper:

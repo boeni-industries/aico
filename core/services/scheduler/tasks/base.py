@@ -106,7 +106,7 @@ class TaskContext:
         self.execution_id = execution_id
         self.service_container = service_container
         self.retry_count = retry_count  # Phase 6.2: Current retry attempt
-        self.logger = get_logger("backend.scheduler.task_context")
+        self.logger = get_logger("core.scheduler.task_context")
     
     def get_config(self, key: str, default: Any = None) -> Any:
         """Get configuration value with fallback chain:

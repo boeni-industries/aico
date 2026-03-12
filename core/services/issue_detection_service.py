@@ -18,7 +18,7 @@ from aico.ai.agency.skill_invoker import SkillInvoker
 from aico.ai.agency.skills.registry import SkillRegistry
 
 
-logger = get_logger("backend.services.issue_detection")
+logger = get_logger("core.services.issue_detection")
 
 
 class IssueDetectionService:

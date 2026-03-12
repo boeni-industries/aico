@@ -19,7 +19,7 @@ logger = None
 def _get_logger():
     global logger
     if logger is None:
-        logger = get_logger("backend.scheduler.tasks.curiosity_scan")
+        logger = get_logger("core.scheduler.tasks.curiosity_scan")
     return logger
 
 

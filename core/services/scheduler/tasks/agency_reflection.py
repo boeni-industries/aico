@@ -17,7 +17,7 @@ from aico.core.logging import get_logger
 from .base import BaseTask, TaskContext, TaskResult
 
 
-logger = get_logger("backend.scheduler.agency_reflection")
+logger = get_logger("core.scheduler.agency_reflection")
 
 
 class AgencyReflectionTask(BaseTask):

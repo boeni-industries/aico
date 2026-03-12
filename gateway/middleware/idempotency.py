@@ -19,7 +19,7 @@ from aico.common.postgres_dependencies import get_uow_factory
 from aico.data.tables import idempotency_requests
 
 
-logger = get_logger("backend.api_gateway.middleware.idempotency")
+logger = get_logger("gateway.middleware.idempotency")
 
 
 _MUTATION_METHODS = {"POST", "PUT", "PATCH", "DELETE"}

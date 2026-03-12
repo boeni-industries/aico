@@ -14,7 +14,7 @@ from typing import Dict, Any, List
 from aico.core.logging import get_logger
 from .base import BaseTask, TaskContext, TaskResult
 
-logger = get_logger("backend.scheduler.tasks.ams_feedback_classification")
+logger = get_logger("core.scheduler.tasks.ams_feedback_classification")
 
 
 class FeedbackClassificationTask(BaseTask):

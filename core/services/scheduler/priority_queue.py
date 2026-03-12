@@ -17,7 +17,7 @@ from aico.core.logging import get_logger
 from .tasks.base import TaskPriority, TaskQueue
 
 
-logger = get_logger("backend.scheduler.priority_queue")
+logger = get_logger("core.scheduler.priority_queue")
 
 
 @dataclass(order=True)

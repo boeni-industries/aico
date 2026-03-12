@@ -17,7 +17,7 @@ from dataclasses import dataclass, asdict
 from aico.core.logging import get_logger
 from aico.core.paths import AICOPaths
 
-logger = get_logger("backend.services.version_detector")
+logger = get_logger("core.services.version_detector")
 
 
 @dataclass
