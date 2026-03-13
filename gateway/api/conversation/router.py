@@ -173,7 +173,7 @@ async def send_message_with_auto_thread(
                                 elapsed = asyncio.get_event_loop().time() - timeout_start
                                 if not warned_no_chunks and chunk_count == 0 and elapsed >= 2.0:
                                     warned_no_chunks = True
-                                    logger.error(
+                                    logger.warning(
                                         "No streaming chunks received after 2s",
                                         extra={
                                             "message_id": message_id,
