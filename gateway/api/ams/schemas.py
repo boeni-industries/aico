@@ -97,6 +97,19 @@ class FeedbackStatsResponse(BaseModel):
     recent_feedback: List[RecentFeedbackResponse] = Field(..., description="Recent feedback events")
 
 
+class BehavioralFeedbackSubmitRequest(BaseModel):
+    message_id: str = Field(..., description="Message ID being rated")
+    reward: int = Field(..., description="Feedback reward: positive, negative, or neutral")
+    reason: Optional[str] = Field(None, description="Optional quick-tag reason")
+    free_text: Optional[str] = Field(None, description="Optional detailed feedback text")
+
+
+class BehavioralFeedbackSubmitResponse(BaseModel):
+    event_id: str = Field(..., description="Created feedback event ID")
+    skill_updated: bool = Field(..., description="Whether a skill was updated immediately")
+    new_confidence: Optional[float] = Field(None, description="Updated skill confidence if available")
+
+
 # ============================================================================
 # Combined AMS Stats Schema
 # ============================================================================

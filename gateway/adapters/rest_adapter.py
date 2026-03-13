@@ -209,7 +209,7 @@ class RESTAdapter:
         from gateway.api.dependencies import get_current_user, get_auth_manager
         from gateway.api.admin.router import router as admin_router
         from gateway.api.agency.router_gateway import router as agency_router
-        from gateway.api.ams.router import router as ams_router
+        from gateway.api.ams.router import router as ams_router, behavioral_router
         from gateway.api.conversation.router import router as conversation_router
         from gateway.api.interactions.router import router as interactions_router
         from gateway.api.operations.router import router as operations_router
@@ -225,6 +225,7 @@ class RESTAdapter:
         self.app.include_router(admin_router, prefix=prefix)
         self.app.include_router(agency_router, prefix=prefix)
         self.app.include_router(ams_router, prefix=prefix)
+        self.app.include_router(behavioral_router, prefix=prefix)
         self.app.include_router(system_router, prefix=prefix)
 
         def _serialize_user(user: Any) -> Dict[str, Any]:

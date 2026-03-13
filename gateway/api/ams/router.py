@@ -15,6 +15,7 @@ from typing import Annotated, Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from datetime import datetime, timedelta, timezone
 import json
+import uuid
 
 from aico.core.logging import get_logger
 from gateway.api.dependencies import get_current_user
@@ -25,6 +26,8 @@ from .schemas import (
     ConsolidationStatusResponse,
     ConsolidationSessionResponse,
     BehavioralLearningStatsResponse,
+    BehavioralFeedbackSubmitRequest,
+    BehavioralFeedbackSubmitResponse,
     SkillInfoResponse,
     UserPreferencesResponse,
     PreferenceDimensionResponse,
@@ -42,6 +45,7 @@ from . import router_extensions
 logger = get_logger("gateway.api.ams")
 
 router = APIRouter(prefix="/ams", tags=["ams"])
+behavioral_router = APIRouter(tags=["behavioral"])
 
 
 # ============================================================================
@@ -559,6 +563,41 @@ async def get_feedback_stats(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve feedback stats: {str(e)}"
+        )
+
+
+@behavioral_router.post("/behavioral/feedback", response_model=BehavioralFeedbackSubmitResponse)
+async def submit_behavioral_feedback(
+    payload: BehavioralFeedbackSubmitRequest,
+    user: Annotated[dict, Depends(get_current_user)],
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
+) -> BehavioralFeedbackSubmitResponse:
+    user_id = user.get("user_uuid")
+
+    try:
+        from aico.data.ams.models import BehavioralFeedback
+
+        feedback = BehavioralFeedback(
+            feedback_id=str(uuid.uuid4()),
+            user_id=user_id,
+            message_id=payload.message_id,
+            reward=payload.reward,
+            reason=payload.reason,
+            timestamp=datetime.now(timezone.utc),
+            free_text=payload.free_text,
+        )
+        await uow.ams_behavioral_feedback.create(feedback)
+        await uow.commit()
+        return BehavioralFeedbackSubmitResponse(
+            event_id=feedback.feedback_id,
+            skill_updated=False,
+            new_confidence=None,
+        )
+    except Exception as e:
+        logger.error(f"Failed to submit behavioral feedback: {e}", extra={"user_id": user_id})
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to submit behavioral feedback: {str(e)}"
         )
 
 
