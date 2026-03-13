@@ -213,7 +213,7 @@ def get_logger(name: str) -> logging.Logger:
         Standard Python logging.Logger instance
         
     Example:
-        logger = get_logger("backend.api.gateway")
+        logger = get_logger("gateway.api.gateway")
         logger.info("Request received", extra={"user_id": "123"})
     """
     return logging.getLogger(name)

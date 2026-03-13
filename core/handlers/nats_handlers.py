@@ -1,0 +1,4785 @@
+"""
+NATS request handlers for core services.
+
+Handles gateway→core requests via NATS request/reply pattern.
+"""
+
+import json
+import os
+import uuid
+import time
+import asyncio
+import requests
+from datetime import datetime, timedelta, timezone, UTC
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+from aico.core.logging import get_logger
+from google.protobuf.struct_pb2 import Struct
+from opentelemetry import trace
+from core.services.agency_nats_handlers import AgencyNATSHandlers
+from core.services.system_nats_handlers import SystemNATSHandlers
+
+logger = get_logger("core.core.nats_handlers")
+tracer = trace.get_tracer(__name__)
+
+
+def trace_nats_handler(subject: str):
+    """Decorator to add OpenTelemetry tracing to NATS handlers"""
+    def decorator(func):
+        async def wrapper(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+            with tracer.start_as_current_span(
+                f"nats.handle.{subject}",
+                kind=trace.SpanKind.SERVER,
+                attributes={
+                    "messaging.system": "nats",
+                    "messaging.destination": subject,
+                    "messaging.operation": "handle",
+                }
+            ) as span:
+                try:
+                    result = await func(self, request_data)
+                    if result.get("error"):
+                        span.set_status(trace.Status(trace.StatusCode.ERROR, result.get("message", "Unknown error")))
+                        span.set_attribute("error.type", result.get("error"))
+                    else:
+                        span.set_status(trace.Status(trace.StatusCode.OK))
+                    return result
+                except Exception as e:
+                    span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
+                    span.record_exception(e)
+                    raise
+        return wrapper
+    return decorator
+
+
+class CoreNATSHandlers:
+    """NATS request handlers for core services"""
+    
+    def __init__(self, service_container):
+        self.container = service_container
+        self.logger = logger
+        self.agency_handlers = AgencyNATSHandlers(service_container)
+        
+        # Initialize system health handlers (will be lazy-loaded when needed)
+        self.system_handlers = None
+        self._system_handlers_start_time = None
+
+        # Guard against duplicate subscription setup. In some startup/reconnect flows,
+        # setup_handlers() can be invoked multiple times; without a guard, each call
+        # adds another subscription and causes handlers (e.g. backup.create) to run
+        # multiple times per single request.
+        self._setup_lock = asyncio.Lock()
+        self._setup_in_progress = False
+        self._setup_completed = False
+    
+    async def _get_system_handlers(self):
+        """Lazy-load system handlers when first needed."""
+        if self.system_handlers is None:
+            import time
+            if self._system_handlers_start_time is None:
+                self._system_handlers_start_time = time.time()
+            
+            from aico.data.postgres.connection import get_session_factory
+            session_factory = await get_session_factory()
+            self.system_handlers = SystemNATSHandlers(
+                self.container, 
+                session_factory, 
+                self._system_handlers_start_time
+            )
+        return self.system_handlers
+    
+    async def _ensure_scheduler_run_ledger_reconciled(self, *, reference_time: datetime | None = None) -> None:
+        """Best-effort reconciliation so scheduler run-ledger reads reflect current day-view expectations."""
+        scheduler = self.container.get_service("task_scheduler")
+        if scheduler is None:
+            return
+
+        reconcile_fn = getattr(scheduler, "_reconcile_planned_runs", None)
+        if reconcile_fn is None:
+            return
+
+        current_now = datetime.now(UTC)
+        now = reference_time or current_now
+        if now > current_now:
+            now = current_now
+        try:
+            await reconcile_fn(now=now)
+        except Exception as exc:
+            self.logger.warning(f"Best-effort scheduler run reconciliation failed before read: {exc}")
+    
+    @trace_nats_handler("scheduler.status")
+    async def handle_scheduler_status_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle scheduler status request from gateway"""
+        try:
+            await self._ensure_scheduler_run_ledger_reconciled()
+            scheduler = self.container.get_service("task_scheduler")
+            if scheduler is None:
+                return {
+                    "error": "SCHEDULER_NOT_AVAILABLE",
+                    "message": "Task scheduler service not initialized"
+                }
+            
+            if not hasattr(scheduler, 'get_status'):
+                return {
+                    "status": "unknown",
+                    "tasks": [],
+                    "message": "Scheduler does not support status reporting"
+                }
+            
+            status = scheduler.get_status()
+            if status is None or not isinstance(status, dict):
+                return {
+                    "status": "unknown",
+                    "tasks": [],
+                    "message": "Scheduler returned invalid status"
+                }
+            self.logger.info(
+                "Scheduler status response served: "
+                f"status={status.get('status')}, running_tasks={len(status.get('running_tasks') or [])}, "
+                f"queued_tasks={status.get('queued_tasks', 0)}"
+            )
+            return status
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get scheduler status: {e}")
+            return {
+                "error": "SCHEDULER_ERROR",
+                "message": str(e)
+            }
+
+    async def handle_scheduler_task_get_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Get a specific task configuration."""
+        try:
+            task_id = request_data.get("task_id")
+            if not task_id:
+                return {"error": "TASK_ID_REQUIRED", "message": "task_id is required"}
+
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                task = await scheduler_service.get_task(task_id)
+
+            if not task:
+                return {"error": "TASK_NOT_FOUND", "message": f"Task not found: {task_id}"}
+
+            config_value = getattr(task, "config", None)
+            if isinstance(config_value, str):
+                try:
+                    config_value = json.loads(config_value)
+                except Exception:
+                    pass
+
+            created_at = getattr(task, "created_at", None)
+            updated_at = getattr(task, "updated_at", None)
+
+            return {
+                "task_id": task.task_id,
+                "task_class": task.task_class,
+                "schedule": task.schedule,
+                "config": config_value,
+                "enabled": bool(task.enabled),
+                "created_at": created_at.isoformat() if hasattr(created_at, "isoformat") else created_at,
+                "updated_at": updated_at.isoformat() if hasattr(updated_at, "isoformat") else updated_at,
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to get scheduler task: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_task_create_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a scheduled task."""
+        try:
+            task_id = request_data.get("task_id")
+            task_class = request_data.get("task_class")
+            schedule = request_data.get("schedule")
+            enabled = bool(request_data.get("enabled", True))
+            config = request_data.get("config")
+
+            if not task_id or not task_class or not schedule:
+                return {"error": "VALIDATION_ERROR", "message": "task_id, task_class, and schedule are required"}
+
+            from datetime import datetime, UTC
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                existing = await scheduler_service.get_task(task_id)
+                if existing:
+                    return {"error": "TASK_ALREADY_EXISTS", "message": f"Task already exists: {task_id}"}
+
+                task_data = {
+                    "task_id": task_id,
+                    "task_class": task_class,
+                    "schedule": schedule,
+                    "config": json.dumps(config) if isinstance(config, (dict, list)) else config,
+                    "enabled": enabled,
+                    "created_at": datetime.now(UTC),
+                    "updated_at": datetime.now(UTC),
+                }
+                created = await scheduler_service.create_task(task_data)
+
+            # Best-effort: update runtime next_run cache
+            try:
+                scheduler = self.container.get_service("task_scheduler")
+                if scheduler and enabled and schedule:
+                    next_run = scheduler.cron_parser.next_run_time(schedule)
+                    if next_run:
+                        scheduler.next_run_times[task_id] = next_run
+            except Exception:
+                pass
+
+            config_value = getattr(created, "config", None)
+            if isinstance(config_value, str):
+                try:
+                    config_value = json.loads(config_value)
+                except Exception:
+                    pass
+
+            return {
+                "task_id": created.task_id,
+                "task_class": created.task_class,
+                "schedule": created.schedule,
+                "config": config_value,
+                "enabled": bool(created.enabled),
+                "created_at": getattr(created, "created_at", None).isoformat() if getattr(created, "created_at", None) else None,
+                "updated_at": getattr(created, "updated_at", None).isoformat() if getattr(created, "updated_at", None) else None,
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to create scheduler task: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_task_update_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update a scheduled task."""
+        try:
+            task_id = request_data.get("task_id")
+            if not task_id:
+                return {"error": "TASK_ID_REQUIRED", "message": "task_id is required"}
+
+            new_schedule = request_data.get("schedule")
+            new_config = request_data.get("config")
+            enabled = request_data.get("enabled")
+
+            from datetime import datetime, UTC
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                existing = await scheduler_service.get_task(task_id)
+                if not existing:
+                    return {"error": "TASK_NOT_FOUND", "message": f"Task not found: {task_id}"}
+
+                task_data = {
+                    "task_id": task_id,
+                    "task_class": existing.task_class,
+                    "schedule": new_schedule or existing.schedule,
+                    "config": json.dumps(new_config) if isinstance(new_config, (dict, list)) else (new_config if new_config is not None else existing.config),
+                    "enabled": bool(existing.enabled) if enabled is None else bool(enabled),
+                    "created_at": existing.created_at,
+                    "updated_at": datetime.now(UTC),
+                }
+                updated = await scheduler_service.update_task(task_data)
+
+            # Best-effort: update runtime next_run cache
+            try:
+                scheduler = self.container.get_service("task_scheduler")
+                if scheduler:
+                    if bool(getattr(updated, "enabled", True)) and getattr(updated, "schedule", None):
+                        next_run = scheduler.cron_parser.next_run_time(updated.schedule)
+                        if next_run:
+                            scheduler.next_run_times[task_id] = next_run
+                    else:
+                        scheduler.next_run_times.pop(task_id, None)
+            except Exception:
+                pass
+
+            config_value = getattr(updated, "config", None)
+            if isinstance(config_value, str):
+                try:
+                    config_value = json.loads(config_value)
+                except Exception:
+                    pass
+
+            created_at = getattr(updated, "created_at", None)
+            updated_at = getattr(updated, "updated_at", None)
+
+            return {
+                "task_id": updated.task_id,
+                "task_class": updated.task_class,
+                "schedule": updated.schedule,
+                "config": config_value,
+                "enabled": bool(updated.enabled),
+                "created_at": created_at.isoformat() if hasattr(created_at, "isoformat") else created_at,
+                "updated_at": updated_at.isoformat() if hasattr(updated_at, "isoformat") else updated_at,
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to update scheduler task: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_task_delete_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Delete a scheduled task."""
+        try:
+            task_id = request_data.get("task_id")
+            if not task_id:
+                return {"error": "TASK_ID_REQUIRED", "message": "task_id is required"}
+
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                deleted = await scheduler_service.delete_task(task_id)
+                if not deleted:
+                    return {"error": "TASK_NOT_FOUND", "message": f"Task not found: {task_id}"}
+
+            try:
+                scheduler = self.container.get_service("task_scheduler")
+                if scheduler:
+                    scheduler.next_run_times.pop(task_id, None)
+            except Exception:
+                pass
+
+            return {"success": True, "message": f"Task {task_id} deleted successfully"}
+        except Exception as e:
+            self.logger.error(f"Failed to delete scheduler task: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_task_enable_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Enable a scheduled task."""
+        try:
+            task_id = request_data.get("task_id")
+            if not task_id:
+                return {"error": "TASK_ID_REQUIRED", "message": "task_id is required"}
+
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                ok = await scheduler_service.enable_task(task_id)
+                if not ok:
+                    return {"error": "TASK_NOT_FOUND", "message": f"Task not found: {task_id}"}
+                task = await scheduler_service.get_task(task_id)
+
+            # Best-effort runtime update
+            try:
+                scheduler = self.container.get_service("task_scheduler")
+                if scheduler and task and getattr(task, "schedule", None):
+                    next_run = scheduler.cron_parser.next_run_time(task.schedule)
+                    if next_run:
+                        scheduler.next_run_times[task_id] = next_run
+            except Exception:
+                pass
+
+            return {"success": True, "message": f"Task {task_id} enabled successfully"}
+        except Exception as e:
+            self.logger.error(f"Failed to enable scheduler task: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_task_disable_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Disable a scheduled task."""
+        try:
+            task_id = request_data.get("task_id")
+            if not task_id:
+                return {"error": "TASK_ID_REQUIRED", "message": "task_id is required"}
+
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                ok = await scheduler_service.disable_task(task_id)
+                if not ok:
+                    return {"error": "TASK_NOT_FOUND", "message": f"Task not found: {task_id}"}
+
+            try:
+                scheduler = self.container.get_service("task_scheduler")
+                if scheduler:
+                    scheduler.next_run_times.pop(task_id, None)
+            except Exception:
+                pass
+
+            return {"success": True, "message": f"Task {task_id} disabled successfully"}
+        except Exception as e:
+            self.logger.error(f"Failed to disable scheduler task: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_task_status_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Get task status (enabled, last execution, next_run_time, is_running)."""
+        try:
+            task_id = request_data.get("task_id")
+            if not task_id:
+                return {"error": "TASK_ID_REQUIRED", "message": "task_id is required"}
+
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                task = await scheduler_service.get_task(task_id)
+                if not task:
+                    return {"error": "TASK_NOT_FOUND", "message": f"Task not found: {task_id}"}
+
+                history = await scheduler_service.get_task_executions(task_id, limit=1)
+
+            last_execution = None
+            if history:
+                exec_data = history[0]
+                last_execution = {
+                    "execution_id": exec_data.execution_id,
+                    "status": exec_data.status,
+                    "started_at": exec_data.started_at.isoformat() if getattr(exec_data, "started_at", None) else None,
+                    "completed_at": exec_data.completed_at.isoformat() if getattr(exec_data, "completed_at", None) else None,
+                    "result": exec_data.result,
+                    "error_message": exec_data.error_message,
+                    "duration_seconds": exec_data.duration_seconds,
+                }
+
+            scheduler = self.container.get_service("task_scheduler")
+            next_run_time = None
+            is_running = False
+            if scheduler is not None:
+                if bool(getattr(task, "enabled", False)) and task_id in getattr(scheduler, "next_run_times", {}):
+                    next_run_time = scheduler.next_run_times[task_id].isoformat()
+                is_running = task_id in getattr(scheduler.task_executor, "running_tasks", {})
+
+            return {
+                "task_id": task_id,
+                "enabled": bool(task.enabled),
+                "last_execution": last_execution,
+                "next_run_time": next_run_time,
+                "is_running": bool(is_running),
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to get task status: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_task_history_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Get execution history for a task."""
+        try:
+            task_id = request_data.get("task_id")
+            limit = int(request_data.get("limit", 50))
+            limit = max(1, min(limit, 1000))
+            if not task_id:
+                return {"error": "TASK_ID_REQUIRED", "message": "task_id is required"}
+
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                task = await scheduler_service.get_task(task_id)
+                if not task:
+                    return {"error": "TASK_NOT_FOUND", "message": f"Task not found: {task_id}"}
+                history = await scheduler_service.get_task_executions(task_id, limit=limit)
+
+            executions = []
+            for exec_data in history:
+                executions.append(
+                    {
+                        "execution_id": exec_data.execution_id,
+                        "status": exec_data.status,
+                        "started_at": exec_data.started_at.isoformat() if getattr(exec_data, "started_at", None) else None,
+                        "completed_at": exec_data.completed_at.isoformat() if getattr(exec_data, "completed_at", None) else None,
+                        "result": exec_data.result,
+                        "error_message": exec_data.error_message,
+                        "duration_seconds": exec_data.duration_seconds,
+                    }
+                )
+
+            return {"task_id": task_id, "executions": executions, "total_count": len(executions)}
+        except Exception as e:
+            self.logger.error(f"Failed to get task history: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_executions_range_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Get executions in a given time range (ISO timestamps)."""
+        try:
+            start_time = request_data.get("start_time")
+            end_time = request_data.get("end_time")
+            if not start_time or not end_time:
+                return {"error": "VALIDATION_ERROR", "message": "start_time and end_time are required"}
+
+            limit = int(request_data.get("limit", 500))
+            limit = max(1, min(limit, 2000))
+
+            from datetime import datetime
+
+            start_dt = datetime.fromisoformat(str(start_time).replace("Z", "+00:00"))
+            end_dt = datetime.fromisoformat(str(end_time).replace("Z", "+00:00"))
+
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                all_executions = await scheduler_service.get_recent_executions(limit=10000)
+
+            executions = [
+                e
+                for e in all_executions
+                if getattr(e, "started_at", None) and start_dt <= e.started_at <= end_dt
+            ]
+
+            executions = executions[:limit]
+
+            executions_response = []
+            for exec_data in executions:
+                executions_response.append(
+                    {
+                        "task_id": exec_data.task_id,
+                        "execution_id": exec_data.execution_id,
+                        "status": exec_data.status,
+                        "started_at": exec_data.started_at.isoformat() if getattr(exec_data, "started_at", None) else None,
+                        "completed_at": exec_data.completed_at.isoformat() if getattr(exec_data, "completed_at", None) else None,
+                        "error_message": exec_data.error_message,
+                        "duration_seconds": exec_data.duration_seconds,
+                    }
+                )
+
+            return {
+                "executions": executions_response,
+                "total_count": len(executions_response),
+                "start_time": start_time,
+                "end_time": end_time,
+                "limit": limit,
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to get executions in range: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_executions_list_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """List executions in a time range with cursor pagination."""
+        try:
+            start_time = request_data.get("start_time")
+            end_time = request_data.get("end_time")
+            if not start_time or not end_time:
+                return {"error": "VALIDATION_ERROR", "message": "start_time and end_time are required"}
+
+            limit = int(request_data.get("limit", 200))
+            limit = max(1, min(limit, 500))
+
+            cursor_started_at_raw = request_data.get("cursor_started_at")
+            cursor_execution_id = request_data.get("cursor_execution_id")
+
+            task_id = request_data.get("task_id")
+            status = request_data.get("status")
+            include_acknowledged = bool(request_data.get("include_acknowledged", True))
+
+            from datetime import datetime
+
+            start_dt = datetime.fromisoformat(str(start_time).replace("Z", "+00:00"))
+            end_dt = datetime.fromisoformat(str(end_time).replace("Z", "+00:00"))
+
+            cursor_started_at = None
+            if cursor_started_at_raw:
+                cursor_started_at = datetime.fromisoformat(str(cursor_started_at_raw).replace("Z", "+00:00"))
+
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                executions = await scheduler_service.list_executions_in_range_cursor(
+                    start_dt=start_dt,
+                    end_dt=end_dt,
+                    limit=limit,
+                    cursor_started_at=cursor_started_at,
+                    cursor_execution_id=cursor_execution_id,
+                    task_id=task_id,
+                    status=status,
+                    include_acknowledged=include_acknowledged,
+                )
+
+            items = []
+            for exec_data in executions:
+                items.append(
+                    {
+                        "task_id": exec_data.task_id,
+                        "execution_id": exec_data.execution_id,
+                        "status": exec_data.status,
+                        "started_at": exec_data.started_at.isoformat() if getattr(exec_data, "started_at", None) else None,
+                        "completed_at": exec_data.completed_at.isoformat() if getattr(exec_data, "completed_at", None) else None,
+                        "error_message": exec_data.error_message,
+                        "duration_seconds": exec_data.duration_seconds,
+                        "acknowledged": bool(getattr(exec_data, "acknowledged", False)),
+                    }
+                )
+
+            next_cursor_started_at = None
+            next_cursor_execution_id = None
+            if items:
+                last = items[-1]
+                next_cursor_started_at = last.get("started_at")
+                next_cursor_execution_id = last.get("execution_id")
+
+            return {
+                "items": items,
+                "next_cursor_started_at": next_cursor_started_at,
+                "next_cursor_execution_id": next_cursor_execution_id,
+                "has_more": bool(len(items) == limit),
+                "limit": limit,
+                "start_time": start_time,
+                "end_time": end_time,
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to list executions: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_execution_get_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Get a single execution by execution_id."""
+        try:
+            execution_id = request_data.get("execution_id")
+            if not execution_id:
+                return {"error": "VALIDATION_ERROR", "message": "execution_id is required"}
+
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                execution = await scheduler_service.get_execution_by_execution_id(str(execution_id))
+
+            if not execution:
+                return {"error": "EXECUTION_NOT_FOUND", "message": f"Execution not found: {execution_id}"}
+
+            return {
+                "task_id": execution.task_id,
+                "execution_id": execution.execution_id,
+                "status": execution.status,
+                "started_at": execution.started_at.isoformat() if getattr(execution, "started_at", None) else None,
+                "completed_at": execution.completed_at.isoformat() if getattr(execution, "completed_at", None) else None,
+                "result": execution.result,
+                "error_message": execution.error_message,
+                "duration_seconds": execution.duration_seconds,
+                "acknowledged": bool(getattr(execution, "acknowledged", False)),
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to get execution: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_executions_stats_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Get execution stats buckets in a time range."""
+        try:
+            start_time = request_data.get("start_time")
+            end_time = request_data.get("end_time")
+            if not start_time or not end_time:
+                return {"error": "VALIDATION_ERROR", "message": "start_time and end_time are required"}
+
+            bucket = str(request_data.get("bucket") or "hour")
+            if bucket not in {"hour", "day"}:
+                return {"error": "VALIDATION_ERROR", "message": "bucket must be 'hour' or 'day'"}
+
+            task_id = request_data.get("task_id")
+
+            from datetime import datetime
+
+            start_dt = datetime.fromisoformat(str(start_time).replace("Z", "+00:00"))
+            end_dt = datetime.fromisoformat(str(end_time).replace("Z", "+00:00"))
+
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                rows = await scheduler_service.get_execution_stats_in_range(
+                    start_dt=start_dt,
+                    end_dt=end_dt,
+                    bucket=bucket,
+                    task_id=task_id,
+                )
+
+            items = []
+            for row in rows:
+                bucket_start = row.get("bucket_start")
+                items.append(
+                    {
+                        "bucket_start": bucket_start.isoformat() if hasattr(bucket_start, "isoformat") else bucket_start,
+                        "status": row.get("status"),
+                        "count": int(row.get("count") or 0),
+                    }
+                )
+
+            return {
+                "items": items,
+                "bucket": bucket,
+                "start_time": start_time,
+                "end_time": end_time,
+                "task_id": task_id,
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to get execution stats: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_runs_list_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """List planned runs (run ledger) in a time range."""
+        try:
+            start_time = request_data.get("start_time")
+            end_time = request_data.get("end_time")
+            if not start_time or not end_time:
+                return {"error": "VALIDATION_ERROR", "message": "start_time and end_time are required"}
+
+            limit = int(request_data.get("limit", 200))
+            limit = max(1, min(limit, 500))
+            offset = int(request_data.get("offset", 0))
+            offset = max(0, offset)
+
+            task_id = request_data.get("task_id")
+            state = request_data.get("state")
+            tenant_id = request_data.get("tenant_id")
+
+            from datetime import datetime
+
+            start_dt = datetime.fromisoformat(str(start_time).replace("Z", "+00:00"))
+            end_dt = datetime.fromisoformat(str(end_time).replace("Z", "+00:00"))
+
+            await self._ensure_scheduler_run_ledger_reconciled(reference_time=end_dt)
+
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            filters: Dict[str, Any] = {
+                "scheduled_for_from": start_dt,
+                "scheduled_for_to": end_dt,
+            }
+            if task_id:
+                filters["task_id"] = task_id
+            if state:
+                filters["state"] = state
+            if tenant_id is not None:
+                filters["tenant_id"] = tenant_id
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                runs = await scheduler_service.list_runs(filters=filters, limit=limit, offset=offset)
+
+                count_fn = getattr(uow.scheduler_run_ledger, "count", None)
+                if count_fn is None:
+                    total_count = len(runs)
+                else:
+                    total_count = await count_fn(filters)
+
+            items: List[Dict[str, Any]] = []
+            for run in runs:
+                items.append(
+                    {
+                        "id": int(run.id),
+                        "task_id": run.task_id,
+                        "run_key": run.run_key,
+                        "tenant_id": getattr(run, "tenant_id", None),
+                        "scheduled_for": run.scheduled_for.isoformat(),
+                        "planned_at": run.planned_at.isoformat() if getattr(run, "planned_at", None) else None,
+                        "state": run.state,
+                        "enqueued_at": run.enqueued_at.isoformat() if getattr(run, "enqueued_at", None) else None,
+                        "started_at": run.started_at.isoformat() if getattr(run, "started_at", None) else None,
+                        "completed_at": run.completed_at.isoformat() if getattr(run, "completed_at", None) else None,
+                        "execution_id": getattr(run, "execution_id", None),
+                        "reason_code": getattr(run, "reason_code", None),
+                    }
+                )
+
+            return {
+                "items": items,
+                "total_count": int(total_count),
+                "limit": limit,
+                "offset": offset,
+                "start_time": start_time,
+                "end_time": end_time,
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to list runs: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_run_get_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Get a single run ledger row by numeric run_id."""
+        try:
+            run_id = request_data.get("run_id")
+            if not run_id:
+                return {"error": "VALIDATION_ERROR", "message": "run_id is required"}
+
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                run = await scheduler_service.get_run(str(run_id))
+
+            if not run:
+                return {"error": "RUN_NOT_FOUND", "message": f"Run not found: {run_id}"}
+
+            return {
+                "id": int(run.id),
+                "task_id": run.task_id,
+                "run_key": run.run_key,
+                "tenant_id": getattr(run, "tenant_id", None),
+                "scheduled_for": run.scheduled_for.isoformat(),
+                "planned_at": run.planned_at.isoformat() if getattr(run, "planned_at", None) else None,
+                "state": run.state,
+                "enqueued_at": run.enqueued_at.isoformat() if getattr(run, "enqueued_at", None) else None,
+                "started_at": run.started_at.isoformat() if getattr(run, "started_at", None) else None,
+                "completed_at": run.completed_at.isoformat() if getattr(run, "completed_at", None) else None,
+                "execution_id": getattr(run, "execution_id", None),
+                "reason_code": getattr(run, "reason_code", None),
+                "reason_detail": getattr(run, "reason_detail", None),
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to get run: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_runs_stats_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Get run ledger stats buckets in a time range."""
+        try:
+            start_time = request_data.get("start_time")
+            end_time = request_data.get("end_time")
+            if not start_time or not end_time:
+                return {"error": "VALIDATION_ERROR", "message": "start_time and end_time are required"}
+
+            bucket = str(request_data.get("bucket") or "hour")
+            if bucket not in {"hour", "day"}:
+                return {"error": "VALIDATION_ERROR", "message": "bucket must be 'hour' or 'day'"}
+
+            task_id = request_data.get("task_id")
+            tenant_id = request_data.get("tenant_id")
+
+            from datetime import datetime
+
+            start_dt = datetime.fromisoformat(str(start_time).replace("Z", "+00:00"))
+            end_dt = datetime.fromisoformat(str(end_time).replace("Z", "+00:00"))
+
+            await self._ensure_scheduler_run_ledger_reconciled(reference_time=end_dt)
+
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                rows = await scheduler_service.get_run_stats_in_range(
+                    start_dt=start_dt,
+                    end_dt=end_dt,
+                    bucket=bucket,
+                    task_id=task_id,
+                    tenant_id=tenant_id,
+                )
+
+            items: List[Dict[str, Any]] = []
+            for row in rows:
+                bucket_start = row.get("bucket_start")
+                items.append(
+                    {
+                        "bucket_start": bucket_start.isoformat() if hasattr(bucket_start, "isoformat") else bucket_start,
+                        "state": row.get("state"),
+                        "count": int(row.get("count") or 0),
+                    }
+                )
+
+            return {
+                "items": items,
+                "bucket": bucket,
+                "start_time": start_time,
+                "end_time": end_time,
+                "task_id": task_id,
+                "tenant_id": tenant_id,
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to get run stats: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_unacknowledged_failures_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Get unacknowledged failed executions."""
+        try:
+            task_id = request_data.get("task_id")
+            limit = int(request_data.get("limit", 100))
+            limit = max(1, min(limit, 10000))
+
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                executions = await scheduler_service.get_unacknowledged_failures(task_id=task_id, limit=limit)
+
+            executions_response = []
+            for exec_data in executions:
+                executions_response.append(
+                    {
+                        "execution_id": exec_data.execution_id,
+                        "task_id": exec_data.task_id,
+                        "status": exec_data.status,
+                        "started_at": exec_data.started_at.isoformat() if getattr(exec_data, "started_at", None) else None,
+                        "completed_at": exec_data.completed_at.isoformat() if getattr(exec_data, "completed_at", None) else None,
+                        "error_message": exec_data.error_message,
+                        "duration_seconds": exec_data.duration_seconds,
+                    }
+                )
+
+            return {"executions": executions_response, "total_count": len(executions_response), "task_id": task_id}
+        except Exception as e:
+            self.logger.error(f"Failed to get unacknowledged failures: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_acknowledge_execution_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Acknowledge a single execution."""
+        try:
+            execution_id = request_data.get("execution_id")
+            if not execution_id:
+                return {"error": "EXECUTION_ID_REQUIRED", "message": "execution_id is required"}
+
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                success = await scheduler_service.acknowledge_execution(execution_id)
+
+            if not success:
+                return {"error": "EXECUTION_NOT_FOUND", "message": f"Execution {execution_id} not found"}
+
+            return {"success": True, "message": f"Execution {execution_id} acknowledged successfully"}
+        except Exception as e:
+            self.logger.error(f"Failed to acknowledge execution: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_acknowledge_all_failed_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Acknowledge all failed executions."""
+        try:
+            task_id = request_data.get("task_id")
+
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                count = await scheduler_service.acknowledge_all_failed(task_id=task_id)
+
+            if task_id:
+                return {"success": True, "message": f"Acknowledged {count} failed executions for task {task_id}"}
+            return {"success": True, "message": f"Acknowledged {count} failed executions across all tasks"}
+        except Exception as e:
+            self.logger.error(f"Failed to acknowledge all failed executions: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+
+    async def handle_scheduler_task_trigger_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Trigger a task execution."""
+        try:
+            task_id = request_data.get("task_id")
+            if not task_id:
+                return {"error": "TASK_ID_REQUIRED", "message": "task_id is required"}
+
+            scheduler = self.container.get_service("task_scheduler")
+            if scheduler is None:
+                return {"error": "SCHEDULER_NOT_AVAILABLE", "message": "Task scheduler not available"}
+
+            result = await scheduler.trigger_task(task_id)
+
+            return {
+                "success": bool(getattr(result, "success", False)),
+                "message": getattr(result, "message", ""),
+                "execution_id": None,
+                "data": getattr(result, "data", None),
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to trigger task: {e}", exc_info=True)
+            return {"error": "SCHEDULER_ERROR", "message": str(e)}
+    
+    async def handle_scheduler_tasks_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle scheduler tasks list request from gateway"""
+        try:
+            enabled_only = request_data.get("enabled_only", False)
+
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                filters: Dict[str, Any] = {"enabled": True} if enabled_only else {}
+                task_models = await scheduler_service.list_tasks(filters=filters)
+
+            tasks: list[dict] = []
+            for task in task_models:
+                config_value = getattr(task, "config", None)
+                if isinstance(config_value, str):
+                    try:
+                        config_value = json.loads(config_value)
+                    except Exception:
+                        # Keep original string if it is not valid JSON
+                        config_value = config_value
+
+                created_at = getattr(task, "created_at", None)
+                updated_at = getattr(task, "updated_at", None)
+
+                tasks.append(
+                    {
+                        "task_id": task.task_id,
+                        "task_class": task.task_class,
+                        "schedule": task.schedule,
+                        "config": config_value,
+                        "enabled": bool(task.enabled),
+                        "created_at": created_at.isoformat() if hasattr(created_at, "isoformat") else created_at,
+                        "updated_at": updated_at.isoformat() if hasattr(updated_at, "isoformat") else updated_at,
+                    }
+                )
+
+            return {"tasks": tasks, "total_count": len(tasks)}
+            
+        except Exception as e:
+            self.logger.error(f"Failed to list scheduler tasks: {e}", exc_info=True)
+            return {
+                "error": "SCHEDULER_ERROR",
+                "message": str(e)
+            }
+    
+    async def handle_emotion_current_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle current emotion state request from gateway"""
+        try:
+            # Get emotion engine service
+            emotion_engine = self.container.get_service("emotion_engine")
+            if emotion_engine is None:
+                return {
+                    "error": "EMOTION_ENGINE_UNAVAILABLE",
+                    "message": "Emotion engine unavailable"
+                }
+            
+            # Get current emotional state from engine
+            current_state = emotion_engine.current_state
+            
+            if current_state is None:
+                return {
+                    "error": "EMOTION_STATE_NOT_AVAILABLE",
+                    "message": "No emotional state available"
+                }
+            
+            # Convert to response format matching EmotionStateResponse schema
+            return {
+                "timestamp": current_state.timestamp.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+                "primary": current_state.subjective_feeling.value,
+                "confidence": current_state.intensity,
+                "valence": current_state.mood_valence,
+                "arousal": current_state.mood_arousal,
+                "dominance": 0.5  # Default neutral dominance (not yet implemented in CPM)
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get current emotion: {e}", exc_info=True)
+            return {
+                "error": "EMOTION_ENGINE_ERROR",
+                "message": str(e)
+            }
+    
+    async def handle_emotion_history_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle emotion history request from gateway"""
+        try:
+            # Extract query params
+            limit = request_data.get("limit", 10)
+            hours = request_data.get("hours", 24)
+            
+            # Get emotion engine service
+            emotion_engine = self.container.get_service("emotion_engine")
+            if emotion_engine is None:
+                return {
+                    "error": "EMOTION_ENGINE_UNAVAILABLE",
+                    "message": "Emotion engine unavailable"
+                }
+            
+            # Get emotion state history from engine
+            history = await emotion_engine.get_state_history(limit=limit, hours=hours)
+            self.logger.info(f"🎭 Emotion engine returned {len(history)} states (limit={limit}, hours={hours})")
+            
+            # Add metadata about data age and diversity
+            metadata = {}
+            if history:
+                from datetime import datetime, UTC
+                
+                # Check data age
+                try:
+                    # Robust timestamp parsing to handle malformed variants
+                    ts_str = history[-1]["timestamp"]
+                    # Handle double +00:00 suffix and other malformed variants
+                    if "+00:00+00:00" in ts_str:
+                        ts_str = ts_str.replace("+00:00+00:00", "+00:00")
+                    if ts_str.endswith("+00:00Z"):
+                        ts_str = ts_str[:-1]
+                    if ts_str.endswith("Z"):
+                        ts_str = ts_str.replace("Z", "+00:00")
+                    
+                    last_timestamp = datetime.fromisoformat(ts_str)
+                    age_hours = (datetime.now(UTC) - last_timestamp).total_seconds() / 3600
+                    metadata["oldest_record_age_hours"] = age_hours
+                    metadata["newest_record_timestamp"] = history[-1]["timestamp"]
+                    metadata["oldest_record_timestamp"] = history[0]["timestamp"]
+                except Exception as e:
+                    self.logger.warning(f"Could not parse timestamp for metadata: {e}")
+                
+                # Check diversity
+                unique_feelings = len(set(h.get('feeling') for h in history))
+                metadata["unique_feelings_count"] = unique_feelings
+                
+                self.logger.info(f"🎭 Data diversity: {unique_feelings} unique feelings, newest record age: {metadata.get('oldest_record_age_hours', 0):.1f}h")
+            
+            return {
+                "count": len(history), 
+                "history": history,
+                "metadata": metadata
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get emotion history: {e}", exc_info=True)
+            return {
+                "error": "EMOTION_ENGINE_ERROR",
+                "message": str(e)
+            }
+    
+    async def handle_memory_semantic_stats_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle semantic memory stats request from gateway"""
+        try:
+            from aico.ai import ai_registry
+            from sqlalchemy import select, func, text
+            from aico.data.tables import conversation_segments
+            
+            memory_manager = ai_registry.get("memory")
+            if not memory_manager:
+                return {
+                    "error": "MEMORY_MANAGER_NOT_INITIALIZED",
+                    "message": "Memory manager not initialized"
+                }
+            
+            if not hasattr(memory_manager, '_semantic_store'):
+                return {
+                    "error": "SEMANTIC_MEMORY_NOT_INITIALIZED",
+                    "message": "Semantic memory not initialized"
+                }
+            
+            # Use exact same logic as original router.py - query database directly
+            uow_factory = self.container.get_service("uow")
+            uow = uow_factory()
+            async with uow as uow_instance:
+                stmt = select(func.count()).select_from(conversation_segments)
+                total_vectors = (await uow_instance._session.execute(stmt)).scalar() or 0
+
+                # Estimate storage size using Postgres relation size (includes table + indexes)
+                index_size_mb = 0.0
+                try:
+                    size_stmt = text("SELECT pg_total_relation_size('aico_core.conversation_segments')")
+                    size_bytes = (await uow_instance._session.execute(size_stmt)).scalar() or 0
+                    index_size_mb = float(size_bytes) / (1024.0 * 1024.0)
+                except Exception:
+                    # If size query fails, keep 0 and fall back below
+                    index_size_mb = 0.0
+
+                # Guard: avoid 0 MB when vectors exist (Studio derives per-MB metrics)
+                if int(total_vectors) > 0 and index_size_mb <= 0.0:
+                    # Rough lower-bound estimate: vector payload only (768 float32)
+                    index_size_mb = max(0.01, (int(total_vectors) * 768 * 4) / (1024.0 * 1024.0))
+                
+                collections = [
+                    {"name": "conversation_segments", "count": int(total_vectors), "dimension": 768}
+                ]
+
+                avg_retrieval_latency_ms = 0.0
+                retrieval_quality_percent = 0.0
+                try:
+                    def _query_semantic_stats() -> tuple[float, float]:
+                        conn = InfluxDBConnection()
+                        try:
+                            latency_rows = conn.query(
+                                f'''
+from(bucket: "{conn.bucket}")
+  |> range(start: -24h)
+  |> filter(fn: (r) => r._measurement == "memory_query" and r._field == "query_time_ms_f")
+  |> mean()
+'''
+                            )
+                            success_rows = conn.query(
+                                f'''
+from(bucket: "{conn.bucket}")
+  |> range(start: -24h)
+  |> filter(fn: (r) => r._measurement == "memory_query" and r._field == "success_b")
+  |> group(columns: ["_value"])
+  |> count()
+'''
+                            )
+                            latency = float(latency_rows[0].get("value", 0.0)) if latency_rows else 0.0
+                            success_true = 0
+                            success_total = 0
+                            for row in success_rows:
+                                count = int(row.get("value", 0) or 0)
+                                success_total += count
+                                if row.get("_value") is True:
+                                    success_true += count
+                            quality = (success_true / success_total * 100.0) if success_total else 0.0
+                            return latency, quality
+                        finally:
+                            conn.close()
+
+                    avg_retrieval_latency_ms, retrieval_quality_percent = await asyncio.to_thread(_query_semantic_stats)
+                except Exception:
+                    pass
+                
+                return {
+                    "total_vectors": int(total_vectors),
+                    "collections": collections,
+                    "index_size_mb": float(index_size_mb),
+                    "avg_retrieval_latency_ms": float(avg_retrieval_latency_ms),
+                    "retrieval_quality_percent": float(retrieval_quality_percent)
+                }
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get semantic memory stats: {e}", exc_info=True)
+            return {
+                "error": "SEMANTIC_MEMORY_STATS_FAILED",
+                "message": str(e)
+            }
+    
+    async def handle_memory_working_stats_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle working memory stats request from gateway"""
+        try:
+            from aico.ai import ai_registry
+            
+            memory_manager = ai_registry.get("memory")
+            if not memory_manager:
+                return {
+                    "error": "MEMORY_MANAGER_NOT_INITIALIZED",
+                    "message": "Memory manager not initialized"
+                }
+            
+            if not hasattr(memory_manager, '_working_store'):
+                return {
+                    "error": "WORKING_MEMORY_NOT_INITIALIZED",
+                    "message": "Working memory not initialized"
+                }
+            
+            working_store = memory_manager._working_store
+            stats = await working_store.get_stats()
+            
+            # Use exact same logic as original router.py
+            active_items = stats.get('active_items', 0)
+            capacity = stats.get('capacity', max(10000, int(active_items) * 2 if isinstance(active_items, int) else 10000))
+            utilization_percent = stats.get('utilization_percent')
+            if utilization_percent is None:
+                utilization_percent = (active_items / capacity) * 100 if capacity else 0.0
+            
+            return {
+                "active_items": active_items,
+                "capacity": capacity,
+                "utilization_percent": float(utilization_percent),
+                "ttl_utilization_percent": float(stats.get('ttl_utilization_percent', utilization_percent)),
+                "eviction_rate_per_min": float(stats.get('eviction_rate_per_min', 0.0)),
+                "recent_activity": stats.get('recent_activity', [])
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get working memory stats: {e}", exc_info=True)
+            return {
+                "error": "WORKING_MEMORY_STATS_FAILED",
+                "message": str(e)
+            }
+    
+    async def handle_kg_stats_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle KG stats request from gateway - matches original router.py logic"""
+        try:
+            user_id = request_data.get("user_id")
+            
+            # Get UoW factory from service container
+            uow_factory = self.container.get_service("uow")
+            uow = uow_factory()
+            
+            async with uow as uow_instance:
+                # Get all nodes and edges for this user
+                all_nodes = await uow_instance.kg_nodes.list(filters={"user_id": user_id}, limit=100000)
+                all_edges = await uow_instance.kg_edges.list(filters={"user_id": user_id}, limit=100000)
+                
+                # Basic counts
+                node_count = len(all_nodes)
+                current_nodes = [n for n in all_nodes if n.is_current]
+                current_node_count = len(current_nodes)
+                historical_node_count = node_count - current_node_count
+                
+                edge_count = len(all_edges)
+                current_edges = [e for e in all_edges if e.is_current]
+                current_edge_count = len(current_edges)
+                historical_edge_count = edge_count - current_edge_count
+                
+                # Node/edge type distributions
+                import json
+                node_types = {}
+                for node in all_nodes:
+                    label = node.label or "unknown"
+                    node_types[label] = node_types.get(label, 0) + 1
+                
+                edge_types = {}
+                for edge in all_edges:
+                    rel_type = edge.relation_type or "unknown"
+                    edge_types[rel_type] = edge_types.get(rel_type, 0) + 1
+                
+                # Total properties
+                total_node_properties = 0
+                for node in all_nodes:
+                    if node.properties:
+                        if isinstance(node.properties, str):
+                            try:
+                                props = json.loads(node.properties)
+                                total_node_properties += len(props)
+                            except:
+                                pass
+                        elif isinstance(node.properties, dict):
+                            total_node_properties += len(node.properties)
+                
+                # Storage size estimation
+                node_data_size = sum(
+                    len(str(node.id or "")) + len(str(node.label or "")) + 
+                    len(str(node.properties or "")) + len(str(node.source_text or ""))
+                    for node in all_nodes
+                )
+                edge_data_size = sum(
+                    len(str(edge.id or "")) + len(str(edge.relation_type or "")) + 
+                    len(str(edge.properties or "")) + len(str(edge.source_text or ""))
+                    for edge in all_edges
+                )
+                storage_size_mb = (node_data_size + edge_data_size) / (1024 * 1024) * 1.3
+                
+                # Health metrics
+                avg_degree = current_edge_count / max(current_node_count, 1)
+                node_ids = {node.id for node in current_nodes}
+                adjacency: Dict[Any, set[Any]] = {node_id: set() for node_id in node_ids}
+                orphaned_edges = 0
+                for edge in current_edges:
+                    source_id = getattr(edge, "source_id", None)
+                    target_id = getattr(edge, "target_id", None)
+                    if source_id not in node_ids or target_id not in node_ids:
+                        orphaned_edges += 1
+                        continue
+                    if source_id == target_id:
+                        adjacency[source_id].add(target_id)
+                    else:
+                        adjacency[source_id].add(target_id)
+                        adjacency[target_id].add(source_id)
+
+                degree_by_node = {node_id: len(neighbors) for node_id, neighbors in adjacency.items()}
+                isolated_nodes = sum(1 for degree in degree_by_node.values() if degree == 0)
+                max_degree = max(degree_by_node.values(), default=0)
+                min_degree = min(degree_by_node.values(), default=0)
+
+                seen: set[Any] = set()
+                component_sizes: list[int] = []
+                for start_node in adjacency:
+                    if start_node in seen:
+                        continue
+                    stack = [start_node]
+                    size = 0
+                    while stack:
+                        node_id = stack.pop()
+                        if node_id in seen:
+                            continue
+                        seen.add(node_id)
+                        size += 1
+                        stack.extend(neighbor for neighbor in adjacency[node_id] if neighbor not in seen)
+                    component_sizes.append(size)
+                connected_components = len(component_sizes) if component_sizes else 0
+                largest_component_size = max(component_sizes, default=0)
+
+                duplicate_groups: Dict[tuple[str, str, str], list[Any]] = {}
+                for node in current_nodes:
+                    key = (
+                        str(getattr(node, "label", "") or ""),
+                        str(getattr(node, "source_text", "") or "").strip().lower(),
+                        str(getattr(node, "properties", "") or ""),
+                    )
+                    duplicate_groups.setdefault(key, []).append(node)
+                duplicate_pairs = []
+                duplicate_nodes = 0
+                for nodes in duplicate_groups.values():
+                    if len(nodes) > 1:
+                        duplicate_nodes += len(nodes) - 1
+                        anchor = nodes[0]
+                        anchor_name = str(getattr(anchor, "source_text", None) or getattr(anchor, "label", None) or getattr(anchor, "id", ""))
+                        anchor_label = str(getattr(anchor, "label", None) or "unknown")
+                        for duplicate in nodes[1:]:
+                            duplicate_pairs.append(
+                                {
+                                    "id1": str(getattr(anchor, "id", "")),
+                                    "name1": anchor_name,
+                                    "label1": anchor_label,
+                                    "id2": str(getattr(duplicate, "id", "")),
+                                    "name2": str(getattr(duplicate, "source_text", None) or getattr(duplicate, "label", None) or getattr(duplicate, "id", "")),
+                                    "label2": str(getattr(duplicate, "label", None) or "unknown"),
+                                    "similarity": 1.0,
+                                }
+                            )
+
+                now = datetime.now(UTC)
+                stale_cutoff = now - timedelta(days=30)
+                stale_nodes_count = sum(
+                    1
+                    for node in current_nodes
+                    if (
+                        getattr(node, "updated_at", None) or getattr(node, "created_at", None) or now
+                    ) < stale_cutoff
+                )
+                stale_nodes_percent = (stale_nodes_count / max(current_node_count, 1) * 100.0) if current_node_count else 0.0
+
+                last_24h = now - timedelta(hours=24)
+                nodes_added_24h = sum(
+                    1 for node in all_nodes
+                    if getattr(node, "created_at", None) and getattr(node, "created_at", None) >= last_24h
+                )
+                edges_added_24h = sum(
+                    1 for edge in all_edges
+                    if getattr(edge, "created_at", None) and getattr(edge, "created_at", None) >= last_24h
+                )
+
+                activity_by_day: Dict[str, int] = {}
+                for record in list(all_nodes) + list(all_edges):
+                    created_at = getattr(record, "created_at", None)
+                    if not created_at:
+                        continue
+                    day_key = created_at.astimezone(UTC).date().isoformat()
+                    activity_by_day[day_key] = activity_by_day.get(day_key, 0) + 1
+                most_active_day = max(activity_by_day.items(), key=lambda item: item[1])[0] if activity_by_day else None
+
+                def _count_created_since(records: list[Any], *, start: datetime, end: datetime) -> int:
+                    return sum(
+                        1 for record in records
+                        if getattr(record, "created_at", None) and start <= getattr(record, "created_at", None) < end
+                    )
+
+                period_7_start = now - timedelta(days=7)
+                prev_7_start = now - timedelta(days=14)
+                recent_7 = _count_created_since(all_nodes, start=period_7_start, end=now)
+                prev_7 = _count_created_since(all_nodes, start=prev_7_start, end=period_7_start)
+                growth_rate_7d = ((recent_7 - prev_7) / prev_7 * 100.0) if prev_7 > 0 else (100.0 if recent_7 > 0 else 0.0)
+
+                period_30_start = now - timedelta(days=30)
+                prev_30_start = now - timedelta(days=60)
+                recent_30 = _count_created_since(all_nodes, start=period_30_start, end=now)
+                prev_30 = _count_created_since(all_nodes, start=prev_30_start, end=period_30_start)
+                growth_rate_30d = ((recent_30 - prev_30) / prev_30 * 100.0) if prev_30 > 0 else (100.0 if recent_30 > 0 else 0.0)
+
+                triangle_triplets = 0
+                closed_triplets = 0
+                local_coefficients: list[float] = []
+                for node_id, neighbors in adjacency.items():
+                    degree = len(neighbors)
+                    if degree < 2:
+                        local_coefficients.append(0.0)
+                        continue
+                    neighbor_list = list(neighbors)
+                    links = 0
+                    for idx, left in enumerate(neighbor_list):
+                        left_neighbors = adjacency.get(left, set())
+                        for right in neighbor_list[idx + 1:]:
+                            if right in left_neighbors:
+                                links += 1
+                    possible_links = degree * (degree - 1) / 2
+                    local_coefficients.append(links / possible_links if possible_links else 0.0)
+                    triangle_triplets += degree * (degree - 1) / 2
+                    closed_triplets += links
+                average_clustering_coefficient = (
+                    sum(local_coefficients) / len(local_coefficients) if local_coefficients else 0.0
+                )
+                global_clustering_coefficient = (
+                    closed_triplets / triangle_triplets if triangle_triplets else 0.0
+                )
+
+                modularity_score = 0.0
+                communities_detected = connected_components
+                m = current_edge_count
+                if m > 0 and component_sizes:
+                    component_index: Dict[Any, int] = {}
+                    seen.clear()
+                    component_nodes: list[set[Any]] = []
+                    for start_node in adjacency:
+                        if start_node in seen:
+                            continue
+                        stack = [start_node]
+                        component: set[Any] = set()
+                        while stack:
+                            node_id = stack.pop()
+                            if node_id in seen:
+                                continue
+                            seen.add(node_id)
+                            component.add(node_id)
+                            stack.extend(neighbor for neighbor in adjacency[node_id] if neighbor not in seen)
+                        component_nodes.append(component)
+                    for idx, component in enumerate(component_nodes):
+                        for node_id in component:
+                            component_index[node_id] = idx
+                    l_c = [0 for _ in component_nodes]
+                    d_c = [0 for _ in component_nodes]
+                    for node_id, neighbors in adjacency.items():
+                        idx = component_index.get(node_id, 0)
+                        d_c[idx] += len(neighbors)
+                        for neighbor in neighbors:
+                            if component_index.get(neighbor) == idx:
+                                l_c[idx] += 0.5
+                    modularity_score = sum((l_c_i / m) - (d_c_i / (2 * m)) ** 2 for l_c_i, d_c_i in zip(l_c, d_c))
+
+                current_node_map = {getattr(node, "id", None): node for node in current_nodes}
+
+                def _display_name(node: Any) -> str:
+                    return str(
+                        getattr(node, "source_text", None)
+                        or getattr(node, "label", None)
+                        or getattr(node, "id", "")
+                    )
+
+                def _centrality_entry(node_id: Any, *, degree: float | None = None, score: float | None = None) -> Dict[str, Any]:
+                    node = current_node_map.get(node_id)
+                    return {
+                        "id": str(node_id),
+                        "label": str(getattr(node, "label", None) or "unknown"),
+                        "name": _display_name(node),
+                        "degree": degree,
+                        "score": score,
+                    }
+
+                top_by_degree = [
+                    _centrality_entry(node_id, degree=float(degree))
+                    for node_id, degree in sorted(degree_by_node.items(), key=lambda item: item[1], reverse=True)[:10]
+                ]
+
+                pagerank_scores: Dict[Any, float] = {}
+                if adjacency:
+                    damping = 0.85
+                    node_count_for_rank = len(adjacency)
+                    pagerank_scores = {node_id: 1.0 / node_count_for_rank for node_id in adjacency}
+                    for _ in range(50):
+                        next_scores: Dict[Any, float] = {}
+                        sink_total = sum(
+                            pagerank_scores[node_id]
+                            for node_id, neighbors in adjacency.items()
+                            if not neighbors
+                        )
+                        for node_id, neighbors in adjacency.items():
+                            rank = (1.0 - damping) / node_count_for_rank
+                            rank += damping * sink_total / node_count_for_rank
+                            incoming = 0.0
+                            for other_id, other_neighbors in adjacency.items():
+                                if node_id in other_neighbors and other_neighbors:
+                                    incoming += pagerank_scores[other_id] / len(other_neighbors)
+                            next_scores[node_id] = rank + damping * incoming
+                        pagerank_scores = next_scores
+
+                top_by_pagerank = [
+                    _centrality_entry(node_id, score=float(score))
+                    for node_id, score in sorted(pagerank_scores.items(), key=lambda item: item[1], reverse=True)[:10]
+                ]
+
+                betweenness_scores: Dict[Any, float] = {node_id: 0.0 for node_id in adjacency}
+                for source in adjacency:
+                    stack: list[Any] = []
+                    predecessors: Dict[Any, list[Any]] = {node_id: [] for node_id in adjacency}
+                    shortest_paths: Dict[Any, float] = {node_id: 0.0 for node_id in adjacency}
+                    shortest_paths[source] = 1.0
+                    distance: Dict[Any, int] = {node_id: -1 for node_id in adjacency}
+                    distance[source] = 0
+                    queue = [source]
+                    queue_index = 0
+                    while queue_index < len(queue):
+                        vertex = queue[queue_index]
+                        queue_index += 1
+                        stack.append(vertex)
+                        for neighbor in adjacency[vertex]:
+                            if distance[neighbor] < 0:
+                                queue.append(neighbor)
+                                distance[neighbor] = distance[vertex] + 1
+                            if distance[neighbor] == distance[vertex] + 1:
+                                shortest_paths[neighbor] += shortest_paths[vertex]
+                                predecessors[neighbor].append(vertex)
+
+                    dependency: Dict[Any, float] = {node_id: 0.0 for node_id in adjacency}
+                    while stack:
+                        vertex = stack.pop()
+                        for predecessor in predecessors[vertex]:
+                            if shortest_paths[vertex] > 0:
+                                dependency[predecessor] += (
+                                    shortest_paths[predecessor] / shortest_paths[vertex]
+                                ) * (1.0 + dependency[vertex])
+                        if vertex != source:
+                            betweenness_scores[vertex] += dependency[vertex]
+
+                if len(adjacency) > 2:
+                    normalization = 2.0 / ((len(adjacency) - 1) * (len(adjacency) - 2))
+                    betweenness_scores = {
+                        node_id: score * normalization
+                        for node_id, score in betweenness_scores.items()
+                    }
+
+                top_by_betweenness = [
+                    _centrality_entry(node_id, score=float(score))
+                    for node_id, score in sorted(betweenness_scores.items(), key=lambda item: item[1], reverse=True)[:10]
+                ]
+                
+                return {
+                    "total_nodes": node_count,
+                    "current_nodes": current_node_count,
+                    "historical_nodes": historical_node_count,
+                    "total_edges": edge_count,
+                    "current_edges": current_edge_count,
+                    "historical_edges": historical_edge_count,
+                    "total_node_properties": total_node_properties,
+                    "node_types": node_types,
+                    "edge_types": edge_types,
+                    "storage_size_mb": round(storage_size_mb, 2),
+                    "user_id": user_id,
+                    "health": {
+                        "orphaned_edges": orphaned_edges,
+                        "duplicate_nodes": duplicate_nodes,
+                        "stale_nodes_count": stale_nodes_count,
+                        "stale_nodes_percent": stale_nodes_percent,
+                        "property_completeness": total_node_properties / max(current_node_count, 1),
+                        "nodes_added_24h": nodes_added_24h,
+                        "edges_added_24h": edges_added_24h
+                    },
+                    "duplicate_pairs": duplicate_pairs or None,
+                    "structure": {
+                        "graph_density": current_edge_count / max((current_node_count * (current_node_count - 1)) / 2, 1) if current_node_count > 1 else 0.0,
+                        "average_degree": avg_degree,
+                        "max_degree": max_degree,
+                        "min_degree": min_degree,
+                        "isolated_nodes": isolated_nodes,
+                        "connected_components": connected_components,
+                        "largest_component_size": largest_component_size
+                    },
+                    "temporal": {
+                        "growth_rate_7d": growth_rate_7d,
+                        "growth_rate_30d": growth_rate_30d,
+                        "most_active_day": most_active_day,
+                        "activity_by_day": activity_by_day
+                    },
+                    "centrality": {
+                        "top_by_degree": top_by_degree,
+                        "top_by_pagerank": top_by_pagerank,
+                        "top_by_betweenness": top_by_betweenness
+                    },
+                    "clustering": {
+                        "global_clustering_coefficient": global_clustering_coefficient,
+                        "average_clustering_coefficient": average_clustering_coefficient,
+                        "communities_detected": communities_detected,
+                        "modularity_score": modularity_score
+                    }
+                }
+        except Exception as e:
+            self.logger.error(f"Failed to get KG stats: {e}", exc_info=True)
+            return {
+                "error": "KG_STATS_FAILED",
+                "message": str(e)
+            }
+    
+    async def handle_kg_nodes_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle KG nodes request from gateway"""
+        try:
+            user_id = request_data.get("user_id")
+            limit = request_data.get("limit", 1000)
+            offset = request_data.get("offset", 0)
+            limit = min(limit, 1000)
+            
+            # Get UoW factory from service container
+            uow_factory = self.container.get_service("uow")
+            
+            # Query KG nodes from database
+            uow = uow_factory()
+            async with uow as uow_instance:
+                nodes = await uow_instance.kg_nodes.list(filters={"user_id": user_id}, limit=limit, offset=offset)
+                
+                # Convert to dict format - match original router.py format
+                import json
+                nodes_list = []
+                for node in nodes:
+                    nodes_list.append(
+                        {
+                            "id": node.id,
+                            "user_id": node.user_id,
+                            "label": node.label,
+                            "properties": json.loads(node.properties) if isinstance(node.properties, str) else (node.properties or {}),
+                            "confidence": node.confidence,
+                            "source_text": node.source_text,
+                            "created_at": node.created_at.isoformat() if getattr(node, "created_at", None) else None,
+                            "updated_at": node.updated_at.isoformat() if getattr(node, "updated_at", None) else None,
+                            "valid_from": node.valid_from.isoformat() if getattr(node, "valid_from", None) else None,
+                            "valid_until": node.valid_until.isoformat() if getattr(node, "valid_until", None) else None,
+                            "is_current": bool(node.is_current),
+                            "canonical_id": getattr(node, "canonical_id", None),
+                            "aliases": json.loads(node.aliases_json) if isinstance(getattr(node, "aliases_json", None), str) else (getattr(node, "aliases_json", None) or []),
+                        }
+                    )
+                
+                return {
+                    "nodes": nodes_list,
+                    "total": len(nodes_list),
+                    "limit": limit,
+                    "offset": offset
+                }
+        except Exception as e:
+            self.logger.error(f"Failed to get KG nodes: {e}", exc_info=True)
+            return {
+                "nodes": [],
+                "total": 0,
+                "limit": request_data.get("limit", 1000),
+                "offset": request_data.get("offset", 0)
+            }
+    
+    async def handle_kg_edges_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle KG edges request from gateway"""
+        try:
+            user_id = request_data.get("user_id")
+            limit = request_data.get("limit", 1000)
+            offset = request_data.get("offset", 0)
+            limit = min(limit, 1000)
+            
+            # Get UoW factory from service container
+            uow_factory = self.container.get_service("uow")
+            
+            # Query KG edges from database
+            uow = uow_factory()
+            async with uow as uow_instance:
+                edges = await uow_instance.kg_edges.list(
+                    filters={"user_id": user_id, "is_current": True},
+                    limit=limit,
+                    offset=offset,
+                )
+                
+                # Convert to dict format - match original router.py format
+                import json
+                edges_list = []
+                for edge in edges:
+                    edges_list.append({
+                        "id": edge.id,
+                        "user_id": edge.user_id,
+                        "source_id": edge.source_id,
+                        "target_id": edge.target_id,
+                        "relation_type": edge.relation_type,
+                        "properties": json.loads(edge.properties) if isinstance(edge.properties, str) else (edge.properties or {}),
+                        "confidence": edge.confidence,
+                        "source_text": edge.source_text,
+                        "created_at": edge.created_at.isoformat() if getattr(edge, "created_at", None) else None,
+                        "updated_at": edge.updated_at.isoformat() if getattr(edge, "updated_at", None) else None,
+                        "valid_from": edge.valid_from.isoformat() if getattr(edge, "valid_from", None) else None,
+                        "valid_until": edge.valid_until.isoformat() if getattr(edge, "valid_until", None) else None,
+                        "is_current": bool(edge.is_current),
+                    })
+                
+                return {
+                    "edges": edges_list,
+                    "total": len(edges_list),
+                    "limit": limit,
+                    "offset": offset
+                }
+        except Exception as e:
+            self.logger.error(f"Failed to get KG edges: {e}", exc_info=True)
+            return {
+                "edges": [],
+                "total": 0,
+                "limit": request_data.get("limit", 1000),
+                "offset": request_data.get("offset", 0)
+            }
+
+    async def handle_kg_schema_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle KG schema request from gateway"""
+        try:
+            user_id = request_data.get("user_id")
+
+            uow_factory = self.container.get_service("uow")
+            uow = uow_factory()
+            async with uow as uow_instance:
+                nodes = await uow_instance.kg_nodes.list(filters={"user_id": user_id, "is_current": True}, limit=10000)
+                edges = await uow_instance.kg_edges.list(filters={"user_id": user_id, "is_current": True}, limit=10000)
+
+                node_labels = sorted(list(set(node.label for node in nodes if getattr(node, "label", None))))
+                relationship_types = sorted(list(set(edge.relation_type for edge in edges if getattr(edge, "relation_type", None))))
+
+                node_properties = [
+                    "id", "label", "confidence", "source_text",
+                    "created_at", "updated_at", "valid_from", "valid_until",
+                    "is_current", "canonical_id", "language", "reason",
+                ]
+
+                relationship_properties = [
+                    "id", "relation_type", "confidence", "source_text",
+                    "created_at", "updated_at", "valid_from", "valid_until",
+                    "is_current", "reason",
+                ]
+
+                return {
+                    "nodeLabels": node_labels,
+                    "relationshipTypes": relationship_types,
+                    "nodeProperties": node_properties,
+                    "relationshipProperties": relationship_properties,
+                }
+
+        except Exception as e:
+            self.logger.error(f"Failed to get KG schema: {e}", exc_info=True)
+            return {
+                "error": "KG_SCHEMA_FAILED",
+                "message": str(e),
+            }
+
+    async def handle_kg_changes_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle KG changes request from gateway"""
+        try:
+            user_id = request_data.get("user_id")
+            from_timestamp = request_data.get("from_timestamp")
+            to_timestamp = request_data.get("to_timestamp")
+            limit = request_data.get("limit", 1000)
+
+            uow_factory = self.container.get_service("uow")
+            uow = uow_factory()
+            async with uow as uow_instance:
+                import json
+                from datetime import datetime
+
+                def _parse_iso(ts: Any):
+                    if ts is None:
+                        return None
+                    if isinstance(ts, datetime):
+                        return ts
+                    if isinstance(ts, str):
+                        try:
+                            return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                        except Exception:
+                            return None
+                    return None
+
+                from_dt = _parse_iso(from_timestamp)
+                to_dt = _parse_iso(to_timestamp)
+
+                def _in_range(value: Any) -> bool:
+                    if value is None:
+                        return False
+                    if isinstance(value, datetime) and from_dt and to_dt:
+                        return from_dt <= value <= to_dt
+                    # Fallback: compare as strings (best-effort)
+                    try:
+                        return str(from_timestamp) <= str(value) <= str(to_timestamp)
+                    except Exception:
+                        return False
+
+                changes: list[dict] = []
+
+                all_nodes = await uow_instance.kg_nodes.list(filters={"user_id": user_id}, limit=100000)
+                nodes_changed = [
+                    n for n in all_nodes
+                    if (_in_range(getattr(n, "created_at", None)) or _in_range(getattr(n, "updated_at", None)))
+                ]
+                nodes_changed.sort(key=lambda n: n.updated_at or n.created_at or "", reverse=True)
+                nodes_changed = nodes_changed[:limit]
+
+                for node in nodes_changed:
+                    properties = getattr(node, "properties", None)
+                    if properties is None:
+                        properties = {}
+                    elif isinstance(properties, dict):
+                        properties = dict(properties)
+                    else:
+                        try:
+                            properties = json.loads(str(properties))
+                            if not isinstance(properties, dict):
+                                properties = {}
+                        except Exception:
+                            properties = {}
+
+                    created_at = getattr(node, "created_at", None)
+                    updated_at = getattr(node, "updated_at", None)
+                    valid_until = getattr(node, "valid_until", None)
+
+                    if created_at and _in_range(created_at):
+                        change_type = "node_created"
+                    elif valid_until and _in_range(valid_until):
+                        change_type = "node_deleted"
+                    else:
+                        change_type = "node_updated"
+
+                    timestamp_val = updated_at or created_at
+                    timestamp_str = timestamp_val.isoformat() if hasattr(timestamp_val, "isoformat") else str(timestamp_val)
+
+                    changes.append(
+                        {
+                            "change_type": change_type,
+                            "entity_type": "node",
+                            "entity_id": node.id,
+                            "entity_label": getattr(node, "label", None),
+                            "timestamp": timestamp_str,
+                            "properties_changed": list(properties.keys()) if change_type == "node_updated" else None,
+                            "old_values": None,
+                            "new_values": properties if change_type != "node_deleted" else None,
+                            "source_text": getattr(node, "source_text", None),
+                            "reason": None,
+                        }
+                    )
+
+                all_edges = await uow_instance.kg_edges.list(filters={"user_id": user_id}, limit=100000)
+                edges_changed = [
+                    e for e in all_edges
+                    if (_in_range(getattr(e, "created_at", None)) or _in_range(getattr(e, "updated_at", None)))
+                ]
+                edges_changed.sort(key=lambda e: e.updated_at or e.created_at or "", reverse=True)
+                edges_changed = edges_changed[:limit]
+
+                for edge in edges_changed:
+                    properties = getattr(edge, "properties", None)
+                    if properties is None:
+                        properties = {}
+                    elif isinstance(properties, dict):
+                        properties = dict(properties)
+                    else:
+                        try:
+                            properties = json.loads(str(properties))
+                            if not isinstance(properties, dict):
+                                properties = {}
+                        except Exception:
+                            properties = {}
+
+                    created_at = getattr(edge, "created_at", None)
+                    updated_at = getattr(edge, "updated_at", None)
+                    valid_until = getattr(edge, "valid_until", None)
+
+                    if created_at and _in_range(created_at):
+                        change_type = "edge_created"
+                    elif valid_until and _in_range(valid_until):
+                        change_type = "edge_deleted"
+                    else:
+                        change_type = "edge_updated"
+
+                    timestamp_val = updated_at or created_at
+                    timestamp_str = timestamp_val.isoformat() if hasattr(timestamp_val, "isoformat") else str(timestamp_val)
+
+                    changes.append(
+                        {
+                            "change_type": change_type,
+                            "entity_type": "edge",
+                            "entity_id": edge.id,
+                            "entity_label": getattr(edge, "relation_type", None),
+                            "timestamp": timestamp_str,
+                            "properties_changed": list(properties.keys()) if change_type == "edge_updated" else None,
+                            "old_values": None,
+                            "new_values": properties if change_type != "edge_deleted" else None,
+                            "source_text": getattr(edge, "source_text", None),
+                            "reason": None,
+                        }
+                    )
+
+                changes.sort(key=lambda x: x.get("timestamp") or "", reverse=True)
+                return {
+                    "from_timestamp": from_timestamp,
+                    "to_timestamp": to_timestamp,
+                    "total_changes": len(changes),
+                    "changes": changes[:limit],
+                }
+
+        except Exception as e:
+            self.logger.error(f"Failed to get KG changes: {e}", exc_info=True)
+            return {
+                "error": "KG_CHANGES_FAILED",
+                "message": str(e),
+            }
+
+    async def handle_kg_query_templates_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle KG query templates request from gateway"""
+        try:
+            from aico.core.paths import AICOPaths
+            import json
+
+            data_dir = AICOPaths.get_data_directory() / AICOPaths.get_data_subdirectory_from_config()
+            templates_path = data_dir / "gql_query_templates.json"
+
+            if not templates_path.exists():
+                return {
+                    "error": "KG_QUERY_TEMPLATES_NOT_INITIALIZED",
+                    "message": "Query templates not initialized. Run 'aico config init' to set up templates.",
+                }
+
+            with open(templates_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            return data
+
+        except Exception as e:
+            self.logger.error(f"Failed to get KG query templates: {e}", exc_info=True)
+            return {
+                "error": "KG_QUERY_TEMPLATES_LOAD_FAILED",
+                "message": str(e),
+            }
+
+    async def handle_kg_query_templates_update_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle KG query template update request from gateway"""
+        try:
+            from pathlib import Path
+            from aico.core.paths import AICOPaths
+            import json
+
+            templates = request_data.get("templates")
+            if not isinstance(templates, list):
+                return {
+                    "error": "KG_QUERY_TEMPLATES_INVALID_PAYLOAD",
+                    "message": "'templates' must be a list",
+                    "success": False,
+                }
+
+            required_fields = {"id", "title", "description", "category", "query", "tags"}
+            normalized_templates = []
+            seen_ids = set()
+
+            for index, template in enumerate(templates):
+                if not isinstance(template, dict):
+                    return {
+                        "error": "KG_QUERY_TEMPLATES_INVALID_ENTRY",
+                        "message": f"Template at index {index} must be an object",
+                        "success": False,
+                    }
+
+                missing_fields = [field for field in required_fields if field not in template]
+                if missing_fields:
+                    return {
+                        "error": "KG_QUERY_TEMPLATES_MISSING_FIELDS",
+                        "message": f"Template at index {index} missing required fields: {', '.join(sorted(missing_fields))}",
+                        "success": False,
+                    }
+
+                template_id = str(template.get("id") or "").strip()
+                if not template_id:
+                    return {
+                        "error": "KG_QUERY_TEMPLATES_INVALID_ID",
+                        "message": f"Template at index {index} must have a non-empty id",
+                        "success": False,
+                    }
+
+                if template_id in seen_ids:
+                    return {
+                        "error": "KG_QUERY_TEMPLATES_DUPLICATE_ID",
+                        "message": f"Duplicate template id: {template_id}",
+                        "success": False,
+                    }
+                seen_ids.add(template_id)
+
+                tags = template.get("tags")
+                if not isinstance(tags, list) or any(not isinstance(tag, str) for tag in tags):
+                    return {
+                        "error": "KG_QUERY_TEMPLATES_INVALID_TAGS",
+                        "message": f"Template '{template_id}' must have 'tags' as a list of strings",
+                        "success": False,
+                    }
+
+                normalized_templates.append(
+                    {
+                        "id": template_id,
+                        "title": str(template.get("title") or "").strip(),
+                        "description": str(template.get("description") or "").strip(),
+                        "category": str(template.get("category") or "").strip(),
+                        "query": str(template.get("query") or "").strip(),
+                        "tags": [str(tag).strip() for tag in tags],
+                    }
+                )
+
+            if any(not template["title"] or not template["description"] or not template["category"] or not template["query"] for template in normalized_templates):
+                return {
+                    "error": "KG_QUERY_TEMPLATES_EMPTY_FIELDS",
+                    "message": "Templates must not contain empty required fields",
+                    "success": False,
+                }
+
+            data_dir = AICOPaths.get_data_directory() / AICOPaths.get_data_subdirectory_from_config()
+            data_dir.mkdir(parents=True, exist_ok=True)
+            templates_path = data_dir / "gql_query_templates.json"
+            payload = {"templates": normalized_templates}
+
+            temp_path = Path(f"{templates_path}.tmp")
+            with open(temp_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2, ensure_ascii=False)
+                f.write("\n")
+
+            temp_path.replace(templates_path)
+
+            return {
+                "success": True,
+                "message": f"Updated {len(normalized_templates)} query templates",
+                "templates_count": len(normalized_templates),
+                "path": str(templates_path),
+            }
+
+        except Exception as e:
+            self.logger.error(f"Failed to update KG query templates: {e}", exc_info=True)
+            return {
+                "error": "KG_QUERY_TEMPLATES_UPDATE_FAILED",
+                "message": str(e),
+                "success": False,
+            }
+
+    async def handle_kg_query_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle KG GQL/Cypher query execution request from gateway"""
+        try:
+            user_id = request_data.get("user_id")
+            query = request_data.get("query")
+            output_format = request_data.get("format", "dict")
+            limit = request_data.get("limit")
+
+            # Create KG storage like core.api.kg.dependencies.get_kg_storage
+            from aico.ai.knowledge_graph import PropertyGraphStorage
+            uow_factory = self.container.get_service("uow")
+            kg_storage = PropertyGraphStorage(uow_factory)
+
+            from aico.ai.knowledge_graph.query import GQLQueryExecutor
+            max_results = limit or 1000
+            executor = GQLQueryExecutor(
+                kg_storage,
+                max_results=max_results,
+                timeout_seconds=30,
+            )
+
+            result = await executor.execute(query, user_id, format=output_format)
+            return result
+
+        except Exception as e:
+            self.logger.error(f"Failed to execute KG query: {e}", exc_info=True)
+            return {
+                "error": "KG_QUERY_EXECUTION_FAILED",
+                "message": str(e),
+                "success": False,
+            }
+    
+    # Agency handlers - delegate to AgencyNATSHandlers
+    async def handle_agency_intentions_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_intentions_request(request_data)
+    
+    async def handle_agency_events_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_events_request(request_data)
+    
+    async def handle_agency_curiosity_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_curiosity_request(request_data)
+    
+    async def handle_agency_profile_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_profile_request(request_data)
+    
+    async def handle_agency_profile_update_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_profile_update_request(request_data)
+    
+    async def handle_agency_policies_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_policies_request(request_data)
+    
+    async def handle_agency_consent_grant_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_consent_grant_request(request_data)
+    
+    async def handle_agency_consents_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_consents_request(request_data)
+    
+    async def handle_agency_consent_revoke_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_consent_revoke_request(request_data)
+    
+    async def handle_agency_goals_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_goals_request(request_data)
+    
+    async def handle_agency_goal_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_goal_request(request_data)
+    
+    async def handle_agency_goal_plans_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_goal_plans_request(request_data)
+    
+    async def handle_agency_goal_replan_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_goal_replan_request(request_data)
+    
+    async def handle_agency_skills_list_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_skills_list_request(request_data)
+    
+    async def handle_agency_skill_info_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_skill_info_request(request_data)
+    
+    async def handle_agency_skill_invoke_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_skill_invoke_request(request_data)
+    
+    async def handle_agency_connectivity_scan_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_connectivity_scan_request(request_data)
+    
+    async def handle_agency_tools_list_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_tools_list_request(request_data)
+    
+    async def handle_agency_tool_info_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_tool_info_request(request_data)
+    
+    async def handle_agency_tool_invoke_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_tool_invoke_request(request_data)
+    
+    async def handle_agency_reflection_runs_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_reflection_runs_request(request_data)
+    
+    async def handle_agency_reflection_lessons_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_reflection_lessons_request(request_data)
+    
+    async def handle_agency_reflection_self_model_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_reflection_self_model_request(request_data)
+    
+    async def handle_agency_skill_performance_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_skill_performance_request(request_data)
+    
+    async def handle_agency_reflection_summary_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.agency_handlers.handle_agency_reflection_summary_request(request_data)
+    
+    async def handle_agency_state_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle agency state request from gateway"""
+        try:
+            from aico.ai import ai_registry
+            from datetime import datetime, UTC
+            
+            user_id = request_data.get("user_id")
+            if not user_id:
+                return {
+                    "error": "MISSING_USER_ID",
+                    "message": "user_id is required"
+                }
+            
+            # Get agency engine from registry
+            agency_engine = ai_registry.get("agency")
+            if not agency_engine:
+                return {
+                    "error": "AGENCY_ENGINE_NOT_INITIALIZED",
+                    "message": "Agency engine not initialized"
+                }
+            
+            # Get UoW factory
+            uow_factory = self.container.get_service("uow")
+            uow = uow_factory()
+            
+            async with uow as uow_instance:
+                # Get intention set using correct API
+                intention_set_obj = await agency_engine.get_intention_set(user_id)
+                intentions = intention_set_obj.intentions[:10]
+                
+                # Get all goals for user
+                all_goals = await agency_engine.list_goals_for_user(user_id)
+                
+                # Fetch Goal objects for active intentions and build GoalSummary objects
+                active_intentions = []
+                hobby_goals = []
+                if intentions:
+                    goal_ids = [intent.goal_id for intent in intentions]
+                    goals = await agency_engine.agency_service.get_goals_bulk(goal_ids)
+                    goals_by_id = {goal.goal_id: goal for goal in goals}
+                    
+                    for intent in intentions:
+                        goal = goals_by_id.get(intent.goal_id)
+                        if goal:
+                            goal_summary = {
+                                "goal_id": goal.goal_id,
+                                "title": goal.title,
+                                "description": goal.description,
+                                "origin": goal.origin.value,
+                                "priority": goal.priority.value,
+                                "status": goal.status.value,
+                                "score": intent.arbiter_score,
+                                "priority_band": intent.priority_band.value,
+                                "created_at": goal.created_at.isoformat() if hasattr(goal.created_at, 'isoformat') else str(goal.created_at),
+                                "metadata": goal.metadata or {},
+                            }
+                            active_intentions.append(goal_summary)
+                            if goal.origin.value == "hobby":
+                                hobby_goals.append(goal_summary)
+                
+                # Count open goals
+                open_goals = [g for g in all_goals if g.status.value in ["pending", "active"]]
+                
+                # Build IntentionSetResponse structure
+                intention_set = {
+                    "user_id": user_id,
+                    "primary_focus": active_intentions[0] if active_intentions else None,
+                    "active_intentions": active_intentions,
+                    "open_goals_total": len(open_goals),
+                    "hobby_goals_active": hobby_goals,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                }
+                
+                # Build CuriosityStatusResponse structure
+                curiosity_status = {
+                    "user_id": user_id,
+                    "curiosity_level": "medium",
+                    "curiosity_opportunities": [],
+                    "curiosity_goals_active": 0,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                }
+                
+                # Build ValueProfileResponse structure
+                value_profile = {
+                    "profile_id": f"profile_{user_id}",
+                    "user_id": user_id,
+                    "curiosity_intensity": 0.5,
+                    "autonomy_level": "balanced",
+                    "sensitive_life_areas": [],
+                    "allowed_curiosity_domains": [],
+                }
+                
+                # Get recent events for active goals
+                active_goal_ids = [intent.goal_id for intent in intentions]
+                recent_events = []
+                
+                if active_goal_ids:
+                    try:
+                        rows = await uow_instance.agency_events_log.get_by_entities_bulk(
+                            entity_type="goal",
+                            entity_ids=active_goal_ids,
+                            limit_per_entity=20,
+                        )
+                        
+                        # Deduplicate and aggregate events
+                        import json
+                        seen_ids = set()
+                        goal_events = []
+                        
+                        # Map database event types to API enum values
+                        def map_event_type(db_event_type: str) -> str:
+                            """Map database event types to API EventType enum values."""
+                            event_type_lower = db_event_type.lower()
+                            if "curiosity" in event_type_lower or "signal" in event_type_lower:
+                                return "curiosity_signal"
+                            elif "user" in event_type_lower or "trigger" in event_type_lower or "request" in event_type_lower:
+                                return "user_trigger"
+                            elif "external" in event_type_lower or "stimulus" in event_type_lower:
+                                return "external_stimulus"
+                            else:
+                                return "system_observation"
+                        
+                        for row in rows:
+                            event_id = str(row.event_id)
+                            if event_id in seen_ids:
+                                continue
+                            seen_ids.add(event_id)
+                            
+                            # Parse event_data JSON if it's a string
+                            event_data = {}
+                            if hasattr(row, 'event_data') and row.event_data:
+                                try:
+                                    event_data = json.loads(row.event_data) if isinstance(row.event_data, str) else row.event_data
+                                except:
+                                    event_data = {}
+                            
+                            goal_events.append({
+                                "event_id": event_id,
+                                "user_id": str(row.user_id),
+                                "event_type": map_event_type(str(row.event_type)),
+                                "source": str(row.source_component or "system"),
+                                "title": event_data.get("title", row.event_type),
+                                "description": event_data.get("description", ""),
+                                "intensity": event_data.get("intensity", 0.5),
+                                "metadata": event_data,
+                                "created_at": row.created_at.isoformat() if hasattr(row.created_at, 'isoformat') else str(row.created_at),
+                                "processed": True,
+                                "related_goal_id": str(row.entity_id) if row.entity_type == "goal" and row.entity_id else None,
+                                "strength": 1,
+                            })
+                        
+                        # Group by goal and aggregate
+                        groups = {}
+                        for ev in goal_events:
+                            gid = ev.get("related_goal_id")
+                            if not gid:
+                                continue
+                            groups.setdefault(gid, []).append(ev)
+                        
+                        for goal_id, group in groups.items():
+                            master = max(group, key=lambda e: e["created_at"])
+                            master["strength"] = len(group)
+                            recent_events.append(master)
+                        
+                        recent_events.sort(key=lambda e: e["created_at"], reverse=True)
+                        recent_events = recent_events[:10]
+
+                        consent_required_actions = []
+                        try:
+                            consent_rows = await uow_instance.agency_events_log.list(
+                                filters={"user_id": user_id, "event_type": "curiosity_signal_needs_consent"},
+                                limit=50,
+                            )
+
+                            seen_consent_keys = set()
+                            for row in consent_rows:
+                                try:
+                                    event_data = json.loads(row.event_data) if row.event_data else {}
+                                except Exception:
+                                    event_data = {}
+
+                                consent_scope = event_data.get("consent_scope") or {}
+                                consent_key = str(
+                                    consent_scope.get("rule_id")
+                                    or event_data.get("signal_id")
+                                    or row.event_id
+                                )
+                                if consent_key in seen_consent_keys:
+                                    continue
+                                seen_consent_keys.add(consent_key)
+
+                                consent_required_actions.append({
+                                    "event_id": str(row.event_id),
+                                    "title": event_data.get("title") or event_data.get("topic") or str(row.event_type),
+                                    "description": event_data.get("message") or event_data.get("description") or "",
+                                    "created_at": row.created_at.isoformat() if hasattr(row.created_at, "isoformat") else str(row.created_at),
+                                    "related_goal_id": str(row.entity_id) if row.entity_type == "goal" and row.entity_id else event_data.get("goal_id"),
+                                    "scope": consent_scope,
+                                    "signal_id": event_data.get("signal_id"),
+                                    "policy_message": event_data.get("user_message"),
+                                    "source": str(row.source_component or "system"),
+                                })
+
+                            consent_required_actions.sort(key=lambda e: e["created_at"], reverse=True)
+                        except Exception as consent_err:
+                            self.logger.warning(f"Failed to fetch agency consent-required actions: {consent_err}")
+                            consent_required_actions = []
+                        
+                    except Exception as e:
+                        self.logger.warning(f"Failed to fetch agency events: {e}")
+                        consent_required_actions = []
+                
+                return {
+                    "user_id": user_id,
+                    "intention_set": intention_set,
+                    "curiosity_status": curiosity_status,
+                    "value_profile": value_profile,
+                    "consent_required_actions": consent_required_actions,
+                    "recent_events": recent_events,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                }
+                
+        except Exception as e:
+            self.logger.error(f"Failed to get agency state: {e}", exc_info=True)
+            return {
+                "error": "AGENCY_STATE_FAILED",
+                "message": str(e)
+            }
+    
+    async def handle_memory_album_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle memory album request from gateway"""
+        try:
+            user_uuid = request_data.get("user_uuid")
+            category = request_data.get("category")
+            favorites_only = request_data.get("favorites_only", False)
+            limit = request_data.get("limit", 50)
+            offset = request_data.get("offset", 0)
+            
+            # Get UoW factory from service container
+            uow_factory = self.container.get_service("uow")
+            
+            # Query memory album from database
+            uow = uow_factory()
+            async with uow as uow_instance:
+                from aico.ai.memory.memory_album import MemoryAlbumStore
+                
+                memory_store = MemoryAlbumStore()
+                facts = await memory_store.get_user_curated_facts(
+                    user_id=user_uuid,
+                    category=category,
+                    favorites_only=favorites_only,
+                    limit=limit,
+                    offset=offset,
+                )
+                
+                # Enrich with user profile data
+                enriched_facts = []
+                for fact in facts:
+                    user_profile = await uow_instance.users.get_by_id(fact['user_id'])
+                    
+                    fact_with_user = dict(fact)
+                    if user_profile:
+                        fact_with_user['user_uuid'] = user_profile.uuid
+                        fact_with_user['user_full_name'] = user_profile.full_name
+                        fact_with_user['user_nickname'] = user_profile.nickname
+                    else:
+                        fact_with_user['user_uuid'] = fact['user_id']
+                        fact_with_user['user_full_name'] = 'Unknown'
+                        fact_with_user['user_nickname'] = None
+                    
+                    enriched_facts.append(fact_with_user)
+                
+                # Convert to response format
+                memories = []
+                for fact in enriched_facts:
+                    # Parse JSON fields
+                    import json
+                    tags = json.loads(fact.get('tags_json', '[]')) if fact.get('tags_json') else []
+                    key_moments = json.loads(fact.get('key_moments_json', '[]')) if fact.get('key_moments_json') else []
+                    
+                    # Normalize datetime fields
+                    created_at = fact['created_at']
+                    if hasattr(created_at, 'isoformat'):
+                        created_at = created_at.isoformat()
+                    
+                    updated_at = fact['updated_at']
+                    if hasattr(updated_at, 'isoformat'):
+                        updated_at = updated_at.isoformat()
+                    
+                    last_revisited = fact.get('last_revisited')
+                    if last_revisited and hasattr(last_revisited, 'isoformat'):
+                        last_revisited = last_revisited.isoformat()
+                    
+                    memories.append({
+                        "fact_id": fact['fact_id'],
+                        "content": fact['content'],
+                        "content_type": fact.get('content_type', 'message'),
+                        "category": fact['category'],
+                        "fact_type": fact['fact_type'],
+                        "user_note": fact.get('user_note'),
+                        "tags": tags,
+                        "is_favorite": bool(fact.get('is_favorite', 0)),
+                        "emotional_tone": fact.get('emotional_tone'),
+                        "memory_type": fact.get('memory_type'),
+                        "source_conversation_id": fact['source_conversation_id'],
+                        "source_message_id": fact.get('source_message_id'),
+                        "revisit_count": fact.get('revisit_count', 0),
+                        "last_revisited": last_revisited,
+                        "created_at": created_at,
+                        "updated_at": updated_at,
+                        "user_uuid": fact.get('user_uuid', fact['user_id']),
+                        "user_full_name": fact.get('user_full_name', 'Unknown User'),
+                        "user_nickname": fact.get('user_nickname'),
+                        "conversation_title": fact.get('conversation_title'),
+                        "conversation_summary": fact.get('conversation_summary'),
+                        "turn_range": fact.get('turn_range'),
+                        "key_moments": key_moments,
+                    })
+                
+                return {
+                    "memories": memories,
+                    "total": len(memories),
+                    "limit": limit,
+                    "offset": offset
+                }
+        except Exception as e:
+            self.logger.error(f"Failed to get memory album: {e}", exc_info=True)
+            return {
+                "memories": [],
+                "total": 0,
+                "limit": request_data.get("limit", 50),
+                "offset": request_data.get("offset", 0)
+            }
+    
+    async def handle_operations_databases_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle operations databases request from gateway"""
+        try:
+            # PostgreSQL metrics (minimal set required by aico-studio DatabaseStorage UI)
+            # Note: core runs inside docker-compose network; `AICO_PG_HOST` points at the postgres service.
+            import psycopg2
+
+            host = os.environ.get("AICO_PG_HOST", "postgres")
+            port = int(os.environ.get("AICO_PG_PORT", "5432"))
+            db_name = os.environ.get("AICO_POSTGRES_DATABASE", "aico")
+            user = os.environ.get("AICO_POSTGRES_USER", "postgres")
+
+            password = None
+            try:
+                with open("/run/secrets/pg_password", "r", encoding="utf-8") as f:
+                    password = f.read().strip()
+            except Exception:
+                password = os.environ.get("AICO_PG_PASSWORD")
+
+            db_size = 0
+            table_count = 0
+            connection_count = 0
+            wal_size = 0
+            status = "healthy"
+            error_details = None
+
+            try:
+                conn = psycopg2.connect(
+                    host=host,
+                    port=port,
+                    database=db_name,
+                    user=user,
+                    password=password,
+                    connect_timeout=5,
+                )
+
+                with conn.cursor() as cur:
+                    # Table count (prefer aico_core schema; fall back to public)
+                    try:
+                        cur.execute(
+                            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'aico_core' AND table_type = 'BASE TABLE'"
+                        )
+                        table_count = int(cur.fetchone()[0])
+                    except Exception:
+                        cur.execute(
+                            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'"
+                        )
+                        table_count = int(cur.fetchone()[0])
+
+                    # Active connections
+                    cur.execute(
+                        "SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database()"
+                    )
+                    connection_count = int(cur.fetchone()[0])
+
+                    # Database size
+                    cur.execute("SELECT pg_database_size(current_database())")
+                    db_size = int(cur.fetchone()[0])
+
+                    # Approximate WAL size (LSN diff from origin)
+                    cur.execute("SELECT pg_wal_lsn_diff(pg_current_wal_lsn(), '0/0')")
+                    wal_size = int(float(cur.fetchone()[0]))
+
+                conn.close()
+            except psycopg2.OperationalError as e:
+                status = "critical"
+                error_details = str(e)
+            except Exception as e:
+                status = "degraded"
+                error_details = str(e)
+
+            databases = [
+                {
+                    "name": "PostgreSQL",
+                    "type": "postgresql",
+                    "size_bytes": db_size,
+                    "status": status,
+                    "location": f"{host}:{port}/{db_name}",
+                    "error_details": error_details,
+                    "table_count": table_count,
+                    "connection_count": connection_count,
+                    "wal_size_bytes": wal_size,
+                    "database_name": db_name,
+                    "host": host,
+                    "port": port,
+                }
+            ]
+
+            return {"databases": databases}
+        except Exception as e:
+            self.logger.error(f"Failed to get database operations: {e}", exc_info=True)
+            raise
+
+    async def handle_operations_postgresql_schema_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle PostgreSQL schema metadata request from gateway"""
+        try:
+            import psycopg2
+
+            host = os.environ.get("AICO_PG_HOST", "postgres")
+            port = int(os.environ.get("AICO_PG_PORT", "5432"))
+            db_name = os.environ.get("AICO_POSTGRES_DATABASE", "aico")
+            user = os.environ.get("AICO_POSTGRES_USER", "postgres")
+
+            password = None
+            try:
+                with open("/run/secrets/pg_password", "r", encoding="utf-8") as f:
+                    password = f.read().strip()
+            except Exception:
+                password = os.environ.get("AICO_PG_PASSWORD")
+
+            conn = psycopg2.connect(
+                host=host,
+                port=port,
+                database=db_name,
+                user=user,
+                password=password,
+                connect_timeout=5,
+            )
+
+            tables: list[str] = []
+            columns: dict[str, list[str]] = {}
+
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT table_name FROM information_schema.tables "
+                    "WHERE table_schema = 'aico_core' AND table_type = 'BASE TABLE' "
+                    "ORDER BY table_name"
+                )
+                for (table_name,) in cur.fetchall():
+                    tables.append(table_name)
+                    try:
+                        cur.execute(
+                            "SELECT column_name FROM information_schema.columns "
+                            "WHERE table_schema = 'aico_core' AND table_name = %s "
+                            "ORDER BY ordinal_position",
+                            (table_name,),
+                        )
+                        columns[table_name] = [row[0] for row in cur.fetchall()]
+                    except Exception:
+                        columns[table_name] = []
+
+            conn.close()
+            return {"tables": tables, "columns": columns}
+        except Exception as e:
+            self.logger.error(f"Failed to get schema metadata: {e}", exc_info=True)
+            return {"tables": [], "columns": {}}
+
+    async def handle_operations_postgresql_details_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            import psycopg2
+
+            host = os.environ.get("AICO_PG_HOST", "postgres")
+            port = int(os.environ.get("AICO_PG_PORT", "5432"))
+            db_name = os.environ.get("AICO_POSTGRES_DATABASE", "aico")
+            user = os.environ.get("AICO_POSTGRES_USER", "postgres")
+
+            password = None
+            try:
+                with open("/run/secrets/pg_password", "r", encoding="utf-8") as f:
+                    password = f.read().strip()
+            except Exception:
+                password = os.environ.get("AICO_PG_PASSWORD")
+
+            conn = psycopg2.connect(
+                host=host,
+                port=port,
+                database=db_name,
+                user=user,
+                password=password,
+                connect_timeout=5,
+            )
+
+            tables: list[dict[str, Any]] = []
+
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT table_name FROM information_schema.tables "
+                    "WHERE table_schema = 'aico_core' AND table_type = 'BASE TABLE' "
+                    "ORDER BY table_name"
+                )
+                table_names = [row[0] for row in cur.fetchall()]
+
+                for table_name in table_names:
+                    row_count = 0
+                    size_bytes = None
+                    column_count = 0
+
+                    try:
+                        cur.execute(f'SELECT COUNT(*) FROM "aico_core"."{table_name}"')
+                        row_count = int(cur.fetchone()[0])
+                    except Exception:
+                        row_count = 0
+
+                    try:
+                        cur.execute(
+                            "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'aico_core' AND table_name = %s",
+                            (table_name,),
+                        )
+                        column_count = int(cur.fetchone()[0])
+                    except Exception:
+                        column_count = 0
+
+                    try:
+                        cur.execute("SELECT pg_total_relation_size(%s)", (f"aico_core.{table_name}",))
+                        size_bytes = int(cur.fetchone()[0])
+                    except Exception:
+                        size_bytes = None
+
+                    tables.append(
+                        {
+                            "name": table_name,
+                            "row_count": row_count,
+                            "size_bytes": size_bytes,
+                            "columns": column_count,
+                        }
+                    )
+
+            conn.close()
+            return {"database_type": "postgresql", "tables": tables}
+        except Exception as e:
+            self.logger.error(f"Failed to get PostgreSQL details: {e}", exc_info=True)
+            return {"database_type": "postgresql", "tables": []}
+    
+    async def handle_operations_topology_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle operations topology request from gateway"""
+        try:
+            import time
+            import asyncio
+            import subprocess
+            from datetime import datetime
+            from core.services.operations_topology_service import get_operations_topology
+            
+            return await get_operations_topology()
+        except Exception as e:
+            self.logger.error(f"Failed to get operations topology: {e}", exc_info=True)
+            return {
+                "error": "OPERATIONS_TOPOLOGY_FAILED",
+                "message": str(e)
+            }
+    
+    async def handle_operations_create_backup_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle backup creation request from gateway"""
+        try:
+            from core.services.backup_sets_service import create_backup_set
+            response = await create_backup_set(
+                output_path=request_data.get("output_path"),
+                include_influx=request_data.get("include_influx", False),
+                created_by_user_uuid=request_data.get("created_by_user_uuid"),
+            )
+            return response
+            
+        except Exception as e:
+            self.logger.error(f"Failed to create backup: {e}", exc_info=True)
+            return {
+                "success": False,
+                "backup_set": None,
+                "message": str(e)
+            }
+
+    async def handle_operations_restore_backup_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle backup restore request from gateway"""
+        try:
+            from core.services.backup_sets_service import restore_backup_set
+
+            response = await restore_backup_set(
+                backup_id=request_data.get("backup_id"),
+                confirm_destroy_existing=bool(request_data.get("confirm_destroy_existing", False)),
+                restore_to_primary=bool(request_data.get("restore_to_primary", False)),
+                restore_influx=bool(request_data.get("restore_influx", False)),
+            )
+            return response
+        except Exception as e:
+            self.logger.error(f"Failed to restore backup: {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": str(e),
+            }
+    
+    async def handle_operations_backup_sets_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle operations backup sets request from gateway"""
+        try:
+            from core.services.backup_sets_service import list_backup_sets_async_with_options
+
+            include_deleted = bool(request_data.get("include_deleted", False))
+            return await list_backup_sets_async_with_options(include_deleted=include_deleted)
+        except Exception as e:
+            self.logger.error(f"Failed to get backup sets: {e}", exc_info=True)
+            return {
+                "error": "OPERATIONS_BACKUP_SETS_FAILED",
+                "message": str(e)
+            }
+
+    async def handle_operations_backup_status_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle backup set status request from gateway"""
+        try:
+            backup_id = str(request_data.get("backup_id") or "").strip()
+            if not backup_id:
+                return {"error": "VALIDATION_ERROR", "message": "backup_id is required"}
+
+            from core.services.backup_sets_service import get_backup_set_status_async
+
+            return await get_backup_set_status_async(backup_id)
+        except Exception as e:
+            self.logger.error(f"Failed to get backup status: {e}", exc_info=True)
+            return {"error": "OPERATIONS_BACKUP_STATUS_FAILED", "message": str(e)}
+
+    async def handle_operations_backup_download_url_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle backup set download url request from gateway"""
+        try:
+            backup_id = str(request_data.get("backup_id") or "").strip()
+            if not backup_id:
+                return {"error": "VALIDATION_ERROR", "message": "backup_id is required"}
+
+            expires_seconds = request_data.get("expires_seconds")
+            expires_seconds = int(expires_seconds) if expires_seconds is not None else 300
+
+            from core.services.backup_sets_service import get_backup_set_download_url_async
+
+            url = await get_backup_set_download_url_async(backup_id, expires_seconds=expires_seconds)
+            return {"url": url, "expires_seconds": expires_seconds}
+        except Exception as e:
+            self.logger.error(f"Failed to get backup download url: {e}", exc_info=True)
+            return {"error": "OPERATIONS_BACKUP_DOWNLOAD_URL_FAILED", "message": str(e)}
+
+    async def handle_operations_delete_backup_set_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle backup set soft-delete request from gateway"""
+        try:
+            backup_id = str(request_data.get("backup_id") or "").strip()
+            if not backup_id:
+                return {"error": "VALIDATION_ERROR", "message": "backup_id is required"}
+
+            deleted_by_user_uuid = request_data.get("deleted_by_user_uuid")
+            if deleted_by_user_uuid is not None:
+                deleted_by_user_uuid = str(deleted_by_user_uuid)
+
+            from core.services.backup_sets_service import delete_backup_set_async
+
+            return await delete_backup_set_async(backup_id, deleted_by_user_uuid=deleted_by_user_uuid)
+        except Exception as e:
+            self.logger.error(f"Failed to delete backup set: {e}", exc_info=True)
+            return {"error": "OPERATIONS_DELETE_BACKUP_FAILED", "message": str(e)}
+
+    async def handle_operations_purge_backup_set_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle backup set purge request from gateway"""
+        try:
+            backup_id = str(request_data.get("backup_id") or "").strip()
+            if not backup_id:
+                return {"error": "VALIDATION_ERROR", "message": "backup_id is required"}
+
+            from core.services.backup_sets_service import purge_backup_set_async
+
+            return await purge_backup_set_async(backup_id)
+        except Exception as e:
+            self.logger.error(f"Failed to purge backup set: {e}", exc_info=True)
+            return {"error": "OPERATIONS_PURGE_BACKUP_FAILED", "message": str(e)}
+    
+    async def handle_scheduler_expected_runs_today_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle scheduler expected runs today request from gateway"""
+        try:
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.services.scheduler_service import SchedulerService
+            from core.services.scheduler.cron import CronParser
+
+            now = datetime.now(UTC)
+            day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            day_end = day_start + timedelta(days=1)
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                tasks = await scheduler_service.list_tasks(filters={"enabled": True})
+
+            cron_parser = CronParser()
+            task_run_counts: Dict[str, int] = {}
+            total_expected_runs = 0
+
+            for task in tasks:
+                task_id = str(getattr(task, "task_id", "") or "").strip()
+                schedule = str(getattr(task, "schedule", "") or "").strip()
+                if not task_id or not schedule:
+                    continue
+
+                run_count = cron_parser.count_runs_in_period(schedule, day_start, day_end)
+                task_run_counts[task_id] = run_count
+                total_expected_runs += run_count
+
+            return {
+                "total_expected_runs": total_expected_runs,
+                "task_run_counts": task_run_counts,
+                "calculated_at": now.isoformat(),
+                "period_start": day_start.isoformat(),
+                "period_end": day_end.isoformat(),
+            }
+             
+        except Exception as e:
+            self.logger.error(f"Failed to calculate expected runs: {e}", exc_info=True)
+            return {
+                "error": "SCHEDULER_EXPECTED_RUNS_FAILED",
+                "message": str(e)
+            }
+    
+    async def handle_system_metrics_all_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle system metrics all request from gateway"""
+        try:
+            import psutil
+            import time
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+            from aico.core.config import ConfigurationManager
+            from aico.services.scheduler_service import SchedulerService
+            from core.services import get_modelservice_client
+            from core.services.health_calculator import HealthCalculator
+
+            def metric(
+                value: float = 0,
+                *,
+                unit: str = "",
+                trend: float = 0,
+                status: str = "healthy",
+                sparkline_data: list[float] | None = None,
+                avg_1h: float | None = None,
+                avg_24h: float | None = None,
+                avg_7d: float | None = None,
+            ) -> Dict[str, Any]:
+                return {
+                    "value": value,
+                    "unit": unit,
+                    "trend": trend,
+                    "status": status,
+                    "sparkline_data": sparkline_data or [],
+                    "avg_1h": value if avg_1h is None else avg_1h,
+                    "avg_24h": value if avg_24h is None else avg_24h,
+                    "avg_7d": value if avg_7d is None else avg_7d,
+                }
+
+            now = datetime.now(UTC)
+            day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+            def _to_float(value: Any, default: float = 0.0) -> float:
+                try:
+                    if value is None:
+                        return default
+                    return float(value)
+                except (TypeError, ValueError):
+                    return default
+
+            def _to_int(value: Any, default: int = 0) -> int:
+                try:
+                    if value is None:
+                        return default
+                    return int(value)
+                except (TypeError, ValueError):
+                    return default
+
+            def _status_from_value(
+                value: float,
+                *,
+                warning_at: float | None = None,
+                critical_at: float | None = None,
+                lower_is_better: bool = False,
+            ) -> str:
+                if warning_at is None and critical_at is None:
+                    return "healthy"
+
+                if lower_is_better:
+                    if critical_at is not None and value >= critical_at:
+                        return "critical"
+                    if warning_at is not None and value >= warning_at:
+                        return "warning"
+                    return "healthy"
+
+                if critical_at is not None and value <= critical_at:
+                    return "critical"
+                if warning_at is not None and value <= warning_at:
+                    return "warning"
+                return "healthy"
+
+            def _prometheus_metrics_snapshot() -> Dict[str, Any]:
+                config = ConfigurationManager()
+                configured_url = (
+                    config.get("prometheus.url", None)
+                    or os.getenv("PROMETHEUS_URL")
+                    or os.getenv("AICO_PROMETHEUS_URL")
+                )
+                candidate_urls = [
+                    url.rstrip("/")
+                    for url in [
+                        configured_url,
+                        "http://prometheus:9090",
+                        "http://aico-prometheus:9090",
+                        "http://127.0.0.1:9090",
+                    ]
+                    if url
+                ]
+
+                prometheus_base_url = None
+                last_error = None
+                for base_url in candidate_urls:
+                    try:
+                        response = requests.get(f"{base_url}/api/v1/query", params={"query": "up"}, timeout=5)
+                        response.raise_for_status()
+                        payload = response.json()
+                        if payload.get("status") == "success":
+                            prometheus_base_url = base_url
+                            break
+                    except Exception as exc:
+                        last_error = exc
+
+                if not prometheus_base_url:
+                    raise RuntimeError(f"Unable to connect to Prometheus via {candidate_urls}") from last_error
+
+                def _query(query: str) -> Dict[str, Any]:
+                    response = requests.get(
+                        f"{prometheus_base_url}/api/v1/query",
+                        params={"query": query},
+                        timeout=10,
+                    )
+                    response.raise_for_status()
+                    payload = response.json()
+                    if payload.get("status") != "success":
+                        raise RuntimeError(f"Prometheus query failed with status={payload.get('status')}")
+                    return payload
+
+                def _parse_float(value: Any, default: float = 0.0) -> float:
+                    numeric = _to_float(value, default)
+                    if numeric != numeric or numeric in (float("inf"), float("-inf")):
+                        return default
+                    return numeric
+
+                def _instant(query: str, default: float = 0.0) -> float:
+                    result = _query(query).get("data", {}).get("result", [])
+                    if not result:
+                        return default
+                    value = result[0].get("value", [])
+                    if len(value) < 2:
+                        return default
+                    return _parse_float(value[1], default)
+
+                def _instant_series(query: str, label: str) -> Dict[str, float]:
+                    out: Dict[str, float] = {}
+                    for item in _query(query).get("data", {}).get("result", []):
+                        metric_labels = item.get("metric", {}) or {}
+                        key = metric_labels.get(label)
+                        value = item.get("value", [])
+                        if key is None or len(value) < 2:
+                            continue
+                        numeric = _parse_float(value[1], 0.0)
+                        out[str(key)] = numeric
+                    return out
+
+                http_calls_selector = (
+                    'aico_span_calls_total{'
+                    'span_name=~"GET /api/v1/.*|POST /api/v1/.*|PUT /api/v1/.*|PATCH /api/v1/.*|DELETE /api/v1/.*|OPTIONS /api/v1/.*",'
+                    'span_name!~".* http send|.* http receive"'
+                    '}'
+                )
+                http_error_calls_selector = (
+                    'aico_span_calls_total{'
+                    'span_name=~"GET /api/v1/.*|POST /api/v1/.*|PUT /api/v1/.*|PATCH /api/v1/.*|DELETE /api/v1/.*|OPTIONS /api/v1/.*",'
+                    'span_name!~".* http send|.* http receive",'
+                    'status_code="STATUS_CODE_ERROR"'
+                    '}'
+                )
+                http_duration_selector = (
+                    'aico_span_duration_milliseconds_bucket{'
+                    'span_name=~"GET /api/v1/.*|POST /api/v1/.*|PUT /api/v1/.*|PATCH /api/v1/.*|DELETE /api/v1/.*|OPTIONS /api/v1/.*",'
+                    'span_name!~".* http send|.* http receive"'
+                    '}'
+                )
+                http_duration_sum_selector = (
+                    'aico_span_duration_milliseconds_sum{'
+                    'span_name=~"GET /api/v1/.*|POST /api/v1/.*|PUT /api/v1/.*|PATCH /api/v1/.*|DELETE /api/v1/.*|OPTIONS /api/v1/.*",'
+                    'span_name!~".* http send|.* http receive"'
+                    '}'
+                )
+                http_duration_count_selector = (
+                    'aico_span_duration_milliseconds_count{'
+                    'span_name=~"GET /api/v1/.*|POST /api/v1/.*|PUT /api/v1/.*|PATCH /api/v1/.*|DELETE /api/v1/.*|OPTIONS /api/v1/.*",'
+                    'span_name!~".* http send|.* http receive"'
+                    '}'
+                )
+
+                gateway_total_requests = _instant(f"sum({http_calls_selector})")
+                gateway_requests_24h = _instant(f"sum(increase({http_calls_selector}[24h]))")
+                gateway_errors_total = _instant(f"sum({http_error_calls_selector})")
+                gateway_errors_24h = _instant(f"sum(increase({http_error_calls_selector}[24h]))")
+
+                gateway_rps_5m = _instant(f"sum(rate({http_calls_selector}[5m]))")
+                gateway_rps_15m = _instant(f"sum(rate({http_calls_selector}[15m]))")
+                gateway_rps_1h = _instant(f"sum(rate({http_calls_selector}[1h]))")
+                gateway_rps_from_increase_5m = _instant(f"sum(increase({http_calls_selector}[5m]))") / 300.0
+                gateway_rps_from_increase_15m = _instant(f"sum(increase({http_calls_selector}[15m]))") / 900.0
+                gateway_rps_from_increase_1h = _instant(f"sum(increase({http_calls_selector}[1h]))") / 3600.0
+                gateway_rps = max(
+                    gateway_rps_5m,
+                    gateway_rps_15m,
+                    gateway_rps_1h,
+                    gateway_rps_from_increase_5m,
+                    gateway_rps_from_increase_15m,
+                    gateway_rps_from_increase_1h,
+                    (gateway_requests_24h / 86400.0) if gateway_requests_24h > 0 else 0.0,
+                )
+
+                gateway_avg_latency_5m = _instant(
+                    f"sum(rate({http_duration_sum_selector}[5m])) / clamp_min(sum(rate({http_duration_count_selector}[5m])), 1e-9)"
+                )
+                gateway_avg_latency_1h = _instant(
+                    f"sum(increase({http_duration_sum_selector}[1h])) / clamp_min(sum(increase({http_duration_count_selector}[1h])), 1e-9)"
+                )
+                gateway_avg_latency_24h = _instant(
+                    f"sum(increase({http_duration_sum_selector}[24h])) / clamp_min(sum(increase({http_duration_count_selector}[24h])), 1e-9)"
+                )
+                gateway_avg_latency = max(gateway_avg_latency_5m, gateway_avg_latency_1h, gateway_avg_latency_24h, 0.0)
+
+                gateway_p95_latency_5m = _instant(
+                    f"histogram_quantile(0.95, sum by (le) (rate({http_duration_selector}[5m])))"
+                )
+                gateway_p95_latency_1h = _instant(
+                    f"histogram_quantile(0.95, sum by (le) (increase({http_duration_selector}[1h])))"
+                )
+                gateway_p95_latency_24h = _instant(
+                    f"histogram_quantile(0.95, sum by (le) (increase({http_duration_selector}[24h])))"
+                )
+                gateway_p95_latency = max(
+                    gateway_p95_latency_5m,
+                    gateway_p95_latency_1h,
+                    gateway_p95_latency_24h,
+                    gateway_avg_latency,
+                )
+
+                gateway_request_count = _to_int(round(gateway_requests_24h if gateway_requests_24h > 0 else gateway_total_requests), 0)
+                process_uptime_seconds = max(
+                    float(time.time() - (self._system_handlers_start_time or time.time())),
+                    1.0,
+                )
+                if gateway_rps <= 0.0 and gateway_total_requests > 0.0:
+                    gateway_rps = max(
+                        gateway_rps,
+                        gateway_total_requests / process_uptime_seconds,
+                    )
+                gateway_error_count = gateway_errors_24h if gateway_errors_24h > 0 else gateway_errors_total
+                gateway_error_rate = (
+                    gateway_error_count / max(float(gateway_request_count), 1.0) * 100.0
+                    if gateway_request_count > 0
+                    else 0.0
+                )
+                gateway_success_rate = max(0.0, 100.0 - gateway_error_rate)
+
+                mb_count_24h = _instant("sum(increase(aico_messagebus_message_count_total[24h]))")
+                mb_rps = _instant("sum(rate(aico_messagebus_message_count_total[5m]))")
+                mb_avg_processing_seconds = _instant(
+                    "sum(rate(aico_messagebus_message_duration_seconds_sum[5m])) / "
+                    "clamp_min(sum(rate(aico_messagebus_message_duration_seconds_count[5m])), 1e-9)"
+                )
+                mb_p95_processing_seconds = _instant(
+                    "histogram_quantile(0.95, sum by (le) (rate(aico_messagebus_message_duration_seconds_bucket[5m])))"
+                )
+                mb_topics = _instant_series(
+                    "topk(10, sum by (topic) (increase(aico_messagebus_message_count_total[24h])))",
+                    "topic",
+                )
+
+                return {
+                    "gateway": {
+                        "request_count": gateway_request_count,
+                        "requests_per_second": gateway_rps,
+                        "avg_response_time": gateway_avg_latency,
+                        "p95_response_time": gateway_p95_latency,
+                        "error_rate": gateway_error_rate,
+                        "success_rate": gateway_success_rate,
+                        "avg_latency_1h": gateway_avg_latency_1h if gateway_avg_latency_1h > 0 else gateway_avg_latency,
+                        "avg_latency_24h": gateway_avg_latency_24h if gateway_avg_latency_24h > 0 else gateway_avg_latency,
+                        "avg_latency_7d": gateway_avg_latency_24h if gateway_avg_latency_24h > 0 else gateway_avg_latency,
+                        "sparkline": [],
+                    },
+                    "modelservice": {
+                        "llm": {
+                            "request_count": 0,
+                            "duration_ms": 0.0,
+                            "p99_duration_ms": 0.0,
+                            "tokens_generated": 0.0,
+                            "prompt_tokens_mean": 0.0,
+                            "ttft_ms": 0.0,
+                            "success_true": 0,
+                            "success_false": 0,
+                            "sparkline": [],
+                        },
+                        "ner": {
+                            "request_count": 0,
+                            "duration_ms": 0.0,
+                            "p99_duration_ms": 0.0,
+                            "tokens_generated": 0.0,
+                            "success_true": 0,
+                            "success_false": 0,
+                        },
+                        "sentiment": {
+                            "request_count": 0,
+                            "duration_ms": 0.0,
+                            "p99_duration_ms": 0.0,
+                            "confidence_score_mean": 0.0,
+                        },
+                        "embeddings": {
+                            "request_count": 0,
+                            "duration_ms": 0.0,
+                            "p99_duration_ms": 0.0,
+                        },
+                        "model_usage": {},
+                    },
+                    "memory": {
+                        "query_count_24h": 0,
+                        "queries_per_second": 0.0,
+                        "avg_query_time_ms": 0.0,
+                        "avg_query_time_1h_ms": 0.0,
+                        "avg_query_time_7d_ms": 0.0,
+                    },
+                    "message_bus": {
+                        "message_count_24h": _to_int(round(mb_count_24h), 0),
+                        "messages_per_second": mb_rps,
+                        "avg_processing_time_ms": mb_avg_processing_seconds * 1000.0,
+                        "backlog_depth": 0.0,
+                        "p95_processing_time_ms": mb_p95_processing_seconds * 1000.0,
+                        "top_topics": [
+                            {"topic": topic, "count": _to_int(round(count), 0)}
+                            for topic, count in sorted(mb_topics.items(), key=lambda item: item[1], reverse=True)
+                        ],
+                    },
+                }
+
+            try:
+                telemetry_metrics = await asyncio.to_thread(_prometheus_metrics_snapshot)
+            except Exception as e:
+                raise RuntimeError("Failed to load Prometheus/OTel metrics for system metrics response") from e
+
+            handlers = await self._get_system_handlers()
+            health = await handlers.handle_system_health_request({})
+            services_payload = await handlers.handle_system_health_services_request({})
+            services = getattr(services_payload, "services", None)
+            if services is None and isinstance(services_payload, dict):
+                services = services_payload.get("services", [])
+            services = services or []
+
+            modelservice_status: Dict[str, Any] = {}
+            try:
+                modelservice_client = get_modelservice_client(ConfigurationManager())
+                modelservice_status = await modelservice_client.get_status()
+            except Exception as exc:
+                self.logger.debug(f"Could not query modelservice status for metrics: {exc}")
+
+            loaded_models = modelservice_status.get("loaded_models") or []
+            loaded_models_count = _to_int(
+                modelservice_status.get("loaded_models_count"),
+                len(loaded_models),
+            )
+            expected_model_count = 2
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                scheduler_service = SchedulerService(uow)
+                execution_stats_today = await scheduler_service.get_execution_stats_in_range(
+                    start_dt=day_start,
+                    end_dt=now,
+                    bucket="day",
+                )
+                jobs_today = sum(int(row.get("count") or 0) for row in execution_stats_today)
+                failed_jobs = sum(
+                    int(row.get("count") or 0)
+                    for row in execution_stats_today
+                    if row.get("status") == "failed"
+                )
+                kg_nodes_count = int(await uow.kg_nodes.count(filters={"is_current": True}) or 0)
+                kg_relationships_count = int(await uow.kg_edges.count(filters={"is_current": True}) or 0)
+                runs_today = await uow.scheduler_run_ledger.count(
+                    filters={"scheduled_for_from": day_start, "scheduled_for_to": now}
+                )
+
+            scheduler = self.container.get_service("task_scheduler")
+            scheduler_status = scheduler.get_status() if scheduler and hasattr(scheduler, "get_status") else {}
+            running_tasks = int((scheduler_status or {}).get("running_tasks", 0) or 0)
+            scheduled_tasks = int((scheduler_status or {}).get("scheduled_tasks", 0) or 0)
+
+            success_rate = 100.0 if jobs_today == 0 else max(0.0, ((jobs_today - failed_jobs) / jobs_today) * 100.0)
+            queue_utilization = {
+                "scheduled": float(scheduled_tasks),
+                "running": float(running_tasks),
+            }
+
+            gateway_telemetry = telemetry_metrics.get("gateway", {}) if isinstance(telemetry_metrics, dict) else {}
+            modelservice_telemetry = telemetry_metrics.get("modelservice", {}) if isinstance(telemetry_metrics, dict) else {}
+            memory_telemetry = telemetry_metrics.get("memory", {}) if isinstance(telemetry_metrics, dict) else {}
+            message_bus_telemetry = telemetry_metrics.get("message_bus", {}) if isinstance(telemetry_metrics, dict) else {}
+
+            gateway_raw = {
+                "error_rate": _to_float(gateway_telemetry.get("error_rate"), 0.0),
+                "p95_response_time": _to_float(gateway_telemetry.get("p95_response_time"), 0.0),
+                "success_rate": _to_float(gateway_telemetry.get("success_rate"), 100.0),
+            }
+            modelservice_raw = {
+                "avg_inference_time": _to_float(modelservice_telemetry.get("llm", {}).get("duration_ms"), 0.0) / 1000.0,
+                "active_models": loaded_models_count,
+            }
+            memory_raw = {
+                "queries_per_second": _to_float(memory_telemetry.get("queries_per_second"), 0.0),
+            }
+            scheduler_raw = {
+                "success_rate": success_rate,
+                "failed_jobs": failed_jobs,
+                "queue_counts": queue_utilization,
+            }
+            message_bus_raw = {
+                "error_rate": 0.0,
+                "backlog_depth": _to_float(message_bus_telemetry.get("backlog_depth"), 0.0),
+                "messages_per_second": _to_float(message_bus_telemetry.get("messages_per_second"), 0.0),
+            }
+
+            gateway_score, gateway_issues = HealthCalculator.calculate_gateway_health(gateway_raw)
+            modelservice_score, modelservice_issues = HealthCalculator.calculate_modelservice_health(
+                modelservice_raw,
+                0.0,
+            )
+            memory_score, memory_issues = HealthCalculator.calculate_memory_health(
+                memory_raw,
+                kg_nodes_count,
+                kg_relationships_count,
+            )
+            scheduler_score, scheduler_issues = HealthCalculator.calculate_scheduler_health(scheduler_raw)
+            message_bus_score, message_bus_issues = HealthCalculator.calculate_message_bus_health(message_bus_raw)
+
+            overall_health_score, _all_issues, critical_count, warning_count = HealthCalculator.calculate_system_health({
+                "gateway": (gateway_score, gateway_issues),
+                "modelservice": (modelservice_score, modelservice_issues),
+                "memory": (memory_score, memory_issues),
+                "scheduler": (scheduler_score, scheduler_issues),
+                "message_bus": (message_bus_score, message_bus_issues),
+            })
+
+            score_breakdown = {
+                "gateway": {
+                    "score": gateway_score,
+                    "max_score": 100,
+                    "deductions": [
+                        {
+                            "severity": issue.severity,
+                            "metric": issue.metric,
+                            "impact": issue.impact,
+                            "message": issue.message,
+                            "current_value": issue.current_value,
+                            "threshold": issue.threshold,
+                        }
+                        for issue in gateway_issues
+                    ],
+                },
+                "modelservice": {
+                    "score": modelservice_score,
+                    "max_score": 100,
+                    "deductions": [
+                        {
+                            "severity": issue.severity,
+                            "metric": issue.metric,
+                            "impact": issue.impact,
+                            "message": issue.message,
+                            "current_value": issue.current_value,
+                            "threshold": issue.threshold,
+                        }
+                        for issue in modelservice_issues
+                    ],
+                },
+                "memory": {
+                    "score": memory_score,
+                    "max_score": 100,
+                    "deductions": [
+                        {
+                            "severity": issue.severity,
+                            "metric": issue.metric,
+                            "impact": issue.impact,
+                            "message": issue.message,
+                            "current_value": issue.current_value,
+                            "threshold": issue.threshold,
+                        }
+                        for issue in memory_issues
+                    ],
+                },
+                "scheduler": {
+                    "score": scheduler_score,
+                    "max_score": 100,
+                    "deductions": [
+                        {
+                            "severity": issue.severity,
+                            "metric": issue.metric,
+                            "impact": issue.impact,
+                            "message": issue.message,
+                            "current_value": issue.current_value,
+                            "threshold": issue.threshold,
+                        }
+                        for issue in scheduler_issues
+                    ],
+                },
+                "message_bus": {
+                    "score": message_bus_score,
+                    "max_score": 100,
+                    "deductions": [
+                        {
+                            "severity": issue.severity,
+                            "metric": issue.metric,
+                            "impact": issue.impact,
+                            "message": issue.message,
+                            "current_value": issue.current_value,
+                            "threshold": issue.threshold,
+                        }
+                        for issue in message_bus_issues
+                    ],
+                },
+            }
+
+            component_status = {
+                "gateway": {"status": "healthy" if gateway_score >= 90 else "warning" if gateway_score >= 70 else "critical", "health": gateway_score, "explanation": "; ".join(issue.message for issue in gateway_issues) or "No gateway issues detected"},
+                "modelservice": {"status": "healthy" if modelservice_score >= 90 else "warning" if modelservice_score >= 70 else "critical", "health": modelservice_score, "explanation": "; ".join(issue.message for issue in modelservice_issues) or "No modelservice issues detected"},
+                "memory": {"status": "healthy" if memory_score >= 90 else "warning" if memory_score >= 70 else "critical", "health": memory_score, "explanation": "; ".join(issue.message for issue in memory_issues) or "No memory issues detected"},
+                "scheduler": {"status": "healthy" if scheduler_score >= 90 else "warning" if scheduler_score >= 70 else "critical", "health": scheduler_score, "explanation": "; ".join(issue.message for issue in scheduler_issues) or "No scheduler issues detected"},
+                "message_bus": {"status": "healthy" if message_bus_score >= 90 else "warning" if message_bus_score >= 70 else "critical", "health": message_bus_score, "explanation": "; ".join(issue.message for issue in message_bus_issues) or "No message bus issues detected"},
+            }
+
+            active_sessions = 0
+            for service in services:
+                service_name = service.get("name") if isinstance(service, dict) else getattr(service, "name", None)
+                if service_name == "Scheduler":
+                    details = service.get("details") if isinstance(service, dict) else getattr(service, "details", None)
+                    details = details or {}
+                    jobs = details.get("jobs") or []
+                    active_sessions = len(jobs)
+                    break
+
+            cpu_percent = float(psutil.cpu_percent(interval=None) or 0.0)
+            memory_percent = float(psutil.virtual_memory().percent or 0.0)
+            disk_percent = float(psutil.disk_usage("/").percent or 0.0)
+            uptime_seconds = int(health.get("uptime_seconds", 0) or 0)
+            working_memory_stats = await self.handle_memory_working_stats_request({})
+
+            async with UnitOfWork(session_factory) as uow:
+                current_nodes = await uow.kg_nodes.list(filters={"is_current": True}, limit=100000)
+                current_edges = await uow.kg_edges.list(filters={"is_current": True}, limit=100000)
+
+            entity_type_distribution: Dict[str, int] = {}
+            relationship_type_distribution: Dict[str, int] = {}
+            for node in current_nodes:
+                label = getattr(node, "label", None) or "unknown"
+                entity_type_distribution[label] = entity_type_distribution.get(label, 0) + 1
+            for edge in current_edges:
+                relation_type = getattr(edge, "relation_type", None) or "unknown"
+                relationship_type_distribution[relation_type] = relationship_type_distribution.get(relation_type, 0) + 1
+
+            gateway_rps = _to_float(gateway_telemetry.get("requests_per_second"), 0.0)
+            gateway_avg_latency = _to_float(gateway_telemetry.get("avg_response_time"), 0.0)
+            gateway_error_rate = _to_float(gateway_telemetry.get("error_rate"), 0.0)
+            llm_telemetry = modelservice_telemetry.get("llm", {})
+            ner_telemetry = modelservice_telemetry.get("ner", {})
+            sentiment_telemetry = modelservice_telemetry.get("sentiment", {})
+            embedding_telemetry = modelservice_telemetry.get("embeddings", {})
+            total_message_backlog = _to_float(message_bus_telemetry.get("backlog_depth"), 0.0)
+
+            return {
+                "timestamp": now.isoformat(),
+                "gateway": {
+                    "requests_per_second": metric(
+                        gateway_rps,
+                        unit="req/s",
+                        status=_status_from_value(gateway_rps, warning_at=0.1, critical_at=0.01, lower_is_better=False),
+                    ),
+                    "avg_response_time": metric(
+                        gateway_avg_latency,
+                        unit="ms",
+                        status=_status_from_value(gateway_avg_latency, warning_at=200, critical_at=500, lower_is_better=True),
+                        sparkline_data=gateway_telemetry.get("sparkline", []),
+                        avg_1h=_to_float(gateway_telemetry.get("avg_latency_1h"), gateway_avg_latency),
+                        avg_24h=_to_float(gateway_telemetry.get("avg_latency_24h"), gateway_avg_latency),
+                        avg_7d=_to_float(gateway_telemetry.get("avg_latency_7d"), gateway_avg_latency),
+                    ),
+                    "error_rate": metric(
+                        gateway_raw["error_rate"],
+                        unit="%",
+                        status=_status_from_value(gateway_raw["error_rate"], warning_at=1.0, critical_at=5.0, lower_is_better=True),
+                    ),
+                    "success_rate": metric(
+                        gateway_raw["success_rate"],
+                        unit="%",
+                        status=_status_from_value(gateway_raw["success_rate"], warning_at=99.0, critical_at=95.0, lower_is_better=False),
+                    ),
+                },
+                "modelservice": {
+                    "llm": {
+                        "rps": metric(
+                            _to_float(llm_telemetry.get("request_count"), 0.0) / 86400.0,
+                            unit="req/s",
+                            sparkline_data=llm_telemetry.get("sparkline", []),
+                        ),
+                        "total_requests_24h": _to_int(llm_telemetry.get("request_count"), 0),
+                        "tps": metric(_to_float(llm_telemetry.get("tokens_generated"), 0.0) / 86400.0, unit="t/s"),
+                        "ttft": metric(_to_float(llm_telemetry.get("ttft_ms"), 0.0) / 1000.0, unit="s"),
+                        "e2e_latency": metric(_to_float(llm_telemetry.get("duration_ms"), 0.0) / 1000.0, unit="s"),
+                        "success_rate": metric(
+                            (
+                                _to_int(llm_telemetry.get("success_true"), 0)
+                                / max(_to_int(llm_telemetry.get("success_true"), 0) + _to_int(llm_telemetry.get("success_false"), 0), 1)
+                            ) * 100.0
+                            if (_to_int(llm_telemetry.get("success_true"), 0) + _to_int(llm_telemetry.get("success_false"), 0)) > 0
+                            else 100.0,
+                            unit="%",
+                        ),
+                        "total_tokens_24h": _to_int(llm_telemetry.get("tokens_generated"), 0),
+                        "avg_prompt_length": metric(_to_float(llm_telemetry.get("prompt_tokens_mean"), 0.0), unit="tokens"),
+                        "avg_response_length": metric(
+                            _to_float(llm_telemetry.get("tokens_generated"), 0.0) / max(_to_int(llm_telemetry.get("request_count"), 0), 1),
+                            unit="tokens",
+                        ),
+                        "active_models": {"value": loaded_models_count},
+                        "loaded_models": loaded_models,
+                        "expected_models": expected_model_count,
+                        "model_usage": modelservice_telemetry.get("model_usage", {}),
+                    },
+                    "ner": {
+                        "inference_rate": metric(_to_float(ner_telemetry.get("request_count"), 0.0) / 86400.0, unit="req/s"),
+                        "avg_latency": metric(_to_float(ner_telemetry.get("duration_ms"), 0.0) / 1000.0, unit="s"),
+                        "p99_latency": _to_float(ner_telemetry.get("p99_duration_ms"), 0.0) / 1000.0,
+                        "total_entities_24h": _to_int(ner_telemetry.get("tokens_generated"), 0),
+                        "success_rate": metric(
+                            (
+                                _to_int(ner_telemetry.get("success_true"), 0)
+                                / max(_to_int(ner_telemetry.get("success_true"), 0) + _to_int(ner_telemetry.get("success_false"), 0), 1)
+                            ) * 100.0
+                            if (_to_int(ner_telemetry.get("success_true"), 0) + _to_int(ner_telemetry.get("success_false"), 0)) > 0
+                            else 100.0,
+                            unit="%",
+                        ),
+                    },
+                    "sentiment": {
+                        "inference_rate": metric(_to_float(sentiment_telemetry.get("request_count"), 0.0) / 86400.0, unit="req/s"),
+                        "avg_latency": metric(_to_float(sentiment_telemetry.get("duration_ms"), 0.0) / 1000.0, unit="s"),
+                        "p99_latency": _to_float(sentiment_telemetry.get("p99_duration_ms"), 0.0) / 1000.0,
+                        "total_analyses_24h": _to_int(sentiment_telemetry.get("request_count"), 0),
+                        "avg_confidence": metric(_to_float(sentiment_telemetry.get("confidence_score_mean"), 0.0)),
+                    },
+                    "embeddings": {
+                        "inference_rate": metric(_to_float(embedding_telemetry.get("request_count"), 0.0) / 86400.0, unit="emb/s"),
+                        "avg_latency": metric(_to_float(embedding_telemetry.get("duration_ms"), 0.0), unit="ms"),
+                        "p99_latency": _to_float(embedding_telemetry.get("p99_duration_ms"), 0.0),
+                        "throughput": metric(_to_float(embedding_telemetry.get("request_count"), 0.0) / 86400.0, unit="t/s"),
+                        "total_embeddings_24h": _to_int(embedding_telemetry.get("request_count"), 0),
+                    },
+                },
+                "memory": {
+                    "working_memory_size": metric(_to_float(working_memory_stats.get("active_items"), 0.0), unit="entries"),
+                    "semantic_queries_per_second": metric(_to_float(memory_telemetry.get("queries_per_second"), 0.0), unit="queries/s"),
+                    "kg_nodes": metric(kg_nodes_count, unit="nodes"),
+                    "kg_relationships": metric(kg_relationships_count, unit="edges"),
+                    "entity_type_distribution": entity_type_distribution,
+                    "relationship_type_distribution": relationship_type_distribution,
+                },
+                "scheduler": {
+                    "jobs_today": metric(jobs_today, unit="jobs"),
+                    "success_rate": metric(success_rate, unit="%"),
+                    "queue_utilization": queue_utilization,
+                },
+                "message_bus": {
+                    "messages_per_second": metric(_to_float(message_bus_telemetry.get("messages_per_second"), 0.0), unit="msg/s"),
+                    "backlog_depth": metric(_to_float(message_bus_telemetry.get("backlog_depth"), 0.0), unit="msgs"),
+                    "top_topics": message_bus_telemetry.get("top_topics", []),
+                },
+                "system_health": {
+                    "health_score": overall_health_score,
+                    "critical_alerts": critical_count,
+                    "warnings": warning_count,
+                    "score_breakdown": score_breakdown,
+                    "uptime_seconds": uptime_seconds,
+                    "total_throughput": gateway_rps + _to_float(message_bus_telemetry.get("messages_per_second"), 0.0),
+                    "system_error_rate": gateway_error_rate,
+                    "avg_latency_ms": gateway_avg_latency,
+                    "active_sessions": active_sessions,
+                    "queue_backlog": max(_to_int(total_message_backlog, 0), max(0, runs_today - jobs_today)),
+                    "cpu_percent": cpu_percent,
+                    "memory_percent": memory_percent,
+                    "disk_percent": disk_percent,
+                    "component_status": component_status,
+                },
+            }
+             
+        except Exception as e:
+            self.logger.error(f"Failed to get system metrics: {e}", exc_info=True)
+            return {"error": "SYSTEM_METRICS_ALL_FAILED", "message": str(e)}
+
+    async def handle_system_overview_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle system overview request from gateway"""
+        try:
+            from core.services.system_overview_service import get_system_overview
+            from aico.data.postgres.connection import get_session_factory
+            from aico.data.uow import UnitOfWork
+
+            user_id = request_data.get("user_id") or request_data.get("user_uuid")
+            if not user_id:
+                return {"error": "SYSTEM_OVERVIEW_FAILED", "message": "Missing user_id"}
+
+            session_factory = await get_session_factory()
+            async with UnitOfWork(session_factory) as uow:
+                response = await get_system_overview(user_id=str(user_id), uow=uow)
+                self.logger.info(
+                    "System overview response served: "
+                    f"user_id_present={bool(user_id)}, system_status={response.get('system_status')}, "
+                    f"active_conversations={response.get('active_conversations')}, active_goals={response.get('active_goals')}"
+                )
+                return response
+        except Exception as e:
+            self.logger.error(f"Failed to get system overview: {e}", exc_info=True)
+            return {"error": "SYSTEM_OVERVIEW_FAILED", "message": str(e)}
+    async def handle_system_health_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle system health request from gateway"""
+        handlers = await self._get_system_handlers()
+        return await handlers.handle_system_health_request(request_data)
+    
+    async def handle_system_health_services_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle system health services request from gateway"""
+        handlers = await self._get_system_handlers()
+        return await handlers.handle_system_health_services_request(request_data)
+
+    async def handle_system_health_detailed_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle detailed health request from gateway"""
+        try:
+            from aico.core.version import get_backend_version
+            metrics = await self.handle_system_metrics_all_request({})
+            if metrics.get("error"):
+                return metrics
+
+            health = await self.handle_system_health_request({})
+            if health.get("error"):
+                return health
+
+            services_payload = await self.handle_system_health_services_request({})
+            if services_payload.get("error"):
+                return services_payload
+
+            services = getattr(services_payload, "services", None)
+            if services is None and isinstance(services_payload, dict):
+                services = services_payload.get("services", [])
+            services = services or []
+
+            components: Dict[str, Any] = {}
+            for service in services:
+                if isinstance(service, dict):
+                    name = service.get("name")
+                    status = service.get("status", "unknown")
+                    last_checked = service.get("last_checked")
+                    details = service.get("details")
+                else:
+                    name = getattr(service, "name", None)
+                    status = getattr(service, "status", "unknown")
+                    last_checked = getattr(service, "last_checked", None)
+                    details = getattr(service, "details", None)
+
+                if not name:
+                    continue
+
+                components[name] = {
+                    "status": status,
+                    "last_check": last_checked.isoformat() if hasattr(last_checked, "isoformat") else (last_checked or ""),
+                    "details": details or {},
+                }
+
+            system_health = metrics.get("system_health", {}) if isinstance(metrics, dict) else {}
+            return {
+                "status": health.get("status", "unknown"),
+                "timestamp": health.get("last_check") or health.get("timestamp") or "",
+                "version": get_backend_version(),
+                "components": components,
+                "metrics": {
+                    "cpu_usage": system_health.get("cpu_percent", 0),
+                    "memory_usage": system_health.get("memory_percent", 0),
+                    "disk_usage": system_health.get("disk_percent", 0),
+                    "uptime": system_health.get("uptime_seconds", 0),
+                    "load_average": None,
+                },
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to get detailed health: {e}", exc_info=True)
+            return {"error": "SYSTEM_HEALTH_DETAILED_FAILED", "message": str(e)}
+    
+    async def handle_system_health_issues_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle system health issues request from gateway"""
+        handlers = await self._get_system_handlers()
+        return await handlers.handle_system_health_issues_request(request_data)
+    
+    async def handle_remediate_available_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle available remediation actions request from gateway"""
+        handlers = await self._get_system_handlers()
+        return await handlers.handle_remediate_available_request(request_data)
+    
+    async def handle_remediate_history_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle remediation history request from gateway"""
+        handlers = await self._get_system_handlers()
+        return await handlers.handle_remediate_history_request(request_data)
+
+    async def handle_remediate_trigger_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle remediation trigger request from gateway"""
+        handlers = await self._get_system_handlers()
+        return await handlers.handle_remediate_trigger_request(request_data)
+    
+    async def handle_health_check_connectivity_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle connectivity health check trigger from gateway"""
+        handlers = await self._get_system_handlers()
+        return await handlers.handle_health_check_connectivity(request_data)
+    
+    async def handle_health_check_resources_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle resources health check trigger from gateway"""
+        handlers = await self._get_system_handlers()
+        return await handlers.handle_health_check_resources(request_data)
+    
+    async def handle_health_check_models_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle models health check trigger from gateway"""
+        handlers = await self._get_system_handlers()
+        return await handlers.handle_health_check_models(request_data)
+    
+    async def handle_health_check_ai_behaviour_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle AI behaviour health check trigger from gateway"""
+        handlers = await self._get_system_handlers()
+        return await handlers.handle_health_check_ai_behaviour(request_data)
+    
+    def _extract_request_data(self, request_envelope) -> Dict[str, Any]:
+        """Extract JSON data from request envelope"""
+        try:
+            # Check if request has JSON data in attributes
+            if hasattr(request_envelope, 'metadata') and hasattr(request_envelope.metadata, 'attributes'):
+                json_data = request_envelope.metadata.attributes.get('json_data', '{}')
+                return json.loads(json_data)
+            return {}
+        except Exception as e:
+            self.logger.warning(f"Failed to extract request data: {e}")
+            return {}
+    
+    async def setup_handlers(self, message_bus_client):
+        """Register all NATS request handlers using native NATS request/reply"""
+
+        async with self._setup_lock:
+            if self._setup_completed:
+                self.logger.warning("setup_handlers called again; subscriptions already registered. Skipping.")
+                return
+            # Mark as completed immediately (under lock) so even if setup_handlers is invoked
+            # again during startup/reconnect churn, we do not register duplicate subscriptions.
+            self._setup_completed = True
+        
+        def make_handler(handler_func, response_type):
+            """Create a NATS message handler that processes requests and sends replies"""
+            async def handler(msg):
+                try:
+                    # Parse JSON request directly from bytes
+                    request_data = json.loads(msg.data.decode('utf-8')) if msg.data else {}
+                    
+                    # Process request
+                    response_data = await handler_func(request_data)
+                    
+                    # Send JSON response as plain bytes (simplest approach)
+                    response_bytes = json.dumps(response_data).encode('utf-8')
+
+                    # NATS default max payload is typically 1MiB. Keep a safety buffer.
+                    if len(response_bytes) > 900_000:
+                        response_data = {
+                            "error": "RESPONSE_TOO_LARGE",
+                            "message": "Response payload exceeded NATS max payload; reduce requested range/limit.",
+                            "subject": getattr(msg, "subject", None),
+                            "response_type": response_type,
+                            "size_bytes": len(response_bytes),
+                        }
+                        response_bytes = json.dumps(response_data).encode("utf-8")
+                    
+                    # Send reply using NATS built-in reply mechanism
+                    try:
+                        await message_bus_client._nats.publish(
+                            msg.reply,
+                            response_bytes,
+                        )
+                    except Exception as e:
+                        # Publishing can fail for oversized payloads (MaxPayloadError) or transient transport issues.
+                        self.logger.error(f"Error in {response_type} handler: {e}", exc_info=True)
+                        if getattr(msg, "reply", None):
+                            error_payload = {
+                                "error": "NATS_PUBLISH_FAILED",
+                                "message": str(e),
+                                "subject": getattr(msg, "subject", None),
+                                "response_type": response_type,
+                            }
+                            try:
+                                await message_bus_client._nats.publish(
+                                    msg.reply,
+                                    json.dumps(error_payload).encode("utf-8"),
+                                )
+                            except Exception:
+                                pass
+                    
+                except Exception as e:
+                    self.logger.error(f"Error in {response_type} handler: {e}", exc_info=True)
+                    try:
+                        if getattr(msg, "reply", None):
+                            error_payload = {
+                                "error": "NATS_HANDLER_ERROR",
+                                "message": str(e),
+                                "subject": getattr(msg, "subject", None),
+                            }
+                            await message_bus_client._nats.publish(
+                                msg.reply,
+                                json.dumps(error_payload).encode("utf-8"),
+                            )
+                    except Exception:
+                        # If we can't reply, at least avoid crashing the subscription callback.
+                        pass
+            
+            return handler
+
+        # Register handlers using direct NATS subscriptions (not MessageBusClient.subscribe)
+        # because we need access to the raw NATS message for the reply subject
+        self.logger.info("Subscribing to scheduler.status...")
+        sid1 = await message_bus_client._nats.subscribe(
+            "scheduler.status",
+            cb=make_handler(self.handle_scheduler_status_request, "scheduler.status.reply")
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.status (sid={sid1})")
+        
+        self.logger.info("Subscribing to scheduler.tasks...")
+        sid2 = await message_bus_client._nats.subscribe(
+            "scheduler.tasks",
+            cb=make_handler(self.handle_scheduler_tasks_request, "scheduler.tasks.reply")
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.tasks (sid={sid2})")
+
+        # Scheduler management endpoints (gateway proxies via NATS)
+        self.logger.info("Subscribing to scheduler.task.get...")
+        sid2a = await message_bus_client._nats.subscribe(
+            "scheduler.task.get",
+            cb=make_handler(self.handle_scheduler_task_get_request, "scheduler.task.get.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.task.get (sid={sid2a})")
+
+        self.logger.info("Subscribing to scheduler.task.create...")
+        sid2b = await message_bus_client._nats.subscribe(
+            "scheduler.task.create",
+            cb=make_handler(self.handle_scheduler_task_create_request, "scheduler.task.create.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.task.create (sid={sid2b})")
+
+        self.logger.info("Subscribing to scheduler.task.update...")
+        sid2c = await message_bus_client._nats.subscribe(
+            "scheduler.task.update",
+            cb=make_handler(self.handle_scheduler_task_update_request, "scheduler.task.update.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.task.update (sid={sid2c})")
+
+        self.logger.info("Subscribing to scheduler.task.delete...")
+        sid2d = await message_bus_client._nats.subscribe(
+            "scheduler.task.delete",
+            cb=make_handler(self.handle_scheduler_task_delete_request, "scheduler.task.delete.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.task.delete (sid={sid2d})")
+
+        self.logger.info("Subscribing to scheduler.task.enable...")
+        sid2e = await message_bus_client._nats.subscribe(
+            "scheduler.task.enable",
+            cb=make_handler(self.handle_scheduler_task_enable_request, "scheduler.task.enable.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.task.enable (sid={sid2e})")
+
+        self.logger.info("Subscribing to scheduler.task.disable...")
+        sid2f = await message_bus_client._nats.subscribe(
+            "scheduler.task.disable",
+            cb=make_handler(self.handle_scheduler_task_disable_request, "scheduler.task.disable.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.task.disable (sid={sid2f})")
+
+        self.logger.info("Subscribing to scheduler.task.status...")
+        sid2g = await message_bus_client._nats.subscribe(
+            "scheduler.task.status",
+            cb=make_handler(self.handle_scheduler_task_status_request, "scheduler.task.status.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.task.status (sid={sid2g})")
+
+        self.logger.info("Subscribing to scheduler.task.history...")
+        sid2h = await message_bus_client._nats.subscribe(
+            "scheduler.task.history",
+            cb=make_handler(self.handle_scheduler_task_history_request, "scheduler.task.history.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.task.history (sid={sid2h})")
+
+        self.logger.info("Subscribing to scheduler.executions.range...")
+        sid2i = await message_bus_client._nats.subscribe(
+            "scheduler.executions.range",
+            cb=make_handler(self.handle_scheduler_executions_range_request, "scheduler.executions.range.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.executions.range (sid={sid2i})")
+
+        self.logger.info("Subscribing to scheduler.executions.list...")
+        sid2i_list = await message_bus_client._nats.subscribe(
+            "scheduler.executions.list",
+            cb=make_handler(self.handle_scheduler_executions_list_request, "scheduler.executions.list.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.executions.list (sid={sid2i_list})")
+
+        self.logger.info("Subscribing to scheduler.executions.get...")
+        sid2i_get = await message_bus_client._nats.subscribe(
+            "scheduler.executions.get",
+            cb=make_handler(self.handle_scheduler_execution_get_request, "scheduler.executions.get.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.executions.get (sid={sid2i_get})")
+
+        self.logger.info("Subscribing to scheduler.executions.stats...")
+        sid2i_stats = await message_bus_client._nats.subscribe(
+            "scheduler.executions.stats",
+            cb=make_handler(self.handle_scheduler_executions_stats_request, "scheduler.executions.stats.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.executions.stats (sid={sid2i_stats})")
+
+        self.logger.info("Subscribing to scheduler.runs.list...")
+        sid_runs_list = await message_bus_client._nats.subscribe(
+            "scheduler.runs.list",
+            cb=make_handler(self.handle_scheduler_runs_list_request, "scheduler.runs.list.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.runs.list (sid={sid_runs_list})")
+
+        self.logger.info("Subscribing to scheduler.runs.get...")
+        sid_runs_get = await message_bus_client._nats.subscribe(
+            "scheduler.runs.get",
+            cb=make_handler(self.handle_scheduler_run_get_request, "scheduler.runs.get.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.runs.get (sid={sid_runs_get})")
+
+        self.logger.info("Subscribing to scheduler.runs.stats...")
+        sid_runs_stats = await message_bus_client._nats.subscribe(
+            "scheduler.runs.stats",
+            cb=make_handler(self.handle_scheduler_runs_stats_request, "scheduler.runs.stats.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.runs.stats (sid={sid_runs_stats})")
+
+        self.logger.info("Subscribing to scheduler.executions.unacknowledged_failures...")
+        sid2j = await message_bus_client._nats.subscribe(
+            "scheduler.executions.unacknowledged_failures",
+            cb=make_handler(
+                self.handle_scheduler_unacknowledged_failures_request,
+                "scheduler.executions.unacknowledged_failures.reply",
+            ),
+        )
+        self.logger.info(
+            f"✅ Subscribed to scheduler.executions.unacknowledged_failures (sid={sid2j})"
+        )
+
+        self.logger.info("Subscribing to scheduler.executions.acknowledge...")
+        sid2k = await message_bus_client._nats.subscribe(
+            "scheduler.executions.acknowledge",
+            cb=make_handler(
+                self.handle_scheduler_acknowledge_execution_request,
+                "scheduler.executions.acknowledge.reply",
+            ),
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.executions.acknowledge (sid={sid2k})")
+
+        self.logger.info("Subscribing to scheduler.executions.acknowledge_all...")
+        sid2l = await message_bus_client._nats.subscribe(
+            "scheduler.executions.acknowledge_all",
+            cb=make_handler(
+                self.handle_scheduler_acknowledge_all_failed_request,
+                "scheduler.executions.acknowledge_all.reply",
+            ),
+        )
+        self.logger.info(
+            f"✅ Subscribed to scheduler.executions.acknowledge_all (sid={sid2l})"
+        )
+
+        self.logger.info("Subscribing to scheduler.task.trigger...")
+        sid2m = await message_bus_client._nats.subscribe(
+            "scheduler.task.trigger",
+            cb=make_handler(self.handle_scheduler_task_trigger_request, "scheduler.task.trigger.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.task.trigger (sid={sid2m})")
+        
+        self.logger.info("Subscribing to emotion.current...")
+        sid3 = await message_bus_client._nats.subscribe(
+            "emotion.current",
+            cb=make_handler(self.handle_emotion_current_request, "emotion.current.reply")
+        )
+        self.logger.info(f"✅ Subscribed to emotion.current (sid={sid3})")
+        
+        self.logger.info("Subscribing to emotion.history...")
+        sid4 = await message_bus_client._nats.subscribe(
+            "emotion.history",
+            cb=make_handler(self.handle_emotion_history_request, "emotion.history.reply")
+        )
+        self.logger.info(f"✅ Subscribed to emotion.history (sid={sid4})")
+        
+        self.logger.info("Subscribing to memory.semantic.stats...")
+        sid5 = await message_bus_client._nats.subscribe(
+            "memory.semantic.stats",
+            cb=make_handler(self.handle_memory_semantic_stats_request, "memory.semantic.stats.reply")
+        )
+        self.logger.info(f"✅ Subscribed to memory.semantic.stats (sid={sid5})")
+        
+        self.logger.info("Subscribing to memory.working.stats...")
+        sid6 = await message_bus_client._nats.subscribe(
+            "memory.working.stats",
+            cb=make_handler(self.handle_memory_working_stats_request, "memory.working.stats.reply")
+        )
+        self.logger.info(f"✅ Subscribed to memory.working.stats (sid={sid6})")
+        
+        self.logger.info("Subscribing to kg.stats...")
+        sid7 = await message_bus_client._nats.subscribe(
+            "kg.stats",
+            cb=make_handler(self.handle_kg_stats_request, "kg.stats.reply")
+        )
+        self.logger.info(f"✅ Subscribed to kg.stats (sid={sid7})")
+        
+        self.logger.info("Subscribing to kg.nodes...")
+        sid7a = await message_bus_client._nats.subscribe(
+            "kg.nodes",
+            cb=make_handler(self.handle_kg_nodes_request, "kg.nodes.reply")
+        )
+        self.logger.info(f"✅ Subscribed to kg.nodes (sid={sid7a})")
+        
+        self.logger.info("Subscribing to kg.edges...")
+        sid7b = await message_bus_client._nats.subscribe(
+            "kg.edges",
+            cb=make_handler(self.handle_kg_edges_request, "kg.edges.reply")
+        )
+        self.logger.info(f"✅ Subscribed to kg.edges (sid={sid7b})")
+
+        self.logger.info("Subscribing to kg.schema...")
+        sid7c = await message_bus_client._nats.subscribe(
+            "kg.schema",
+            cb=make_handler(self.handle_kg_schema_request, "kg.schema.reply")
+        )
+        self.logger.info(f"✅ Subscribed to kg.schema (sid={sid7c})")
+
+        self.logger.info("Subscribing to kg.changes...")
+        sid7d = await message_bus_client._nats.subscribe(
+            "kg.changes",
+            cb=make_handler(self.handle_kg_changes_request, "kg.changes.reply")
+        )
+        self.logger.info(f"✅ Subscribed to kg.changes (sid={sid7d})")
+
+        self.logger.info("Subscribing to kg.query-templates...")
+        sid7e = await message_bus_client._nats.subscribe(
+            "kg.query-templates",
+            cb=make_handler(self.handle_kg_query_templates_request, "kg.query-templates.reply")
+        )
+        self.logger.info(f"✅ Subscribed to kg.query-templates (sid={sid7e})")
+
+        self.logger.info("Subscribing to kg.query-templates.update...")
+        sid7ea = await message_bus_client._nats.subscribe(
+            "kg.query-templates.update",
+            cb=make_handler(self.handle_kg_query_templates_update_request, "kg.query-templates.update.reply")
+        )
+        self.logger.info(f"✅ Subscribed to kg.query-templates.update (sid={sid7ea})")
+
+        self.logger.info("Subscribing to kg.query...")
+        sid7f = await message_bus_client._nats.subscribe(
+            "kg.query",
+            cb=make_handler(self.handle_kg_query_request, "kg.query.reply")
+        )
+        self.logger.info(f"✅ Subscribed to kg.query (sid={sid7f})")
+        
+        self.logger.info("Subscribing to memory.album...")
+        sid7g = await message_bus_client._nats.subscribe(
+            "memory.album",
+            cb=make_handler(self.handle_memory_album_request, "memory.album.reply")
+        )
+        self.logger.info(f"✅ Subscribed to memory.album (sid={sid7g})")
+        
+        # Emotion endpoints
+        self.logger.info("Subscribing to emotion.state.current...")
+        sid_emotion_current = await message_bus_client._nats.subscribe(
+            "emotion.state.current",
+            cb=make_handler(self.handle_emotion_current_request, "emotion.state.current.reply")
+        )
+        self.logger.info(f"✅ Subscribed to emotion.state.current (sid={sid_emotion_current})")
+        
+        self.logger.info("Subscribing to emotion.state.history...")
+        sid_emotion_history = await message_bus_client._nats.subscribe(
+            "emotion.state.history",
+            cb=make_handler(self.handle_emotion_history_request, "emotion.state.history.reply")
+        )
+        self.logger.info(f"✅ Subscribed to emotion.state.history (sid={sid_emotion_history})")
+        
+        self.logger.info("Subscribing to agency.state...")
+        sid7h = await message_bus_client._nats.subscribe(
+            "agency.state",
+            cb=make_handler(self.handle_agency_state_request, "agency.state.reply")
+        )
+        self.logger.info(f"✅ Subscribed to agency.state (sid={sid7h})")
+        
+        self.logger.info("Subscribing to agency.goals...")
+        sid7i = await message_bus_client._nats.subscribe(
+            "agency.goals",
+            cb=make_handler(self.handle_agency_goals_request, "agency.goals.reply")
+        )
+        self.logger.info(f"✅ Subscribed to agency.goals (sid={sid7i})")
+        
+        # All remaining agency subscriptions
+        self.logger.info("Subscribing to agency.intentions...")
+        await message_bus_client._nats.subscribe("agency.intentions", cb=make_handler(self.handle_agency_intentions_request, "agency.intentions.reply"))
+        
+        self.logger.info("Subscribing to agency.events...")
+        await message_bus_client._nats.subscribe("agency.events", cb=make_handler(self.handle_agency_events_request, "agency.events.reply"))
+        
+        self.logger.info("Subscribing to agency.curiosity...")
+        await message_bus_client._nats.subscribe("agency.curiosity", cb=make_handler(self.handle_agency_curiosity_request, "agency.curiosity.reply"))
+        
+        self.logger.info("Subscribing to agency.profile...")
+        await message_bus_client._nats.subscribe("agency.profile", cb=make_handler(self.handle_agency_profile_request, "agency.profile.reply"))
+        
+        self.logger.info("Subscribing to agency.profile.update...")
+        await message_bus_client._nats.subscribe("agency.profile.update", cb=make_handler(self.handle_agency_profile_update_request, "agency.profile.update.reply"))
+        
+        self.logger.info("Subscribing to agency.policies...")
+        await message_bus_client._nats.subscribe("agency.policies", cb=make_handler(self.handle_agency_policies_request, "agency.policies.reply"))
+        
+        self.logger.info("Subscribing to agency.consent.grant...")
+        await message_bus_client._nats.subscribe("agency.consent.grant", cb=make_handler(self.handle_agency_consent_grant_request, "agency.consent.grant.reply"))
+        
+        self.logger.info("Subscribing to agency.consents...")
+        await message_bus_client._nats.subscribe("agency.consents", cb=make_handler(self.handle_agency_consents_request, "agency.consents.reply"))
+        
+        self.logger.info("Subscribing to agency.consent.revoke...")
+        await message_bus_client._nats.subscribe("agency.consent.revoke", cb=make_handler(self.handle_agency_consent_revoke_request, "agency.consent.revoke.reply"))
+        
+        self.logger.info("Subscribing to agency.goal...")
+        await message_bus_client._nats.subscribe("agency.goal", cb=make_handler(self.handle_agency_goal_request, "agency.goal.reply"))
+        
+        self.logger.info("Subscribing to agency.goal.plans...")
+        await message_bus_client._nats.subscribe("agency.goal.plans", cb=make_handler(self.handle_agency_goal_plans_request, "agency.goal.plans.reply"))
+        
+        self.logger.info("Subscribing to agency.goal.replan...")
+        await message_bus_client._nats.subscribe("agency.goal.replan", cb=make_handler(self.handle_agency_goal_replan_request, "agency.goal.replan.reply"))
+        
+        self.logger.info("Subscribing to agency.skills.list...")
+        await message_bus_client._nats.subscribe("agency.skills.list", cb=make_handler(self.handle_agency_skills_list_request, "agency.skills.list.reply"))
+        
+        self.logger.info("Subscribing to agency.skill.info...")
+        await message_bus_client._nats.subscribe("agency.skill.info", cb=make_handler(self.handle_agency_skill_info_request, "agency.skill.info.reply"))
+        
+        self.logger.info("Subscribing to agency.skill.invoke...")
+        await message_bus_client._nats.subscribe("agency.skill.invoke", cb=make_handler(self.handle_agency_skill_invoke_request, "agency.skill.invoke.reply"))
+        
+        self.logger.info("Subscribing to agency.connectivity.scan...")
+        await message_bus_client._nats.subscribe("agency.connectivity.scan", cb=make_handler(self.handle_agency_connectivity_scan_request, "agency.connectivity.scan.reply"))
+        
+        self.logger.info("Subscribing to agency.tools.list...")
+        await message_bus_client._nats.subscribe("agency.tools.list", cb=make_handler(self.handle_agency_tools_list_request, "agency.tools.list.reply"))
+        
+        self.logger.info("Subscribing to agency.tool.info...")
+        await message_bus_client._nats.subscribe("agency.tool.info", cb=make_handler(self.handle_agency_tool_info_request, "agency.tool.info.reply"))
+        
+        self.logger.info("Subscribing to agency.tool.invoke...")
+        await message_bus_client._nats.subscribe("agency.tool.invoke", cb=make_handler(self.handle_agency_tool_invoke_request, "agency.tool.invoke.reply"))
+        
+        self.logger.info("Subscribing to agency.reflection.runs...")
+        await message_bus_client._nats.subscribe("agency.reflection.runs", cb=make_handler(self.handle_agency_reflection_runs_request, "agency.reflection.runs.reply"))
+        
+        self.logger.info("Subscribing to agency.reflection.lessons...")
+        await message_bus_client._nats.subscribe("agency.reflection.lessons", cb=make_handler(self.handle_agency_reflection_lessons_request, "agency.reflection.lessons.reply"))
+        
+        self.logger.info("Subscribing to agency.reflection.self_model...")
+        await message_bus_client._nats.subscribe("agency.reflection.self_model", cb=make_handler(self.handle_agency_reflection_self_model_request, "agency.reflection.self_model.reply"))
+        
+        self.logger.info("Subscribing to agency.skill.performance...")
+        await message_bus_client._nats.subscribe("agency.skill.performance", cb=make_handler(self.handle_agency_skill_performance_request, "agency.skill.performance.reply"))
+        
+        self.logger.info("Subscribing to agency.reflection.summary...")
+        await message_bus_client._nats.subscribe("agency.reflection.summary", cb=make_handler(self.handle_agency_reflection_summary_request, "agency.reflection.summary.reply"))
+        
+        self.logger.info("✅ Subscribed to all 26 agency endpoints")
+        
+        self.logger.info("Subscribing to operations.databases...")
+        sid8 = await message_bus_client._nats.subscribe(
+            "operations.databases",
+            cb=make_handler(self.handle_operations_databases_request, "operations.databases.reply")
+        )
+        self.logger.info(f"✅ Subscribed to operations.databases (sid={sid8})")
+
+        self.logger.info("Subscribing to operations.databases.postgresql.schema...")
+        sid8b = await message_bus_client._nats.subscribe(
+            "operations.databases.postgresql.schema",
+            cb=make_handler(
+                self.handle_operations_postgresql_schema_request,
+                "operations.databases.postgresql.schema.reply",
+            )
+        )
+        self.logger.info(f"✅ Subscribed to operations.databases.postgresql.schema (sid={sid8b})")
+
+        self.logger.info("Subscribing to operations.databases.postgresql.details...")
+        sid8c = await message_bus_client._nats.subscribe(
+            "operations.databases.postgresql.details",
+            cb=make_handler(
+                self.handle_operations_postgresql_details_request,
+                "operations.databases.postgresql.details.reply",
+            )
+        )
+        self.logger.info(f"✅ Subscribed to operations.databases.postgresql.details (sid={sid8c})")
+        
+        self.logger.info("Subscribing to operations.topology...")
+        sid9 = await message_bus_client._nats.subscribe(
+            "operations.topology",
+            cb=make_handler(self.handle_operations_topology_request, "operations.topology.reply")
+        )
+        self.logger.info(f"✅ Subscribed to operations.topology (sid={sid9})")
+        
+        self.logger.info("Subscribing to operations.backup.create...")
+        sid10a = await message_bus_client._nats.subscribe(
+            "operations.backup.create",
+            cb=make_handler(self.handle_operations_create_backup_request, "operations.backup.create.reply")
+        )
+        self.logger.info(f"✅ Subscribed to operations.backup.create (sid={sid10a})")
+
+        self.logger.info("Subscribing to operations.backup.restore...")
+        sid10b = await message_bus_client._nats.subscribe(
+            "operations.backup.restore",
+            cb=make_handler(self.handle_operations_restore_backup_request, "operations.backup.restore.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to operations.backup.restore (sid={sid10b})")
+        
+        self.logger.info("Subscribing to operations.backup_sets...")
+        sid10 = await message_bus_client._nats.subscribe(
+            "operations.backup_sets",
+            cb=make_handler(self.handle_operations_backup_sets_request, "operations.backup_sets.reply")
+        )
+        self.logger.info(f"✅ Subscribed to operations.backup_sets (sid={sid10})")
+
+        self.logger.info("Subscribing to operations.backup.status...")
+        sid10e = await message_bus_client._nats.subscribe(
+            "operations.backup.status",
+            cb=make_handler(self.handle_operations_backup_status_request, "operations.backup.status.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to operations.backup.status (sid={sid10e})")
+
+        self.logger.info("Subscribing to operations.backup.download_url...")
+        sid10f = await message_bus_client._nats.subscribe(
+            "operations.backup.download_url",
+            cb=make_handler(self.handle_operations_backup_download_url_request, "operations.backup.download_url.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to operations.backup.download_url (sid={sid10f})")
+
+        self.logger.info("Subscribing to operations.backup.delete...")
+        sid10c = await message_bus_client._nats.subscribe(
+            "operations.backup.delete",
+            cb=make_handler(self.handle_operations_delete_backup_set_request, "operations.backup.delete.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to operations.backup.delete (sid={sid10c})")
+
+        self.logger.info("Subscribing to operations.backup.purge...")
+        sid10d = await message_bus_client._nats.subscribe(
+            "operations.backup.purge",
+            cb=make_handler(self.handle_operations_purge_backup_set_request, "operations.backup.purge.reply"),
+        )
+        self.logger.info(f"✅ Subscribed to operations.backup.purge (sid={sid10d})")
+        
+        self.logger.info("Subscribing to scheduler.expected_runs_today...")
+        sid11 = await message_bus_client._nats.subscribe(
+            "scheduler.expected_runs_today",
+            cb=make_handler(self.handle_scheduler_expected_runs_today_request, "scheduler.expected_runs_today.reply")
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.expected_runs_today (sid={sid11})")
+        
+        self.logger.info("Subscribing to system.metrics.all...")
+        sid12 = await message_bus_client._nats.subscribe(
+            "system.metrics.all",
+            cb=make_handler(self.handle_system_metrics_all_request, "system.metrics.all.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.metrics.all (sid={sid12})")
+        
+        self.logger.info("Subscribing to system.overview...")
+        sid13 = await message_bus_client._nats.subscribe(
+            "system.overview",
+            cb=make_handler(self.handle_system_overview_request, "system.overview.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.overview (sid={sid13})")
+        
+        self.logger.info("Subscribing to system.health...")
+        sid14 = await message_bus_client._nats.subscribe(
+            "system.health",
+            cb=make_handler(self.handle_system_health_request, "system.health.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health (sid={sid14})")
+        
+        self.logger.info("Subscribing to system.health.services...")
+        sid15 = await message_bus_client._nats.subscribe(
+            "system.health.services",
+            cb=make_handler(self.handle_system_health_services_request, "system.health.services.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health.services (sid={sid15})")
+
+        self.logger.info("Subscribing to system.health.detailed...")
+        sid15a = await message_bus_client._nats.subscribe(
+            "system.health.detailed",
+            cb=make_handler(self.handle_system_health_detailed_request, "system.health.detailed.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health.detailed (sid={sid15a})")
+        
+        self.logger.info("Subscribing to system.health.issues...")
+        sid16 = await message_bus_client._nats.subscribe(
+            "system.health.issues",
+            cb=make_handler(self.handle_system_health_issues_request, "system.health.issues.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health.issues (sid={sid16})")
+        
+        self.logger.info("Subscribing to system.remediate.available...")
+        sid17 = await message_bus_client._nats.subscribe(
+            "system.remediate.available",
+            cb=make_handler(self.handle_remediate_available_request, "system.remediate.available.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.remediate.available (sid={sid17})")
+        
+        self.logger.info("Subscribing to system.remediate.history...")
+        sid18 = await message_bus_client._nats.subscribe(
+            "system.remediate.history",
+            cb=make_handler(self.handle_remediate_history_request, "system.remediate.history.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.remediate.history (sid={sid18})")
+
+        self.logger.info("Subscribing to system.remediate.trigger...")
+        sid18b = await message_bus_client._nats.subscribe(
+            "system.remediate.trigger",
+            cb=make_handler(self.handle_remediate_trigger_request, "system.remediate.trigger.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.remediate.trigger (sid={sid18b})")
+        
+        self.logger.info("Subscribing to system.health.check.connectivity...")
+        sid19 = await message_bus_client._nats.subscribe(
+            "system.health.check.connectivity",
+            cb=make_handler(self.handle_health_check_connectivity_request, "system.health.check.connectivity.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health.check.connectivity (sid={sid19})")
+        
+        self.logger.info("Subscribing to system.health.check.resources...")
+        sid20 = await message_bus_client._nats.subscribe(
+            "system.health.check.resources",
+            cb=make_handler(self.handle_health_check_resources_request, "system.health.check.resources.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health.check.resources (sid={sid20})")
+        
+        self.logger.info("Subscribing to system.health.check.models...")
+        sid21 = await message_bus_client._nats.subscribe(
+            "system.health.check.models",
+            cb=make_handler(self.handle_health_check_models_request, "system.health.check.models.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health.check.models (sid={sid21})")
+        
+        self.logger.info("Subscribing to system.health.check.ai_behaviour...")
+        sid22 = await message_bus_client._nats.subscribe(
+            "system.health.check.ai_behaviour",
+            cb=make_handler(self.handle_health_check_ai_behaviour_request, "system.health.check.ai_behaviour.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health.check.ai_behaviour (sid={sid22})")
+        
+        self.logger.info("Core NATS request handlers registered (scheduler, emotion, memory, kg, operations, system, health checks)")
+        return
+        self.logger.info("Subscribing to agency.connectivity.scan...")
+        await message_bus_client._nats.subscribe("agency.connectivity.scan", cb=make_handler(self.handle_agency_connectivity_scan_request, "agency.connectivity.scan.reply"))
+        
+        self.logger.info("Subscribing to agency.tools.list...")
+        await message_bus_client._nats.subscribe("agency.tools.list", cb=make_handler(self.handle_agency_tools_list_request, "agency.tools.list.reply"))
+        
+        self.logger.info("Subscribing to agency.tool.info...")
+        await message_bus_client._nats.subscribe("agency.tool.info", cb=make_handler(self.handle_agency_tool_info_request, "agency.tool.info.reply"))
+        
+        self.logger.info("Subscribing to agency.tool.invoke...")
+        await message_bus_client._nats.subscribe("agency.tool.invoke", cb=make_handler(self.handle_agency_tool_invoke_request, "agency.tool.invoke.reply"))
+        
+        self.logger.info("Subscribing to agency.reflection.runs...")
+        await message_bus_client._nats.subscribe("agency.reflection.runs", cb=make_handler(self.handle_agency_reflection_runs_request, "agency.reflection.runs.reply"))
+        
+        self.logger.info("Subscribing to agency.reflection.lessons...")
+        await message_bus_client._nats.subscribe("agency.reflection.lessons", cb=make_handler(self.handle_agency_reflection_lessons_request, "agency.reflection.lessons.reply"))
+        
+        self.logger.info("Subscribing to agency.reflection.self_model...")
+        await message_bus_client._nats.subscribe("agency.reflection.self_model", cb=make_handler(self.handle_agency_reflection_self_model_request, "agency.reflection.self_model.reply"))
+        
+        self.logger.info("Subscribing to agency.skill.performance...")
+        await message_bus_client._nats.subscribe("agency.skill.performance", cb=make_handler(self.handle_agency_skill_performance_request, "agency.skill.performance.reply"))
+        
+        self.logger.info("Subscribing to agency.reflection.summary...")
+        await message_bus_client._nats.subscribe("agency.reflection.summary", cb=make_handler(self.handle_agency_reflection_summary_request, "agency.reflection.summary.reply"))
+        
+        self.logger.info("✅ Subscribed to all 26 agency endpoints")
+        
+        self.logger.info("Subscribing to operations.databases...")
+        sid8 = await message_bus_client._nats.subscribe(
+            "operations.databases",
+            cb=make_handler(self.handle_operations_databases_request, "operations.databases.reply")
+        )
+        self.logger.info(f"✅ Subscribed to operations.databases (sid={sid8})")
+
+        self.logger.info("Subscribing to operations.databases.postgresql.schema...")
+        sid8b = await message_bus_client._nats.subscribe(
+            "operations.databases.postgresql.schema",
+            cb=make_handler(
+                self.handle_operations_postgresql_schema_request,
+                "operations.databases.postgresql.schema.reply",
+            )
+        )
+        self.logger.info(f"✅ Subscribed to operations.databases.postgresql.schema (sid={sid8b})")
+
+        self.logger.info("Subscribing to operations.databases.postgresql.details...")
+        sid8c = await message_bus_client._nats.subscribe(
+            "operations.databases.postgresql.details",
+            cb=make_handler(
+                self.handle_operations_postgresql_details_request,
+                "operations.databases.postgresql.details.reply",
+            )
+        )
+        self.logger.info(f"✅ Subscribed to operations.databases.postgresql.details (sid={sid8c})")
+        
+        self.logger.info("Subscribing to operations.topology...")
+        sid9 = await message_bus_client._nats.subscribe(
+            "operations.topology",
+            cb=make_handler(self.handle_operations_topology_request, "operations.topology.reply")
+        )
+        self.logger.info(f"✅ Subscribed to operations.topology (sid={sid9})")
+        
+        self.logger.info("Subscribing to operations.backup.create...")
+        sid10a = await message_bus_client._nats.subscribe(
+            "operations.backup.create",
+            cb=make_handler(self.handle_operations_create_backup_request, "operations.backup.create.reply")
+        )
+        self.logger.info(f"✅ Subscribed to operations.backup.create (sid={sid10a})")
+        
+        self.logger.info("Subscribing to operations.backup_sets...")
+        sid10 = await message_bus_client._nats.subscribe(
+            "operations.backup_sets",
+            cb=make_handler(self.handle_operations_backup_sets_request, "operations.backup_sets.reply")
+        )
+        self.logger.info(f"✅ Subscribed to operations.backup_sets (sid={sid10})")
+        
+        self.logger.info("Subscribing to scheduler.expected_runs_today...")
+        sid11 = await message_bus_client._nats.subscribe(
+            "scheduler.expected_runs_today",
+            cb=make_handler(self.handle_scheduler_expected_runs_today_request, "scheduler.expected_runs_today.reply")
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.expected_runs_today (sid={sid11})")
+        
+        self.logger.info("Subscribing to system.metrics.all...")
+        sid12 = await message_bus_client._nats.subscribe(
+            "system.metrics.all",
+            cb=make_handler(self.handle_system_metrics_all_request, "system.metrics.all.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.metrics.all (sid={sid12})")
+        
+        self.logger.info("Subscribing to system.overview...")
+        sid13 = await message_bus_client._nats.subscribe(
+            "system.overview",
+            cb=make_handler(self.handle_system_overview_request, "system.overview.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.overview (sid={sid13})")
+        
+        self.logger.info("Subscribing to system.health...")
+        sid14 = await message_bus_client._nats.subscribe(
+            "system.health",
+            cb=make_handler(self.handle_system_health_request, "system.health.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health (sid={sid14})")
+        
+        self.logger.info("Subscribing to system.health.services...")
+        sid15 = await message_bus_client._nats.subscribe(
+            "system.health.services",
+            cb=make_handler(self.handle_system_health_services_request, "system.health.services.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health.services (sid={sid15})")
+        
+        self.logger.info("Subscribing to system.health.issues...")
+        sid16 = await message_bus_client._nats.subscribe(
+            "system.health.issues",
+            cb=make_handler(self.handle_system_health_issues_request, "system.health.issues.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health.issues (sid={sid16})")
+        
+        self.logger.info("Subscribing to system.remediate.available...")
+        sid17 = await message_bus_client._nats.subscribe(
+            "system.remediate.available",
+            cb=make_handler(self.handle_remediate_available_request, "system.remediate.available.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.remediate.available (sid={sid17})")
+        
+        self.logger.info("Subscribing to system.remediate.history...")
+        sid18 = await message_bus_client._nats.subscribe(
+            "system.remediate.history",
+            cb=make_handler(self.handle_remediate_history_request, "system.remediate.history.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.remediate.history (sid={sid18})")
+
+        self.logger.info("Subscribing to system.remediate.trigger...")
+        sid18b = await message_bus_client._nats.subscribe(
+            "system.remediate.trigger",
+            cb=make_handler(self.handle_remediate_trigger_request, "system.remediate.trigger.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.remediate.trigger (sid={sid18b})")
+        
+        self.logger.info("Subscribing to system.health.check.connectivity...")
+        sid19 = await message_bus_client._nats.subscribe(
+            "system.health.check.connectivity",
+            cb=make_handler(self.handle_health_check_connectivity_request, "system.health.check.connectivity.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health.check.connectivity (sid={sid19})")
+        
+        self.logger.info("Subscribing to system.health.check.resources...")
+        sid20 = await message_bus_client._nats.subscribe(
+            "system.health.check.resources",
+            cb=make_handler(self.handle_health_check_resources_request, "system.health.check.resources.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health.check.resources (sid={sid20})")
+        
+        self.logger.info("Subscribing to system.health.check.models...")
+        sid21 = await message_bus_client._nats.subscribe(
+            "system.health.check.models",
+            cb=make_handler(self.handle_health_check_models_request, "system.health.check.models.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health.check.models (sid={sid21})")
+        
+        self.logger.info("Subscribing to system.health.check.ai_behaviour...")
+        sid22 = await message_bus_client._nats.subscribe(
+            "system.health.check.ai_behaviour",
+            cb=make_handler(self.handle_health_check_ai_behaviour_request, "system.health.check.ai_behaviour.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health.check.ai_behaviour (sid={sid22})")
+        
+        self.logger.info("Core NATS request handlers registered (scheduler, emotion, memory, kg, operations, system, health checks)")
+        sid22 = await message_bus_client._nats.subscribe(
+            "system.health.check.ai_behaviour",
+            cb=make_handler(self.handle_health_check_ai_behaviour_request, "system.health.check.ai_behaviour.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health.check.ai_behaviour (sid={sid22})")
+        
+        self.logger.info("Core NATS request handlers registered (scheduler, emotion, memory, kg, operations, system, health checks)")
+        self.logger.info("Subscribing to agency.connectivity.scan...")
+        await message_bus_client._nats.subscribe("agency.connectivity.scan", cb=make_handler(self.handle_agency_connectivity_scan_request, "agency.connectivity.scan.reply"))
+        
+        self.logger.info("Subscribing to agency.tools.list...")
+        await message_bus_client._nats.subscribe("agency.tools.list", cb=make_handler(self.handle_agency_tools_list_request, "agency.tools.list.reply"))
+        
+        self.logger.info("Subscribing to agency.tool.info...")
+        await message_bus_client._nats.subscribe("agency.tool.info", cb=make_handler(self.handle_agency_tool_info_request, "agency.tool.info.reply"))
+        
+        self.logger.info("Subscribing to agency.tool.invoke...")
+        await message_bus_client._nats.subscribe("agency.tool.invoke", cb=make_handler(self.handle_agency_tool_invoke_request, "agency.tool.invoke.reply"))
+        
+        self.logger.info("Subscribing to agency.reflection.runs...")
+        await message_bus_client._nats.subscribe("agency.reflection.runs", cb=make_handler(self.handle_agency_reflection_runs_request, "agency.reflection.runs.reply"))
+        
+        self.logger.info("Subscribing to agency.reflection.lessons...")
+        await message_bus_client._nats.subscribe("agency.reflection.lessons", cb=make_handler(self.handle_agency_reflection_lessons_request, "agency.reflection.lessons.reply"))
+        
+        self.logger.info("Subscribing to agency.reflection.self_model...")
+        await message_bus_client._nats.subscribe("agency.reflection.self_model", cb=make_handler(self.handle_agency_reflection_self_model_request, "agency.reflection.self_model.reply"))
+        
+        self.logger.info("Subscribing to agency.skill.performance...")
+        await message_bus_client._nats.subscribe("agency.skill.performance", cb=make_handler(self.handle_agency_skill_performance_request, "agency.skill.performance.reply"))
+        
+        self.logger.info("Subscribing to agency.reflection.summary...")
+        await message_bus_client._nats.subscribe("agency.reflection.summary", cb=make_handler(self.handle_agency_reflection_summary_request, "agency.reflection.summary.reply"))
+        
+        self.logger.info("✅ Subscribed to all 26 agency endpoints")
+        
+        self.logger.info("Subscribing to operations.databases...")
+        sid8 = await message_bus_client._nats.subscribe(
+            "operations.databases",
+            cb=make_handler(self.handle_operations_databases_request, "operations.databases.reply")
+        )
+        self.logger.info(f"✅ Subscribed to operations.databases (sid={sid8})")
+
+        self.logger.info("Subscribing to operations.databases.postgresql.schema...")
+        sid8b = await message_bus_client._nats.subscribe(
+            "operations.databases.postgresql.schema",
+            cb=make_handler(
+                self.handle_operations_postgresql_schema_request,
+                "operations.databases.postgresql.schema.reply",
+            )
+        )
+        self.logger.info(f"✅ Subscribed to operations.databases.postgresql.schema (sid={sid8b})")
+
+        self.logger.info("Subscribing to operations.databases.postgresql.details...")
+        sid8c = await message_bus_client._nats.subscribe(
+            "operations.databases.postgresql.details",
+            cb=make_handler(
+                self.handle_operations_postgresql_details_request,
+                "operations.databases.postgresql.details.reply",
+            )
+        )
+        self.logger.info(f"✅ Subscribed to operations.databases.postgresql.details (sid={sid8c})")
+        
+        self.logger.info("Subscribing to operations.topology...")
+        sid9 = await message_bus_client._nats.subscribe(
+            "operations.topology",
+            cb=make_handler(self.handle_operations_topology_request, "operations.topology.reply")
+        )
+        self.logger.info(f"✅ Subscribed to operations.topology (sid={sid9})")
+        
+        self.logger.info("Subscribing to operations.backup.create...")
+        sid10a = await message_bus_client._nats.subscribe(
+            "operations.backup.create",
+            cb=make_handler(self.handle_operations_create_backup_request, "operations.backup.create.reply")
+        )
+        self.logger.info(f"✅ Subscribed to operations.backup.create (sid={sid10a})")
+        
+        self.logger.info("Subscribing to operations.backup_sets...")
+        sid10 = await message_bus_client._nats.subscribe(
+            "operations.backup_sets",
+            cb=make_handler(self.handle_operations_backup_sets_request, "operations.backup_sets.reply")
+        )
+        self.logger.info(f"✅ Subscribed to operations.backup_sets (sid={sid10})")
+        
+        self.logger.info("Subscribing to scheduler.expected_runs_today...")
+        sid11 = await message_bus_client._nats.subscribe(
+            "scheduler.expected_runs_today",
+            cb=make_handler(self.handle_scheduler_expected_runs_today_request, "scheduler.expected_runs_today.reply")
+        )
+        self.logger.info(f"✅ Subscribed to scheduler.expected_runs_today (sid={sid11})")
+        
+        self.logger.info("Subscribing to system.metrics.all...")
+        sid12 = await message_bus_client._nats.subscribe(
+            "system.metrics.all",
+            cb=make_handler(self.handle_system_metrics_all_request, "system.metrics.all.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.metrics.all (sid={sid12})")
+        
+        self.logger.info("Subscribing to system.overview...")
+        sid13 = await message_bus_client._nats.subscribe(
+            "system.overview",
+            cb=make_handler(self.handle_system_overview_request, "system.overview.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.overview (sid={sid13})")
+        
+        self.logger.info("Subscribing to system.health...")
+        sid14 = await message_bus_client._nats.subscribe(
+            "system.health",
+            cb=make_handler(self.handle_system_health_request, "system.health.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health (sid={sid14})")
+        
+        self.logger.info("Subscribing to system.health.services...")
+        sid15 = await message_bus_client._nats.subscribe(
+            "system.health.services",
+            cb=make_handler(self.handle_system_health_services_request, "system.health.services.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health.services (sid={sid15})")
+        
+        self.logger.info("Subscribing to system.health.issues...")
+        sid16 = await message_bus_client._nats.subscribe(
+            "system.health.issues",
+            cb=make_handler(self.handle_system_health_issues_request, "system.health.issues.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health.issues (sid={sid16})")
+        
+        self.logger.info("Subscribing to system.remediate.available...")
+        sid17 = await message_bus_client._nats.subscribe(
+            "system.remediate.available",
+            cb=make_handler(self.handle_remediate_available_request, "system.remediate.available.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.remediate.available (sid={sid17})")
+        
+        self.logger.info("Subscribing to system.remediate.history...")
+        sid18 = await message_bus_client._nats.subscribe(
+            "system.remediate.history",
+            cb=make_handler(self.handle_remediate_history_request, "system.remediate.history.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.remediate.history (sid={sid18})")
+
+        self.logger.info("Subscribing to system.remediate.trigger...")
+        sid18b = await message_bus_client._nats.subscribe(
+            "system.remediate.trigger",
+            cb=make_handler(self.handle_remediate_trigger_request, "system.remediate.trigger.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.remediate.trigger (sid={sid18b})")
+        
+        self.logger.info("Subscribing to system.health.check.connectivity...")
+        sid19 = await message_bus_client._nats.subscribe(
+            "system.health.check.connectivity",
+            cb=make_handler(self.handle_health_check_connectivity_request, "system.health.check.connectivity.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health.check.connectivity (sid={sid19})")
+        
+        self.logger.info("Subscribing to system.health.check.resources...")
+        sid20 = await message_bus_client._nats.subscribe(
+            "system.health.check.resources",
+            cb=make_handler(self.handle_health_check_resources_request, "system.health.check.resources.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health.check.resources (sid={sid20})")
+        
+        self.logger.info("Subscribing to system.health.check.models...")
+        sid21 = await message_bus_client._nats.subscribe(
+            "system.health.check.models",
+            cb=make_handler(self.handle_health_check_models_request, "system.health.check.models.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health.check.models (sid={sid21})")
+        
+        self.logger.info("Subscribing to system.health.check.ai_behaviour...")
+        sid22 = await message_bus_client._nats.subscribe(
+            "system.health.check.ai_behaviour",
+            cb=make_handler(self.handle_health_check_ai_behaviour_request, "system.health.check.ai_behaviour.reply")
+        )
+        self.logger.info(f"✅ Subscribed to system.health.check.ai_behaviour (sid={sid22})")
+        
+        self.logger.info("Core NATS request handlers registered (scheduler, emotion, memory, kg, operations, system, health checks)")

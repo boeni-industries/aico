@@ -239,9 +239,9 @@ class MemoryManager(BaseAIProcessor):
                     raise RuntimeError("Semantic memory (pgvector) requires uow_factory")
                 self._semantic_store = SemanticMemoryStore(self.config, self._uow_factory)
                 
-                # CRITICAL FIX: Get modelservice from backend services and inject dependency
+                # Get modelservice from core services and inject dependency
                 try:
-                    from backend.services import get_modelservice_client
+                    from core.services import get_modelservice_client
                     modelservice_client = get_modelservice_client(self.config)
                     logger.debug("[SEMANTIC] 🔧 INJECTING MODELSERVICE DEPENDENCY")
                     self._semantic_store.set_modelservice(modelservice_client)

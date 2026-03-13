@@ -148,21 +148,23 @@ class InfluxDBLogHandler(logging.Handler):
         # explode series cardinality and can drive InfluxDB CPU extremely high.
         inferred_service = self.service_name
         if isinstance(record.name, str):
-            if record.name.startswith("backend."):
-                inferred_service = "backend"
+            if record.name.startswith("gateway."):
+                inferred_service = "gateway"
+            elif record.name.startswith("core."):
+                inferred_service = "core"
             elif record.name.startswith("modelservice."):
                 inferred_service = "modelservice"
             elif record.name.startswith("cli."):
                 inferred_service = "cli"
-            elif record.name.startswith("shared.") or record.name.startswith("aico."):
-                inferred_service = "shared"
 
         # Extract logger prefix (first 2 segments) for low-cardinality tag
-        # Examples: "backend.api", "shared.memory", "cli.commands"
+        # Examples: "gateway.api", "core.services", "cli.commands"
         logger_prefix = "unknown"
         if isinstance(record.name, str) and "." in record.name:
             parts = record.name.split(".")
-            logger_prefix = ".".join(parts[:2]) if len(parts) >= 2 else parts[0]
+            if parts[0] == inferred_service:
+                parts = parts[1:]
+            logger_prefix = ".".join(parts[:2]) if len(parts) >= 2 else parts[0] if parts else "unknown"
         
         tags = {
             "service": inferred_service,

@@ -124,7 +124,7 @@ async def test_modelservice_integration():
     print("\n🔗 Testing modelservice integration...")
     
     try:
-        from backend.services.modelservice_client import get_modelservice_client
+        from core.services.modelservice_client import get_modelservice_client
         from aico.core.config import ConfigurationManager
         
         config_manager = ConfigurationManager()

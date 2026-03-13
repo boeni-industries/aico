@@ -376,6 +376,47 @@ class PostgresSchedulerRunLedgerRepository(Repository[SchedulerTaskRun]):
         result = await self.session.execute(stmt)
         return int(result.rowcount or 0)
 
+    async def mark_started(
+        self,
+        *,
+        run_key: str,
+        execution_id: str,
+        started_at: datetime,
+    ) -> int:
+        stmt = (
+            update(scheduler_run_ledger)
+            .where(scheduler_run_ledger.c.run_key == run_key)
+            .values(
+                state="started",
+                started_at=started_at,
+                execution_id=execution_id,
+            )
+        )
+
+        result = await self.session.execute(stmt)
+        return int(result.rowcount or 0)
+
+    async def mark_completed(
+        self,
+        *,
+        run_key: str,
+        execution_id: str,
+        completed_at: datetime,
+        final_state: str,
+    ) -> int:
+        stmt = (
+            update(scheduler_run_ledger)
+            .where(scheduler_run_ledger.c.run_key == run_key)
+            .values(
+                state=final_state,
+                completed_at=completed_at,
+                execution_id=execution_id,
+            )
+        )
+
+        result = await self.session.execute(stmt)
+        return int(result.rowcount or 0)
+
     async def delete_before(
         self,
         *,

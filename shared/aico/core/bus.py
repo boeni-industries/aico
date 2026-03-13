@@ -6,7 +6,7 @@ using Protocol Buffers for all message serialization.
 """
 
 import asyncio
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 from typing import Optional, Dict, Callable, Set
 import uuid
 from .topics import AICOTopics
@@ -82,7 +82,7 @@ def _create_message_metadata(message_id: str, source: str, message_type: str) ->
     """Create protobuf MessageMetadata"""
     metadata = MessageMetadata()
     metadata.message_id = message_id
-    metadata.timestamp.CopyFrom(_create_timestamp(datetime.now(UTC)))
+    metadata.timestamp.CopyFrom(_create_timestamp(datetime.now(timezone.utc)))
     metadata.source = source
     metadata.message_type = message_type
     metadata.version = "1.0"

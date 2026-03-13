@@ -64,12 +64,30 @@ class ArtifactStoreClient:
                 return False
             raise
 
+    def get_object_size(self, *, key: str) -> int | None:
+        try:
+            response = self._s3.head_object(Bucket=self._cfg.bucket, Key=key)
+            content_length = response.get("ContentLength")
+            return int(content_length) if content_length is not None else None
+        except ClientError as e:
+            code = str(e.response.get("Error", {}).get("Code", ""))
+            if code in {"404", "NoSuchKey", "NotFound"}:
+                return None
+            raise
+
     def get_object_iter(self, *, key: str, chunk_size: int = 1024 * 1024) -> Iterator[bytes]:
         resp = self._s3.get_object(Bucket=self._cfg.bucket, Key=key)
         body = resp["Body"]
         for chunk in body.iter_chunks(chunk_size=chunk_size):
             if chunk:
                 yield chunk
+
+    def generate_presigned_get_url(self, *, key: str, expires_seconds: int = 300) -> str:
+        return self._s3.generate_presigned_url(
+            ClientMethod="get_object",
+            Params={"Bucket": self._cfg.bucket, "Key": key},
+            ExpiresIn=int(expires_seconds),
+        )
 
 
 _client: ArtifactStoreClient | None = None

@@ -6,18 +6,22 @@ set -e
 
 echo "🔄 Regenerating API contracts..."
 
+pushd gateway >/dev/null
+
 # Regenerate OpenAPI contract
 echo "  → Regenerating OpenAPI contract..."
-uv run python scripts/generate_openapi_public.py
+uv run python ../scripts/generate_openapi_public.py --output ../contracts/openapi/v1.json
 
 echo "  → Regenerating internal OpenAPI contract..."
-uv run python scripts/generate_openapi_internal.py
+uv run python ../scripts/generate_openapi_internal.py --output ../contracts/openapi/internal-v1.json
 
 echo "  → Regenerating WebSocket contract..."
-uv run python scripts/generate_websocket_contract.py
+uv run python ../scripts/generate_websocket_contract.py --output ../contracts/websocket/v1.json
 
 echo "  → Regenerating NATS contract..."
-uv run python scripts/generate_nats_contract.py
+uv run python ../scripts/generate_nats_contract.py --output ../contracts/nats/v1.json
+
+popd >/dev/null
 
 # Regenerate Proto contract baseline
 echo "  → Updating proto baseline..."

@@ -67,7 +67,7 @@ class UserGoalExtractor:
         """Get ModelService client for LLM extraction"""
         if self._modelservice_client is None:
             try:
-                from backend.services.modelservice_client import ModelServiceClient
+                from core.services.modelservice_client import ModelServiceClient
                 from aico.core.config import ConfigurationManager
                 config_manager = ConfigurationManager()
                 self._modelservice_client = ModelServiceClient(config_manager)

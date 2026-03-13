@@ -3,8 +3,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from enum import Enum
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
+
+from pydantic import BaseModel, Field
 
 
 def _stable_json_dumps(data: Any) -> str:
@@ -25,6 +29,81 @@ def _get_pydantic_schema(model: Any) -> Dict[str, Any]:
     return model.schema()  # type: ignore[attr-defined]
 
 
+class WebSocketMessageType(str, Enum):
+    """WebSocket message types"""
+
+    HEARTBEAT = "heartbeat"
+    HEARTBEAT_ACK = "heartbeat_ack"
+    AI_RESPONSE = "ai_response"
+    SYSTEM_MESSAGE = "system_message"
+    ERROR = "error"
+    STATUS_UPDATE = "status_update"
+
+
+class WebSocketAIResponse(BaseModel):
+    """AI response via WebSocket"""
+
+    type: WebSocketMessageType = Field(WebSocketMessageType.AI_RESPONSE, description="Message type")
+    conversation_id: str = Field(..., description="Conversation ID")
+    message_id: str = Field(..., description="AI message ID")
+    message: str = Field(..., description="AI response text")
+    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Message timestamp")
+    data: Optional[dict[str, Any]] = Field(None, description="Message payload")
+    confidence: Optional[float] = Field(None, description="Response confidence score")
+    processing_time_ms: Optional[int] = Field(None, description="Processing time in milliseconds")
+
+
+class WebSocketError(BaseModel):
+    """Error message via WebSocket"""
+
+    type: WebSocketMessageType = Field(WebSocketMessageType.ERROR, description="Message type")
+    error_code: str = Field(..., description="Error code")
+    error_message: str = Field(..., description="Human-readable error message")
+    conversation_id: Optional[str] = Field(None, description="Related conversation ID if applicable")
+    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Message timestamp")
+    data: Optional[dict[str, Any]] = Field(None, description="Message payload")
+
+
+class WebSocketStatusUpdate(BaseModel):
+    """Status update via WebSocket"""
+
+    type: WebSocketMessageType = Field(WebSocketMessageType.STATUS_UPDATE, description="Message type")
+    conversation_id: str = Field(..., description="Conversation ID")
+    status: str = Field(..., description="New status")
+    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Message timestamp")
+    data: Optional[dict[str, Any]] = Field(None, description="Message payload")
+    details: Optional[dict[str, Any]] = Field(None, description="Additional status details")
+
+
+class SchedulerEventSeverity(str, Enum):
+    """Event severity levels"""
+
+    INFO = "info"
+    WARNING = "warning"
+    ERROR = "error"
+    CRITICAL = "critical"
+
+
+class SchedulerEventType(str, Enum):
+    """Scheduler event types for WebSocket notifications"""
+
+    TASK_STUCK = "task_stuck"
+    TASK_LONG_RUNNING = "task_long_running"
+    TASK_FAILED = "task_failed"
+    TASK_COMPLETED = "task_completed"
+    SCHEDULER_ERROR = "scheduler_error"
+
+
+class SchedulerEventMessage(BaseModel):
+    """WebSocket message for scheduler events"""
+
+    type: SchedulerEventType = Field(..., description="Event type")
+    task_id: str = Field(..., description="Task identifier")
+    severity: SchedulerEventSeverity = Field(..., description="Event severity")
+    timestamp: str = Field(..., description="Event timestamp (ISO format)")
+    details: dict[str, Any] = Field(default_factory=dict, description="Event details")
+
+
 def _build_ws_contract() -> Dict[str, Any]:
     repo_root = Path(__file__).resolve().parents[1]
     repo_config_dir = repo_root / "config"
@@ -34,13 +113,6 @@ def _build_ws_contract() -> Dict[str, Any]:
     from aico.core.config import ConfigurationManager
 
     ConfigurationManager(config_dir=repo_config_dir).initialize(lightweight=True)
-
-    from backend.api.conversation.schemas import (
-        WebSocketAIResponse,
-        WebSocketError,
-        WebSocketStatusUpdate,
-    )
-    from backend.api.scheduler.schemas import SchedulerEventMessage
 
     contract: Dict[str, Any] = {
         "version": "v1",
@@ -96,7 +168,7 @@ def _build_ws_contract() -> Dict[str, Any]:
             ],
         },
         "gateway_websocket_adapter": {
-            "description": "Protocol-level WS server implemented in backend/api_gateway/adapters/websocket_adapter.py (websockets library).",
+            "description": "Protocol-level WS server implemented in gateway/adapters/websocket_adapter.py (websockets library).",
             "path_default": "/ws",
             "message_format": "json",
             "incoming_messages": {

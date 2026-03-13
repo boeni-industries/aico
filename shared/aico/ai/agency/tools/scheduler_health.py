@@ -63,15 +63,15 @@ async def tool_scheduler_check_status(lookback_minutes: int = 60) -> Dict[str, A
                 })
             
             # Determine health status
-            if total_recent == 0:
-                status = "warning"
-                message = "No recent task executions"
-            elif failed > completed:
+            if failed > completed and total_recent > 0:
                 status = "warning"
                 message = f"High failure rate: {failed}/{total_recent} failed"
             elif running > 10:
                 status = "warning"
                 message = f"Many tasks running: {running} concurrent"
+            elif total_recent == 0:
+                status = "ok"
+                message = "No recent task executions in lookback window"
             else:
                 status = "ok"
                 message = "Scheduler is healthy"

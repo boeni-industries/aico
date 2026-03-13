@@ -373,23 +373,23 @@ class TransportIdentityManager:
             
             identity = ComponentIdentity.from_seed(component_name, seed)
             self._identities[component_name] = identity
-            
-            self.logger.info("Component identity loaded from keyring", extra={
+
+            self.logger.debug("Component identity loaded from keyring", extra={
                 "component": component_name
             })
-            
+
             return identity
-            
+
         except Exception as e:
             # Keyring unavailable (e.g., in Docker container)
             # Generate ephemeral identity for this session
-            self.logger.info(
+            self.logger.debug(
                 f"Keyring unavailable for {component_name}, generating ephemeral identity: {e}"
             )
-            
+
             import os
             import hashlib
-            
+
             # Generate deterministic seed from component name + random salt
             # This ensures the same identity across container restarts if AICO_TRANSPORT_SEED is set
             transport_seed = os.getenv("AICO_TRANSPORT_SEED")
@@ -397,17 +397,17 @@ class TransportIdentityManager:
                 # Deterministic identity from environment variable
                 seed_material = f"{component_name}:{transport_seed}".encode()
                 seed = hashlib.sha256(seed_material).digest()
-                self.logger.info(f"Using deterministic transport identity for {component_name}")
+                self.logger.debug(f"Using deterministic transport identity for {component_name}")
             else:
                 # Ephemeral identity (new keys each restart)
                 seed = os.urandom(32)
-                self.logger.info(f"Using ephemeral transport identity for {component_name} (will change on restart)")
-            
+                self.logger.debug(f"Using ephemeral transport identity for {component_name} (will change on restart)")
+
             identity = ComponentIdentity.from_seed(component_name, seed)
             self._identities[component_name] = identity
-            
+
             return identity
-    
+
     def create_secure_channel(self, component_name: str) -> SecureTransportChannel:
         """Create secure transport channel for component"""
         identity = self.get_component_identity(component_name)

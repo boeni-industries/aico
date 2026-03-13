@@ -20,9 +20,9 @@ jobs:
         uses: astral-sh/setup-uv@v3
 
       - name: Sync dependencies
-        working-directory: backend
+        working-directory: gateway
         run: uv sync --frozen
 
       - name: Verify WebSocket contract artifact is up to date
-        working-directory: backend
+        working-directory: gateway
         run: uv run python ../scripts/generate_websocket_contract.py --check --output ../contracts/websocket/v1.json

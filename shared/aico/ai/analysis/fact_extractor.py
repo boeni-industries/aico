@@ -142,7 +142,7 @@ class AdvancedFactExtractor:
         """Initialize the fact extractor with modelservice integration."""
         try:
             # Import modelservice client for NER requests
-            from backend.services.modelservice_client import ModelServiceClient
+            from core.services.modelservice_client import ModelServiceClient
             
             # Initialize modelservice client
             self._modelservice_client = ModelServiceClient(self.config)

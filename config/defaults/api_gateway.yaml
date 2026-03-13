@@ -23,7 +23,7 @@ protocols:
     path: "/ws"
   
   zeromq_ipc:
-    enabled: true
+    enabled: false
 
 # Authentication
 auth:
@@ -40,6 +40,10 @@ auth:
 # Rate limiting
 rate_limiting:
   default_requests_per_minute: 100
+
+# Message routing
+message_router:
+  max_retries: 2
 
 # Plugin configuration
 plugins:

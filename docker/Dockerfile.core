@@ -1,0 +1,69 @@
+FROM python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# System deps (kept minimal)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    gnupg \
+    build-essential \
+    g++ \
+    docker.io \
+    docker-cli \
+  && rm -rf /var/lib/apt/lists/*
+
+# PostgreSQL client tools must match the server major version (Postgres 18.x)
+RUN set -eux; \
+    mkdir -p /etc/apt/keyrings; \
+    curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/keyrings/postgresql.gpg; \
+    echo "deb [signed-by=/etc/apt/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo $VERSION_CODENAME)-pgdg main" > /etc/apt/sources.list.d/pgdg.list; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends postgresql-client-18; \
+    rm -rf /var/lib/apt/lists/*
+
+# Install uv
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
+
+# Copy dependency metadata + required local path deps first.
+# NOTE: core depends on shared via a local path source (../shared), so we need
+# the shared project present before running uv.
+COPY shared /app/shared
+COPY core /app/core
+COPY core/pyproject.toml /app/core/pyproject.toml
+COPY README.md VERSIONS /app/
+
+# Install deps (without installing the local project) so this layer is stable
+# across source-only changes.
+WORKDIR /app/core
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project
+
+WORKDIR /app
+
+# Copy remaining source (Core needs modelservice, proto, config)
+COPY modelservice /app/modelservice
+COPY proto /app/proto
+COPY config /app/config
+
+# Copy entrypoint script
+COPY docker/entrypoint-core.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Install the local core project into the already-synced environment.
+# NOTE: Must run in /app/core so uv finds /app/core/.venv.
+WORKDIR /app/core
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install -e .
+
+WORKDIR /app/core
+
+# Core doesn't expose HTTP (NATS only), but keeping for health checks
+EXPOSE 3001
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["/app/core/.venv/bin/python", "-m", "core.main"]
