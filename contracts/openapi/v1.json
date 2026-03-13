@@ -7883,6 +7883,47 @@
         "summary": "Get My Conversation Status"
       }
     },
+    "/api/v1/emotion/current": {
+      "get": {
+        "operationId": "emotion_current_api_v1_emotion_current_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Emotion Current"
+      }
+    },
     "/api/v1/emotion/history": {
       "get": {
         "operationId": "emotion_history_api_v1_emotion_history_get",
