@@ -290,9 +290,21 @@ For clarity, split secrets into three groups:
   - `minio_root_password`
   - `artifact_store_access_key`
   - `artifact_store_secret_key`
+  - current Compose definitions live under `docker/secrets/<name>` and are mounted by Docker as `/run/secrets/<name>`
+  - current service usage in `docker-compose.local.yml` is:
+    - `postgres`, `postgres-shadow`: `pg_password` via `POSTGRES_PASSWORD_FILE=/run/secrets/pg_password`
+    - `gateway`: `pg_password`, `api_gateway_jwt_secret`
+    - `core`: `pg_password`, `artifact_store_access_key`, `artifact_store_secret_key`
+    - `modelservice`: `pg_password`
+    - `minio`: `minio_root_user`, `minio_root_password`
+    - `minio-init`: `minio_root_user`, `minio_root_password`, `artifact_store_access_key`, `artifact_store_secret_key`
 
 - **Deployment/runtime credentials not yet normalized to Docker secrets**
   - `grafana_admin_password`
+  - current `docker-compose.local.yml` still injects this through:
+    - `GF_SECURITY_ADMIN_USER=${AICO_GRAFANA_USER:-admin}`
+    - `GF_SECURITY_ADMIN_PASSWORD=${AICO_GRAFANA_PASSWORD:-}`
+  - `deploy.py` still provisions Grafana by exporting `AICO_GRAFANA_PASSWORD` into the compose subprocess env instead of mounting `/run/secrets/grafana_admin_password`
 
 - **Bootstrap-only inputs**
   - `master_password` via `AICO_MASTER_PASSWORD` or `--master-password-file`
@@ -302,6 +314,27 @@ Target rule:
 
 - runtime secrets should converge on canonical `/run/secrets/<name>` mounts
 - bootstrap-only inputs should stay separate from steady-state runtime secrets
+- local Compose should declare every steady-state runtime secret in the top-level `secrets:` block with `file: ./secrets/<name>`
+- deploy helpers should write those files under `docker/secrets/<name>` rather than relying on ad hoc env-only delivery for long-lived runtime credentials
+
+### Current path standardization status
+
+Today the codebase is close to one standard:
+
+- **authoritative on-disk secret source for local Compose**
+  - `docker/secrets/<name>`
+
+- **authoritative in-container mount path**
+  - `/run/secrets/<name>`
+
+- **provider expectation**
+  - `CredentialProvider().get("<name>")` reads `/run/secrets/<name>`
+
+The remaining drift is concentrated in a few areas:
+
+- Grafana admin credentials are still env-driven instead of file-mounted
+- some CLI/security helpers still sync `docker/secrets/*` into keyring for compatibility
+- `deploy.py` still manages legacy Influx secret names that no longer fit the intended OTEL/Prometheus/Loki target direction
 
 ### Source taxonomy
 
