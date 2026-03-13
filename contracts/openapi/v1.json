@@ -865,6 +865,82 @@
         "title": "BackupSetsResponse",
         "type": "object"
       },
+      "BehavioralFeedbackSubmitRequest": {
+        "properties": {
+          "free_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional detailed feedback text",
+            "title": "Free Text"
+          },
+          "message_id": {
+            "description": "Message ID being rated",
+            "title": "Message Id",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional quick-tag reason",
+            "title": "Reason"
+          },
+          "reward": {
+            "description": "Feedback reward: positive, negative, or neutral",
+            "title": "Reward",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "message_id",
+          "reward"
+        ],
+        "title": "BehavioralFeedbackSubmitRequest",
+        "type": "object"
+      },
+      "BehavioralFeedbackSubmitResponse": {
+        "properties": {
+          "event_id": {
+            "description": "Created feedback event ID",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "new_confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Updated skill confidence if available",
+            "title": "New Confidence"
+          },
+          "skill_updated": {
+            "description": "Whether a skill was updated immediately",
+            "title": "Skill Updated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "event_id",
+          "skill_updated"
+        ],
+        "title": "BehavioralFeedbackSubmitResponse",
+        "type": "object"
+      },
       "BehavioralLearningStatsResponse": {
         "description": "Behavioral learning statistics.",
         "properties": {
@@ -7380,6 +7456,62 @@
         "summary": "Get Ams Stats",
         "tags": [
           "ams"
+        ]
+      }
+    },
+    "/api/v1/behavioral/feedback": {
+      "post": {
+        "operationId": "submit_behavioral_feedback_api_v1_behavioral_feedback_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "auth_manager",
+            "required": false,
+            "schema": {
+              "title": "Auth Manager"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BehavioralFeedbackSubmitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BehavioralFeedbackSubmitResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Submit Behavioral Feedback",
+        "tags": [
+          "behavioral"
         ]
       }
     },
