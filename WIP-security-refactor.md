@@ -22,10 +22,10 @@ The key shift is simple: **runtime security for containers must stop depending o
 - [ ] Decide which secrets may be ephemeral in dev and which must fail loudly in production
 - [ ] Separate asset classes in backend posture APIs
 - [ ] Update Studio security UI to show source, persistence, and degraded reason consistently
-- [ ] Add bootstrap flow for first-time container deployments
+- [x] Add bootstrap flow for first-time container deployments
 - [ ] Add guided rotation and recovery workflows
 - [ ] Add audit events for secret resolution, fallback, bootstrap, rotation, and degraded startup
-- [ ] Document deployment modes and recommended operator defaults
+- [x] Document deployment modes and recommended operator defaults
 
 ## Problem
 
@@ -256,6 +256,29 @@ Canonical secret files:
 
 Older aliases may be supported temporarily, but posture should report the canonical name.
 
+### Secret and input matrix
+
+| Name | Class | Scope | Canonical source | Persistent in prod | Dev policy | Missing in prod | Rotation owner |
+|---|---|---|---|---|---|---|---|
+| `pg_password` | runtime auth secret | deployment | `/run/secrets/pg_password` | yes | may be generated for local/container dev | fail fast | deployment operator |
+| `api_gateway_jwt_secret` | runtime auth secret | deployment | `/run/secrets/api_gateway_jwt_secret` | yes | may be generated for dev with degraded posture | fail fast | deployment operator |
+| `grafana_admin_password` | runtime auth secret | deployment | `/run/secrets/grafana_admin_password` | yes | may be env/file-backed in dev until normalized | fail fast | deployment operator |
+| `minio_root_user` | runtime auth secret | deployment | `/run/secrets/minio_root_user` | yes | may be generated for dev | fail fast | deployment operator |
+| `minio_root_password` | runtime auth secret | deployment | `/run/secrets/minio_root_password` | yes | may be generated for dev | fail fast | deployment operator |
+| `artifact_store_access_key` | runtime auth secret | deployment | `/run/secrets/artifact_store_access_key` | yes | may be generated for dev | fail fast | deployment operator |
+| `artifact_store_secret_key` | runtime auth secret | deployment | `/run/secrets/artifact_store_secret_key` | yes | may be generated for dev | fail fast | deployment operator |
+| `root_encryption_secret` | data-at-rest root secret | deployment | `/run/secrets/root_encryption_secret` | yes | dev generation allowed only for explicit local paths | fail fast | deployment operator |
+| `master_password` | bootstrap/recovery input | deployment | `--master-password-file` or `AICO_MASTER_PASSWORD` | no, input only | allowed for headless dev/bootstrap | fail bootstrap | deployment operator |
+| `admin_pin` | tenant identity bootstrap input | tenant | CLI/config input at bootstrap time | no, only stored as derived hash | required for first tenant bootstrap | fail bootstrap | tenant/deployment operator |
+| tenant-scoped JWT | tenant session material | tenant | minted by gateway/session flow | yes, via auth/session store | normal runtime behavior | deny tenant access | auth/session subsystem |
+| tenant-scoped refresh token | tenant session material | tenant | minted by gateway/session flow | yes, via auth/session store | normal runtime behavior | deny session renewal | auth/session subsystem |
+
+Interpretation rules:
+
+- deployment-scoped runtime secrets are shared by services inside one deployment and must not be duplicated per tenant by default
+- tenant-scoped session material is isolated by `tenant_id` and should be partitioned in storage, cache, transport, and refresh logic
+- bootstrap-only inputs are consumed during setup or recovery and are not the same thing as steady-state runtime secrets
+
 ### Deployment secret inventory
 
 For clarity, split secrets into three groups:
@@ -336,18 +359,28 @@ The credential model must treat **deployment** and **tenant** as different scope
 
 Target initial setup flow:
 
+Authoritative bootstrap entrypoint:
+
+- initial setup should be handled by `cli/commands/deploy.py` through the system-scope command:
+  - `aico deploy system`
+- this should be treated as the essential bootstrap command for zero-to-operational setup
+- lower-level commands may still exist for advanced or repair workflows, but they should not be the primary first-run operator path
+
+Target initial setup flow:
+
 1. operator runs `aico config init`
-2. operator selects deployment mode:
+2. operator runs `aico deploy system`
+3. system selects or validates deployment mode:
    - local interactive
    - container development
    - production container
-3. system resolves or creates **deployment-scoped** secrets
-4. system bootstraps Postgres and shared infrastructure
-5. system initializes deployment-level security state
-6. system creates or verifies the initial tenant
-7. system creates or verifies the initial tenant admin identity
-8. system mints or enables tenant-scoped session issuance
-9. system writes deploy/bootstrap state for safe re-runs
+4. system resolves or creates **deployment-scoped** secrets
+5. system bootstraps Postgres and shared infrastructure
+6. system initializes deployment-level security state
+7. system creates or verifies the initial tenant
+8. system creates or verifies the initial tenant admin identity
+9. system mints or enables tenant-scoped session issuance
+10. system writes deploy/bootstrap state for safe re-runs
 
 Rules:
 
@@ -355,6 +388,13 @@ Rules:
 - tenant bootstrap must not create a separate per-tenant Postgres/JWT secret set by default
 - tenant scope should be enforced through identity/session claims, not by duplicating deployment runtime secrets
 - the initial admin passcode is tenant-scoped identity bootstrap data, not a runtime infrastructure secret
+- `aico deploy system` should own orchestration of deployment bootstrap plus initial tenant/bootstrap identity setup
+- current `deploy.py` already implements this **partially and mostly idempotently**:
+  - `deploy_system()` calls component deploy commands with `nuke=False`
+  - `_ensure_all_secrets()` reuses existing secret files and only generates missing ones
+  - `_bootstrap_postgres()` is written as an idempotent ensure-flow for tenant, admin credential row, membership, and admin policy
+  - deploy state is persisted and re-read from `runtime/deploy-state.yaml`
+  - caveat: the current flow still contains keyring backfill/workaround behavior for CLI compatibility and some infrastructure coverage is broader than the intended OTEL/Prometheus-only target state
 
 ### Exact flow: steady-state runtime
 
@@ -416,6 +456,28 @@ Recommended defaults:
   - keyring disabled
   - missing required secrets fail fast
   - bootstrap-only inputs consumed once and scrubbed from process env where possible
+
+### Workflow matrix
+
+| Workflow | Scope | Inputs | Output/state change | Steady-state source after completion | Notes |
+|---|---|---|---|---|---|
+| first-time local interactive setup | deployment | operator password entry, optional dev defaults | local security/bootstrap state initialized | keyring or file-backed local sources | local-only convenience path |
+| first-time container bootstrap | deployment | mounted runtime secrets plus `master_password` bootstrap input | deployment security state initialized, infra ready | mounted secret files | no keyring dependency |
+| initial tenant bootstrap | tenant | `tenant_display_name`, `admin_full_name`, `admin_pin`, optional language | tenant row, membership, admin identity/bootstrap hash | tenant-scoped session issuance after auth | does not create separate infra secret set |
+| service restart | deployment | none if required secrets already present | services restart unattended | same mounted/env source as before | must not prompt |
+| tenant session minting | tenant | authenticated user context + selected tenant | tenant-scoped JWT + refresh token | auth/session store | explicit and auditable action |
+| tenant switch | tenant | active deployment + target tenant | new tenant-scoped session and cache boundary | tenant-partitioned client/session state | no raw tenant-header trust as boundary |
+| deployment secret rotation | deployment | replacement mounted secret or external provider update | runtime secret version changes | new mounted/env source | may require coordinated service restart |
+| tenant admin credential rotation | tenant | authenticated admin action | updated tenant admin credential hash/session invalidation as needed | auth/session store | must not require infra secret rotation |
+| recovery/bootstrap replay | deployment | deploy-state + bootstrap-only recovery inputs | re-establishes deployment bootstrap safely | canonical deployment source | idempotent, auditable |
+| tenant maintenance | tenant | admin/operator action | tenant create/deactivate/membership updates | database + auth/session store | separate from deployment secret handling |
+
+Workflow rules:
+
+- every workflow must declare whether it operates at `deployment` or `tenant` scope
+- deployment bootstrap and tenant bootstrap are separate phases, even if one command orchestrates both
+- secret rotation, tenant switching, and recovery must emit explicit audit events with scope and source
+- runtime services should only depend on steady-state sources, not on bootstrap-only inputs remaining present
 
 Normal operations should not require:
 
