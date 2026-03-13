@@ -210,7 +210,7 @@ class BaseTask(ABC):
         if not self.task_id:
             raise ValueError(f"Task class {self.__class__.__name__} must define task_id")
         
-        self.logger = get_logger(f"backend.scheduler.task.{self.task_id}")
+        self.logger = get_logger(f"core.scheduler.task.{self.task_id}")
     
     @abstractmethod
     async def execute(self, context: TaskContext) -> TaskResult:

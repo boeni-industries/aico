@@ -140,7 +140,13 @@ async def get_topology(
 
         services = data.get("services") if isinstance(data, dict) else None
         connections = data.get("connections") if isinstance(data, dict) else None
-        deployment_type = (data.get("deployment_type") if isinstance(data, dict) else None) or "docker-compose"
+        deployment_type = data.get("deployment_type") if isinstance(data, dict) else None
+        if not isinstance(deployment_type, str) or not deployment_type.strip():
+            raise_api_error(
+                status_code=502,
+                error_code="OPERATIONS_TOPOLOGY_INVALID_RESPONSE",
+                message="Core did not return a deployment_type",
+            )
 
         services_count = len(services) if isinstance(services, list) else 0
         connections_count = len(connections) if isinstance(connections, list) else 0

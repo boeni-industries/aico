@@ -9,6 +9,7 @@ import os
 import uuid
 import time
 import asyncio
+import requests
 from datetime import datetime, timedelta, timezone, UTC
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -132,6 +133,11 @@ class CoreNATSHandlers:
                     "tasks": [],
                     "message": "Scheduler returned invalid status"
                 }
+            self.logger.info(
+                "Scheduler status response served: "
+                f"status={status.get('status')}, running_tasks={len(status.get('running_tasks') or [])}, "
+                f"queued_tasks={status.get('queued_tasks', 0)}"
+            )
             return status
             
         except Exception as e:
@@ -1207,13 +1213,53 @@ class CoreNATSHandlers:
                 collections = [
                     {"name": "conversation_segments", "count": int(total_vectors), "dimension": 768}
                 ]
+
+                avg_retrieval_latency_ms = 0.0
+                retrieval_quality_percent = 0.0
+                try:
+                    def _query_semantic_stats() -> tuple[float, float]:
+                        conn = InfluxDBConnection()
+                        try:
+                            latency_rows = conn.query(
+                                f'''
+from(bucket: "{conn.bucket}")
+  |> range(start: -24h)
+  |> filter(fn: (r) => r._measurement == "memory_query" and r._field == "query_time_ms_f")
+  |> mean()
+'''
+                            )
+                            success_rows = conn.query(
+                                f'''
+from(bucket: "{conn.bucket}")
+  |> range(start: -24h)
+  |> filter(fn: (r) => r._measurement == "memory_query" and r._field == "success_b")
+  |> group(columns: ["_value"])
+  |> count()
+'''
+                            )
+                            latency = float(latency_rows[0].get("value", 0.0)) if latency_rows else 0.0
+                            success_true = 0
+                            success_total = 0
+                            for row in success_rows:
+                                count = int(row.get("value", 0) or 0)
+                                success_total += count
+                                if row.get("_value") is True:
+                                    success_true += count
+                            quality = (success_true / success_total * 100.0) if success_total else 0.0
+                            return latency, quality
+                        finally:
+                            conn.close()
+
+                    avg_retrieval_latency_ms, retrieval_quality_percent = await asyncio.to_thread(_query_semantic_stats)
+                except Exception:
+                    pass
                 
                 return {
                     "total_vectors": int(total_vectors),
                     "collections": collections,
                     "index_size_mb": float(index_size_mb),
-                    "avg_retrieval_latency_ms": 0.0,
-                    "retrieval_quality_percent": 0.0
+                    "avg_retrieval_latency_ms": float(avg_retrieval_latency_ms),
+                    "retrieval_quality_percent": float(retrieval_quality_percent)
                 }
             
         except Exception as e:
@@ -1332,9 +1378,275 @@ class CoreNATSHandlers:
                 
                 # Health metrics
                 avg_degree = current_edge_count / max(current_node_count, 1)
-                isolated_nodes = sum(1 for node in current_nodes if not any(
-                    e.source_id == node.id or e.target_id == node.id for e in current_edges
-                ))
+                node_ids = {node.id for node in current_nodes}
+                adjacency: Dict[Any, set[Any]] = {node_id: set() for node_id in node_ids}
+                orphaned_edges = 0
+                for edge in current_edges:
+                    source_id = getattr(edge, "source_id", None)
+                    target_id = getattr(edge, "target_id", None)
+                    if source_id not in node_ids or target_id not in node_ids:
+                        orphaned_edges += 1
+                        continue
+                    if source_id == target_id:
+                        adjacency[source_id].add(target_id)
+                    else:
+                        adjacency[source_id].add(target_id)
+                        adjacency[target_id].add(source_id)
+
+                degree_by_node = {node_id: len(neighbors) for node_id, neighbors in adjacency.items()}
+                isolated_nodes = sum(1 for degree in degree_by_node.values() if degree == 0)
+                max_degree = max(degree_by_node.values(), default=0)
+                min_degree = min(degree_by_node.values(), default=0)
+
+                seen: set[Any] = set()
+                component_sizes: list[int] = []
+                for start_node in adjacency:
+                    if start_node in seen:
+                        continue
+                    stack = [start_node]
+                    size = 0
+                    while stack:
+                        node_id = stack.pop()
+                        if node_id in seen:
+                            continue
+                        seen.add(node_id)
+                        size += 1
+                        stack.extend(neighbor for neighbor in adjacency[node_id] if neighbor not in seen)
+                    component_sizes.append(size)
+                connected_components = len(component_sizes) if component_sizes else 0
+                largest_component_size = max(component_sizes, default=0)
+
+                duplicate_groups: Dict[tuple[str, str, str], list[Any]] = {}
+                for node in current_nodes:
+                    key = (
+                        str(getattr(node, "label", "") or ""),
+                        str(getattr(node, "source_text", "") or "").strip().lower(),
+                        str(getattr(node, "properties", "") or ""),
+                    )
+                    duplicate_groups.setdefault(key, []).append(node)
+                duplicate_pairs = []
+                duplicate_nodes = 0
+                for nodes in duplicate_groups.values():
+                    if len(nodes) > 1:
+                        duplicate_nodes += len(nodes) - 1
+                        anchor = nodes[0]
+                        anchor_name = str(getattr(anchor, "source_text", None) or getattr(anchor, "label", None) or getattr(anchor, "id", ""))
+                        anchor_label = str(getattr(anchor, "label", None) or "unknown")
+                        for duplicate in nodes[1:]:
+                            duplicate_pairs.append(
+                                {
+                                    "id1": str(getattr(anchor, "id", "")),
+                                    "name1": anchor_name,
+                                    "label1": anchor_label,
+                                    "id2": str(getattr(duplicate, "id", "")),
+                                    "name2": str(getattr(duplicate, "source_text", None) or getattr(duplicate, "label", None) or getattr(duplicate, "id", "")),
+                                    "label2": str(getattr(duplicate, "label", None) or "unknown"),
+                                    "similarity": 1.0,
+                                }
+                            )
+
+                now = datetime.now(UTC)
+                stale_cutoff = now - timedelta(days=30)
+                stale_nodes_count = sum(
+                    1
+                    for node in current_nodes
+                    if (
+                        getattr(node, "updated_at", None) or getattr(node, "created_at", None) or now
+                    ) < stale_cutoff
+                )
+                stale_nodes_percent = (stale_nodes_count / max(current_node_count, 1) * 100.0) if current_node_count else 0.0
+
+                last_24h = now - timedelta(hours=24)
+                nodes_added_24h = sum(
+                    1 for node in all_nodes
+                    if getattr(node, "created_at", None) and getattr(node, "created_at", None) >= last_24h
+                )
+                edges_added_24h = sum(
+                    1 for edge in all_edges
+                    if getattr(edge, "created_at", None) and getattr(edge, "created_at", None) >= last_24h
+                )
+
+                activity_by_day: Dict[str, int] = {}
+                for record in list(all_nodes) + list(all_edges):
+                    created_at = getattr(record, "created_at", None)
+                    if not created_at:
+                        continue
+                    day_key = created_at.astimezone(UTC).date().isoformat()
+                    activity_by_day[day_key] = activity_by_day.get(day_key, 0) + 1
+                most_active_day = max(activity_by_day.items(), key=lambda item: item[1])[0] if activity_by_day else None
+
+                def _count_created_since(records: list[Any], *, start: datetime, end: datetime) -> int:
+                    return sum(
+                        1 for record in records
+                        if getattr(record, "created_at", None) and start <= getattr(record, "created_at", None) < end
+                    )
+
+                period_7_start = now - timedelta(days=7)
+                prev_7_start = now - timedelta(days=14)
+                recent_7 = _count_created_since(all_nodes, start=period_7_start, end=now)
+                prev_7 = _count_created_since(all_nodes, start=prev_7_start, end=period_7_start)
+                growth_rate_7d = ((recent_7 - prev_7) / prev_7 * 100.0) if prev_7 > 0 else (100.0 if recent_7 > 0 else 0.0)
+
+                period_30_start = now - timedelta(days=30)
+                prev_30_start = now - timedelta(days=60)
+                recent_30 = _count_created_since(all_nodes, start=period_30_start, end=now)
+                prev_30 = _count_created_since(all_nodes, start=prev_30_start, end=period_30_start)
+                growth_rate_30d = ((recent_30 - prev_30) / prev_30 * 100.0) if prev_30 > 0 else (100.0 if recent_30 > 0 else 0.0)
+
+                triangle_triplets = 0
+                closed_triplets = 0
+                local_coefficients: list[float] = []
+                for node_id, neighbors in adjacency.items():
+                    degree = len(neighbors)
+                    if degree < 2:
+                        local_coefficients.append(0.0)
+                        continue
+                    neighbor_list = list(neighbors)
+                    links = 0
+                    for idx, left in enumerate(neighbor_list):
+                        left_neighbors = adjacency.get(left, set())
+                        for right in neighbor_list[idx + 1:]:
+                            if right in left_neighbors:
+                                links += 1
+                    possible_links = degree * (degree - 1) / 2
+                    local_coefficients.append(links / possible_links if possible_links else 0.0)
+                    triangle_triplets += degree * (degree - 1) / 2
+                    closed_triplets += links
+                average_clustering_coefficient = (
+                    sum(local_coefficients) / len(local_coefficients) if local_coefficients else 0.0
+                )
+                global_clustering_coefficient = (
+                    closed_triplets / triangle_triplets if triangle_triplets else 0.0
+                )
+
+                modularity_score = 0.0
+                communities_detected = connected_components
+                m = current_edge_count
+                if m > 0 and component_sizes:
+                    component_index: Dict[Any, int] = {}
+                    seen.clear()
+                    component_nodes: list[set[Any]] = []
+                    for start_node in adjacency:
+                        if start_node in seen:
+                            continue
+                        stack = [start_node]
+                        component: set[Any] = set()
+                        while stack:
+                            node_id = stack.pop()
+                            if node_id in seen:
+                                continue
+                            seen.add(node_id)
+                            component.add(node_id)
+                            stack.extend(neighbor for neighbor in adjacency[node_id] if neighbor not in seen)
+                        component_nodes.append(component)
+                    for idx, component in enumerate(component_nodes):
+                        for node_id in component:
+                            component_index[node_id] = idx
+                    l_c = [0 for _ in component_nodes]
+                    d_c = [0 for _ in component_nodes]
+                    for node_id, neighbors in adjacency.items():
+                        idx = component_index.get(node_id, 0)
+                        d_c[idx] += len(neighbors)
+                        for neighbor in neighbors:
+                            if component_index.get(neighbor) == idx:
+                                l_c[idx] += 0.5
+                    modularity_score = sum((l_c_i / m) - (d_c_i / (2 * m)) ** 2 for l_c_i, d_c_i in zip(l_c, d_c))
+
+                current_node_map = {getattr(node, "id", None): node for node in current_nodes}
+
+                def _display_name(node: Any) -> str:
+                    return str(
+                        getattr(node, "source_text", None)
+                        or getattr(node, "label", None)
+                        or getattr(node, "id", "")
+                    )
+
+                def _centrality_entry(node_id: Any, *, degree: float | None = None, score: float | None = None) -> Dict[str, Any]:
+                    node = current_node_map.get(node_id)
+                    return {
+                        "id": str(node_id),
+                        "label": str(getattr(node, "label", None) or "unknown"),
+                        "name": _display_name(node),
+                        "degree": degree,
+                        "score": score,
+                    }
+
+                top_by_degree = [
+                    _centrality_entry(node_id, degree=float(degree))
+                    for node_id, degree in sorted(degree_by_node.items(), key=lambda item: item[1], reverse=True)[:10]
+                ]
+
+                pagerank_scores: Dict[Any, float] = {}
+                if adjacency:
+                    damping = 0.85
+                    node_count_for_rank = len(adjacency)
+                    pagerank_scores = {node_id: 1.0 / node_count_for_rank for node_id in adjacency}
+                    for _ in range(50):
+                        next_scores: Dict[Any, float] = {}
+                        sink_total = sum(
+                            pagerank_scores[node_id]
+                            for node_id, neighbors in adjacency.items()
+                            if not neighbors
+                        )
+                        for node_id, neighbors in adjacency.items():
+                            rank = (1.0 - damping) / node_count_for_rank
+                            rank += damping * sink_total / node_count_for_rank
+                            incoming = 0.0
+                            for other_id, other_neighbors in adjacency.items():
+                                if node_id in other_neighbors and other_neighbors:
+                                    incoming += pagerank_scores[other_id] / len(other_neighbors)
+                            next_scores[node_id] = rank + damping * incoming
+                        pagerank_scores = next_scores
+
+                top_by_pagerank = [
+                    _centrality_entry(node_id, score=float(score))
+                    for node_id, score in sorted(pagerank_scores.items(), key=lambda item: item[1], reverse=True)[:10]
+                ]
+
+                betweenness_scores: Dict[Any, float] = {node_id: 0.0 for node_id in adjacency}
+                for source in adjacency:
+                    stack: list[Any] = []
+                    predecessors: Dict[Any, list[Any]] = {node_id: [] for node_id in adjacency}
+                    shortest_paths: Dict[Any, float] = {node_id: 0.0 for node_id in adjacency}
+                    shortest_paths[source] = 1.0
+                    distance: Dict[Any, int] = {node_id: -1 for node_id in adjacency}
+                    distance[source] = 0
+                    queue = [source]
+                    queue_index = 0
+                    while queue_index < len(queue):
+                        vertex = queue[queue_index]
+                        queue_index += 1
+                        stack.append(vertex)
+                        for neighbor in adjacency[vertex]:
+                            if distance[neighbor] < 0:
+                                queue.append(neighbor)
+                                distance[neighbor] = distance[vertex] + 1
+                            if distance[neighbor] == distance[vertex] + 1:
+                                shortest_paths[neighbor] += shortest_paths[vertex]
+                                predecessors[neighbor].append(vertex)
+
+                    dependency: Dict[Any, float] = {node_id: 0.0 for node_id in adjacency}
+                    while stack:
+                        vertex = stack.pop()
+                        for predecessor in predecessors[vertex]:
+                            if shortest_paths[vertex] > 0:
+                                dependency[predecessor] += (
+                                    shortest_paths[predecessor] / shortest_paths[vertex]
+                                ) * (1.0 + dependency[vertex])
+                        if vertex != source:
+                            betweenness_scores[vertex] += dependency[vertex]
+
+                if len(adjacency) > 2:
+                    normalization = 2.0 / ((len(adjacency) - 1) * (len(adjacency) - 2))
+                    betweenness_scores = {
+                        node_id: score * normalization
+                        for node_id, score in betweenness_scores.items()
+                    }
+
+                top_by_betweenness = [
+                    _centrality_entry(node_id, score=float(score))
+                    for node_id, score in sorted(betweenness_scores.items(), key=lambda item: item[1], reverse=True)[:10]
+                ]
                 
                 return {
                     "total_nodes": node_count,
@@ -1349,40 +1661,40 @@ class CoreNATSHandlers:
                     "storage_size_mb": round(storage_size_mb, 2),
                     "user_id": user_id,
                     "health": {
-                        "orphaned_edges": 0,
-                        "duplicate_nodes": 0,
-                        "stale_nodes_count": 0,
-                        "stale_nodes_percent": 0.0,
+                        "orphaned_edges": orphaned_edges,
+                        "duplicate_nodes": duplicate_nodes,
+                        "stale_nodes_count": stale_nodes_count,
+                        "stale_nodes_percent": stale_nodes_percent,
                         "property_completeness": total_node_properties / max(current_node_count, 1),
-                        "nodes_added_24h": 0,
-                        "edges_added_24h": 0
+                        "nodes_added_24h": nodes_added_24h,
+                        "edges_added_24h": edges_added_24h
                     },
-                    "duplicate_pairs": None,
+                    "duplicate_pairs": duplicate_pairs or None,
                     "structure": {
                         "graph_density": current_edge_count / max((current_node_count * (current_node_count - 1)) / 2, 1) if current_node_count > 1 else 0.0,
                         "average_degree": avg_degree,
-                        "max_degree": 0,
-                        "min_degree": 0,
+                        "max_degree": max_degree,
+                        "min_degree": min_degree,
                         "isolated_nodes": isolated_nodes,
-                        "connected_components": 1,
-                        "largest_component_size": current_node_count
+                        "connected_components": connected_components,
+                        "largest_component_size": largest_component_size
                     },
                     "temporal": {
-                        "growth_rate_7d": 0.0,
-                        "growth_rate_30d": 0.0,
-                        "most_active_day": None,
-                        "activity_by_day": {}
+                        "growth_rate_7d": growth_rate_7d,
+                        "growth_rate_30d": growth_rate_30d,
+                        "most_active_day": most_active_day,
+                        "activity_by_day": activity_by_day
                     },
                     "centrality": {
-                        "top_by_degree": [],
-                        "top_by_pagerank": [],
-                        "top_by_betweenness": []
+                        "top_by_degree": top_by_degree,
+                        "top_by_pagerank": top_by_pagerank,
+                        "top_by_betweenness": top_by_betweenness
                     },
                     "clustering": {
-                        "global_clustering_coefficient": 0.0,
-                        "average_clustering_coefficient": 0.0,
-                        "communities_detected": 0,
-                        "modularity_score": 0.0
+                        "global_clustering_coefficient": global_clustering_coefficient,
+                        "average_clustering_coefficient": average_clustering_coefficient,
+                        "communities_detected": communities_detected,
+                        "modularity_score": modularity_score
                     }
                 }
         except Exception as e:
@@ -2362,29 +2674,8 @@ class CoreNATSHandlers:
 
             return {"databases": databases}
         except Exception as e:
-            # Do NOT fail the UI. Always return a PostgreSQL entry with critical status.
             self.logger.error(f"Failed to get database operations: {e}", exc_info=True)
-            host = os.environ.get("AICO_PG_HOST", "postgres")
-            port = int(os.environ.get("AICO_PG_PORT", "5432"))
-            db_name = os.environ.get("AICO_POSTGRES_DATABASE", "aico")
-            return {
-                "databases": [
-                    {
-                        "name": "PostgreSQL",
-                        "type": "postgresql",
-                        "size_bytes": 0,
-                        "status": "critical",
-                        "location": f"{host}:{port}/{db_name}",
-                        "error_details": str(e),
-                        "table_count": 0,
-                        "connection_count": 0,
-                        "wal_size_bytes": 0,
-                        "database_name": db_name,
-                        "host": host,
-                        "port": port,
-                    }
-                ]
-            }
+            raise
 
     async def handle_operations_postgresql_schema_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Handle PostgreSQL schema metadata request from gateway"""
@@ -2699,25 +2990,333 @@ class CoreNATSHandlers:
         """Handle system metrics all request from gateway"""
         try:
             import psutil
+            import time
             from aico.data.postgres.connection import get_session_factory
             from aico.data.uow import UnitOfWork
+            from aico.core.config import ConfigurationManager
             from aico.services.scheduler_service import SchedulerService
+            from core.services import get_modelservice_client
             from core.services.health_calculator import HealthCalculator
 
-            def metric(value: float = 0, *, unit: str = "", trend: float = 0, status: str = "healthy") -> Dict[str, Any]:
+            def metric(
+                value: float = 0,
+                *,
+                unit: str = "",
+                trend: float = 0,
+                status: str = "healthy",
+                sparkline_data: list[float] | None = None,
+                avg_1h: float | None = None,
+                avg_24h: float | None = None,
+                avg_7d: float | None = None,
+            ) -> Dict[str, Any]:
                 return {
                     "value": value,
                     "unit": unit,
                     "trend": trend,
                     "status": status,
-                    "sparkline_data": [],
-                    "avg_1h": value,
-                    "avg_24h": value,
-                    "avg_7d": value,
+                    "sparkline_data": sparkline_data or [],
+                    "avg_1h": value if avg_1h is None else avg_1h,
+                    "avg_24h": value if avg_24h is None else avg_24h,
+                    "avg_7d": value if avg_7d is None else avg_7d,
                 }
 
             now = datetime.now(UTC)
             day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+            def _to_float(value: Any, default: float = 0.0) -> float:
+                try:
+                    if value is None:
+                        return default
+                    return float(value)
+                except (TypeError, ValueError):
+                    return default
+
+            def _to_int(value: Any, default: int = 0) -> int:
+                try:
+                    if value is None:
+                        return default
+                    return int(value)
+                except (TypeError, ValueError):
+                    return default
+
+            def _status_from_value(
+                value: float,
+                *,
+                warning_at: float | None = None,
+                critical_at: float | None = None,
+                lower_is_better: bool = False,
+            ) -> str:
+                if warning_at is None and critical_at is None:
+                    return "healthy"
+
+                if lower_is_better:
+                    if critical_at is not None and value >= critical_at:
+                        return "critical"
+                    if warning_at is not None and value >= warning_at:
+                        return "warning"
+                    return "healthy"
+
+                if critical_at is not None and value <= critical_at:
+                    return "critical"
+                if warning_at is not None and value <= warning_at:
+                    return "warning"
+                return "healthy"
+
+            def _prometheus_metrics_snapshot() -> Dict[str, Any]:
+                config = ConfigurationManager()
+                configured_url = (
+                    config.get("prometheus.url", None)
+                    or os.getenv("PROMETHEUS_URL")
+                    or os.getenv("AICO_PROMETHEUS_URL")
+                )
+                candidate_urls = [
+                    url.rstrip("/")
+                    for url in [
+                        configured_url,
+                        "http://prometheus:9090",
+                        "http://aico-prometheus:9090",
+                        "http://127.0.0.1:9090",
+                    ]
+                    if url
+                ]
+
+                prometheus_base_url = None
+                last_error = None
+                for base_url in candidate_urls:
+                    try:
+                        response = requests.get(f"{base_url}/api/v1/query", params={"query": "up"}, timeout=5)
+                        response.raise_for_status()
+                        payload = response.json()
+                        if payload.get("status") == "success":
+                            prometheus_base_url = base_url
+                            break
+                    except Exception as exc:
+                        last_error = exc
+
+                if not prometheus_base_url:
+                    raise RuntimeError(f"Unable to connect to Prometheus via {candidate_urls}") from last_error
+
+                def _query(query: str) -> Dict[str, Any]:
+                    response = requests.get(
+                        f"{prometheus_base_url}/api/v1/query",
+                        params={"query": query},
+                        timeout=10,
+                    )
+                    response.raise_for_status()
+                    payload = response.json()
+                    if payload.get("status") != "success":
+                        raise RuntimeError(f"Prometheus query failed with status={payload.get('status')}")
+                    return payload
+
+                def _parse_float(value: Any, default: float = 0.0) -> float:
+                    numeric = _to_float(value, default)
+                    if numeric != numeric or numeric in (float("inf"), float("-inf")):
+                        return default
+                    return numeric
+
+                def _instant(query: str, default: float = 0.0) -> float:
+                    result = _query(query).get("data", {}).get("result", [])
+                    if not result:
+                        return default
+                    value = result[0].get("value", [])
+                    if len(value) < 2:
+                        return default
+                    return _parse_float(value[1], default)
+
+                def _instant_series(query: str, label: str) -> Dict[str, float]:
+                    out: Dict[str, float] = {}
+                    for item in _query(query).get("data", {}).get("result", []):
+                        metric_labels = item.get("metric", {}) or {}
+                        key = metric_labels.get(label)
+                        value = item.get("value", [])
+                        if key is None or len(value) < 2:
+                            continue
+                        numeric = _parse_float(value[1], 0.0)
+                        out[str(key)] = numeric
+                    return out
+
+                http_calls_selector = (
+                    'aico_span_calls_total{'
+                    'span_name=~"GET /api/v1/.*|POST /api/v1/.*|PUT /api/v1/.*|PATCH /api/v1/.*|DELETE /api/v1/.*|OPTIONS /api/v1/.*",'
+                    'span_name!~".* http send|.* http receive"'
+                    '}'
+                )
+                http_error_calls_selector = (
+                    'aico_span_calls_total{'
+                    'span_name=~"GET /api/v1/.*|POST /api/v1/.*|PUT /api/v1/.*|PATCH /api/v1/.*|DELETE /api/v1/.*|OPTIONS /api/v1/.*",'
+                    'span_name!~".* http send|.* http receive",'
+                    'status_code="STATUS_CODE_ERROR"'
+                    '}'
+                )
+                http_duration_selector = (
+                    'aico_span_duration_milliseconds_bucket{'
+                    'span_name=~"GET /api/v1/.*|POST /api/v1/.*|PUT /api/v1/.*|PATCH /api/v1/.*|DELETE /api/v1/.*|OPTIONS /api/v1/.*",'
+                    'span_name!~".* http send|.* http receive"'
+                    '}'
+                )
+                http_duration_sum_selector = (
+                    'aico_span_duration_milliseconds_sum{'
+                    'span_name=~"GET /api/v1/.*|POST /api/v1/.*|PUT /api/v1/.*|PATCH /api/v1/.*|DELETE /api/v1/.*|OPTIONS /api/v1/.*",'
+                    'span_name!~".* http send|.* http receive"'
+                    '}'
+                )
+                http_duration_count_selector = (
+                    'aico_span_duration_milliseconds_count{'
+                    'span_name=~"GET /api/v1/.*|POST /api/v1/.*|PUT /api/v1/.*|PATCH /api/v1/.*|DELETE /api/v1/.*|OPTIONS /api/v1/.*",'
+                    'span_name!~".* http send|.* http receive"'
+                    '}'
+                )
+
+                gateway_total_requests = _instant(f"sum({http_calls_selector})")
+                gateway_requests_24h = _instant(f"sum(increase({http_calls_selector}[24h]))")
+                gateway_errors_total = _instant(f"sum({http_error_calls_selector})")
+                gateway_errors_24h = _instant(f"sum(increase({http_error_calls_selector}[24h]))")
+
+                gateway_rps_5m = _instant(f"sum(rate({http_calls_selector}[5m]))")
+                gateway_rps_15m = _instant(f"sum(rate({http_calls_selector}[15m]))")
+                gateway_rps_1h = _instant(f"sum(rate({http_calls_selector}[1h]))")
+                gateway_rps_from_increase_5m = _instant(f"sum(increase({http_calls_selector}[5m]))") / 300.0
+                gateway_rps_from_increase_15m = _instant(f"sum(increase({http_calls_selector}[15m]))") / 900.0
+                gateway_rps_from_increase_1h = _instant(f"sum(increase({http_calls_selector}[1h]))") / 3600.0
+                gateway_rps = max(
+                    gateway_rps_5m,
+                    gateway_rps_15m,
+                    gateway_rps_1h,
+                    gateway_rps_from_increase_5m,
+                    gateway_rps_from_increase_15m,
+                    gateway_rps_from_increase_1h,
+                    (gateway_requests_24h / 86400.0) if gateway_requests_24h > 0 else 0.0,
+                )
+
+                gateway_avg_latency_5m = _instant(
+                    f"sum(rate({http_duration_sum_selector}[5m])) / clamp_min(sum(rate({http_duration_count_selector}[5m])), 1e-9)"
+                )
+                gateway_avg_latency_1h = _instant(
+                    f"sum(increase({http_duration_sum_selector}[1h])) / clamp_min(sum(increase({http_duration_count_selector}[1h])), 1e-9)"
+                )
+                gateway_avg_latency_24h = _instant(
+                    f"sum(increase({http_duration_sum_selector}[24h])) / clamp_min(sum(increase({http_duration_count_selector}[24h])), 1e-9)"
+                )
+                gateway_avg_latency = max(gateway_avg_latency_5m, gateway_avg_latency_1h, gateway_avg_latency_24h, 0.0)
+
+                gateway_p95_latency_5m = _instant(
+                    f"histogram_quantile(0.95, sum by (le) (rate({http_duration_selector}[5m])))"
+                )
+                gateway_p95_latency_1h = _instant(
+                    f"histogram_quantile(0.95, sum by (le) (increase({http_duration_selector}[1h])))"
+                )
+                gateway_p95_latency_24h = _instant(
+                    f"histogram_quantile(0.95, sum by (le) (increase({http_duration_selector}[24h])))"
+                )
+                gateway_p95_latency = max(
+                    gateway_p95_latency_5m,
+                    gateway_p95_latency_1h,
+                    gateway_p95_latency_24h,
+                    gateway_avg_latency,
+                )
+
+                gateway_request_count = _to_int(round(gateway_requests_24h if gateway_requests_24h > 0 else gateway_total_requests), 0)
+                process_uptime_seconds = max(
+                    float(time.time() - (self._system_handlers_start_time or time.time())),
+                    1.0,
+                )
+                if gateway_rps <= 0.0 and gateway_total_requests > 0.0:
+                    gateway_rps = max(
+                        gateway_rps,
+                        gateway_total_requests / process_uptime_seconds,
+                    )
+                gateway_error_count = gateway_errors_24h if gateway_errors_24h > 0 else gateway_errors_total
+                gateway_error_rate = (
+                    gateway_error_count / max(float(gateway_request_count), 1.0) * 100.0
+                    if gateway_request_count > 0
+                    else 0.0
+                )
+                gateway_success_rate = max(0.0, 100.0 - gateway_error_rate)
+
+                mb_count_24h = _instant("sum(increase(aico_messagebus_message_count_total[24h]))")
+                mb_rps = _instant("sum(rate(aico_messagebus_message_count_total[5m]))")
+                mb_avg_processing_seconds = _instant(
+                    "sum(rate(aico_messagebus_message_duration_seconds_sum[5m])) / "
+                    "clamp_min(sum(rate(aico_messagebus_message_duration_seconds_count[5m])), 1e-9)"
+                )
+                mb_p95_processing_seconds = _instant(
+                    "histogram_quantile(0.95, sum by (le) (rate(aico_messagebus_message_duration_seconds_bucket[5m])))"
+                )
+                mb_topics = _instant_series(
+                    "topk(10, sum by (topic) (increase(aico_messagebus_message_count_total[24h])))",
+                    "topic",
+                )
+
+                return {
+                    "gateway": {
+                        "request_count": gateway_request_count,
+                        "requests_per_second": gateway_rps,
+                        "avg_response_time": gateway_avg_latency,
+                        "p95_response_time": gateway_p95_latency,
+                        "error_rate": gateway_error_rate,
+                        "success_rate": gateway_success_rate,
+                        "avg_latency_1h": gateway_avg_latency_1h if gateway_avg_latency_1h > 0 else gateway_avg_latency,
+                        "avg_latency_24h": gateway_avg_latency_24h if gateway_avg_latency_24h > 0 else gateway_avg_latency,
+                        "avg_latency_7d": gateway_avg_latency_24h if gateway_avg_latency_24h > 0 else gateway_avg_latency,
+                        "sparkline": [],
+                    },
+                    "modelservice": {
+                        "llm": {
+                            "request_count": 0,
+                            "duration_ms": 0.0,
+                            "p99_duration_ms": 0.0,
+                            "tokens_generated": 0.0,
+                            "prompt_tokens_mean": 0.0,
+                            "ttft_ms": 0.0,
+                            "success_true": 0,
+                            "success_false": 0,
+                            "sparkline": [],
+                        },
+                        "ner": {
+                            "request_count": 0,
+                            "duration_ms": 0.0,
+                            "p99_duration_ms": 0.0,
+                            "tokens_generated": 0.0,
+                            "success_true": 0,
+                            "success_false": 0,
+                        },
+                        "sentiment": {
+                            "request_count": 0,
+                            "duration_ms": 0.0,
+                            "p99_duration_ms": 0.0,
+                            "confidence_score_mean": 0.0,
+                        },
+                        "embeddings": {
+                            "request_count": 0,
+                            "duration_ms": 0.0,
+                            "p99_duration_ms": 0.0,
+                        },
+                        "model_usage": {},
+                    },
+                    "memory": {
+                        "query_count_24h": 0,
+                        "queries_per_second": 0.0,
+                        "avg_query_time_ms": 0.0,
+                        "avg_query_time_1h_ms": 0.0,
+                        "avg_query_time_7d_ms": 0.0,
+                    },
+                    "message_bus": {
+                        "message_count_24h": _to_int(round(mb_count_24h), 0),
+                        "messages_per_second": mb_rps,
+                        "avg_processing_time_ms": mb_avg_processing_seconds * 1000.0,
+                        "backlog_depth": 0.0,
+                        "p95_processing_time_ms": mb_p95_processing_seconds * 1000.0,
+                        "top_topics": [
+                            {"topic": topic, "count": _to_int(round(count), 0)}
+                            for topic, count in sorted(mb_topics.items(), key=lambda item: item[1], reverse=True)
+                        ],
+                    },
+                }
+
+            try:
+                telemetry_metrics = await asyncio.to_thread(_prometheus_metrics_snapshot)
+            except Exception as e:
+                raise RuntimeError("Failed to load Prometheus/OTel metrics for system metrics response") from e
 
             handlers = await self._get_system_handlers()
             health = await handlers.handle_system_health_request({})
@@ -2726,6 +3325,20 @@ class CoreNATSHandlers:
             if services is None and isinstance(services_payload, dict):
                 services = services_payload.get("services", [])
             services = services or []
+
+            modelservice_status: Dict[str, Any] = {}
+            try:
+                modelservice_client = get_modelservice_client(ConfigurationManager())
+                modelservice_status = await modelservice_client.get_status()
+            except Exception as exc:
+                self.logger.debug(f"Could not query modelservice status for metrics: {exc}")
+
+            loaded_models = modelservice_status.get("loaded_models") or []
+            loaded_models_count = _to_int(
+                modelservice_status.get("loaded_models_count"),
+                len(loaded_models),
+            )
+            expected_model_count = 2
 
             session_factory = await get_session_factory()
             async with UnitOfWork(session_factory) as uow:
@@ -2758,17 +3371,22 @@ class CoreNATSHandlers:
                 "running": float(running_tasks),
             }
 
+            gateway_telemetry = telemetry_metrics.get("gateway", {}) if isinstance(telemetry_metrics, dict) else {}
+            modelservice_telemetry = telemetry_metrics.get("modelservice", {}) if isinstance(telemetry_metrics, dict) else {}
+            memory_telemetry = telemetry_metrics.get("memory", {}) if isinstance(telemetry_metrics, dict) else {}
+            message_bus_telemetry = telemetry_metrics.get("message_bus", {}) if isinstance(telemetry_metrics, dict) else {}
+
             gateway_raw = {
-                "error_rate": 0.0,
-                "p95_response_time": 0.0,
-                "success_rate": 100.0,
+                "error_rate": _to_float(gateway_telemetry.get("error_rate"), 0.0),
+                "p95_response_time": _to_float(gateway_telemetry.get("p95_response_time"), 0.0),
+                "success_rate": _to_float(gateway_telemetry.get("success_rate"), 100.0),
             }
             modelservice_raw = {
-                "avg_inference_time": 0.0,
-                "active_models": 0,
+                "avg_inference_time": _to_float(modelservice_telemetry.get("llm", {}).get("duration_ms"), 0.0) / 1000.0,
+                "active_models": loaded_models_count,
             }
             memory_raw = {
-                "queries_per_second": 0.0,
+                "queries_per_second": _to_float(memory_telemetry.get("queries_per_second"), 0.0),
             }
             scheduler_raw = {
                 "success_rate": success_rate,
@@ -2777,8 +3395,8 @@ class CoreNATSHandlers:
             }
             message_bus_raw = {
                 "error_rate": 0.0,
-                "backlog": 0.0,
-                "throughput": 0.0,
+                "backlog_depth": _to_float(message_bus_telemetry.get("backlog_depth"), 0.0),
+                "messages_per_second": _to_float(message_bus_telemetry.get("messages_per_second"), 0.0),
             }
 
             gateway_score, gateway_issues = HealthCalculator.calculate_gateway_health(gateway_raw)
@@ -2802,6 +3420,84 @@ class CoreNATSHandlers:
                 "message_bus": (message_bus_score, message_bus_issues),
             })
 
+            score_breakdown = {
+                "gateway": {
+                    "score": gateway_score,
+                    "max_score": 100,
+                    "deductions": [
+                        {
+                            "severity": issue.severity,
+                            "metric": issue.metric,
+                            "impact": issue.impact,
+                            "message": issue.message,
+                            "current_value": issue.current_value,
+                            "threshold": issue.threshold,
+                        }
+                        for issue in gateway_issues
+                    ],
+                },
+                "modelservice": {
+                    "score": modelservice_score,
+                    "max_score": 100,
+                    "deductions": [
+                        {
+                            "severity": issue.severity,
+                            "metric": issue.metric,
+                            "impact": issue.impact,
+                            "message": issue.message,
+                            "current_value": issue.current_value,
+                            "threshold": issue.threshold,
+                        }
+                        for issue in modelservice_issues
+                    ],
+                },
+                "memory": {
+                    "score": memory_score,
+                    "max_score": 100,
+                    "deductions": [
+                        {
+                            "severity": issue.severity,
+                            "metric": issue.metric,
+                            "impact": issue.impact,
+                            "message": issue.message,
+                            "current_value": issue.current_value,
+                            "threshold": issue.threshold,
+                        }
+                        for issue in memory_issues
+                    ],
+                },
+                "scheduler": {
+                    "score": scheduler_score,
+                    "max_score": 100,
+                    "deductions": [
+                        {
+                            "severity": issue.severity,
+                            "metric": issue.metric,
+                            "impact": issue.impact,
+                            "message": issue.message,
+                            "current_value": issue.current_value,
+                            "threshold": issue.threshold,
+                        }
+                        for issue in scheduler_issues
+                    ],
+                },
+                "message_bus": {
+                    "score": message_bus_score,
+                    "max_score": 100,
+                    "deductions": [
+                        {
+                            "severity": issue.severity,
+                            "metric": issue.metric,
+                            "impact": issue.impact,
+                            "message": issue.message,
+                            "current_value": issue.current_value,
+                            "threshold": issue.threshold,
+                        }
+                        for issue in message_bus_issues
+                    ],
+                },
+            }
+
             component_status = {
                 "gateway": {"status": "healthy" if gateway_score >= 90 else "warning" if gateway_score >= 70 else "critical", "health": gateway_score, "explanation": "; ".join(issue.message for issue in gateway_issues) or "No gateway issues detected"},
                 "modelservice": {"status": "healthy" if modelservice_score >= 90 else "warning" if modelservice_score >= 70 else "critical", "health": modelservice_score, "explanation": "; ".join(issue.message for issue in modelservice_issues) or "No modelservice issues detected"},
@@ -2824,58 +3520,126 @@ class CoreNATSHandlers:
             memory_percent = float(psutil.virtual_memory().percent or 0.0)
             disk_percent = float(psutil.disk_usage("/").percent or 0.0)
             uptime_seconds = int(health.get("uptime_seconds", 0) or 0)
+            working_memory_stats = await self.handle_memory_working_stats_request({})
+
+            async with UnitOfWork(session_factory) as uow:
+                current_nodes = await uow.kg_nodes.list(filters={"is_current": True}, limit=100000)
+                current_edges = await uow.kg_edges.list(filters={"is_current": True}, limit=100000)
+
+            entity_type_distribution: Dict[str, int] = {}
+            relationship_type_distribution: Dict[str, int] = {}
+            for node in current_nodes:
+                label = getattr(node, "label", None) or "unknown"
+                entity_type_distribution[label] = entity_type_distribution.get(label, 0) + 1
+            for edge in current_edges:
+                relation_type = getattr(edge, "relation_type", None) or "unknown"
+                relationship_type_distribution[relation_type] = relationship_type_distribution.get(relation_type, 0) + 1
+
+            gateway_rps = _to_float(gateway_telemetry.get("requests_per_second"), 0.0)
+            gateway_avg_latency = _to_float(gateway_telemetry.get("avg_response_time"), 0.0)
+            gateway_error_rate = _to_float(gateway_telemetry.get("error_rate"), 0.0)
+            llm_telemetry = modelservice_telemetry.get("llm", {})
+            ner_telemetry = modelservice_telemetry.get("ner", {})
+            sentiment_telemetry = modelservice_telemetry.get("sentiment", {})
+            embedding_telemetry = modelservice_telemetry.get("embeddings", {})
+            total_message_backlog = _to_float(message_bus_telemetry.get("backlog_depth"), 0.0)
 
             return {
                 "timestamp": now.isoformat(),
                 "gateway": {
-                    "requests_per_second": metric(0, unit="req/s"),
-                    "avg_response_time": metric(0, unit="ms"),
-                    "error_rate": metric(gateway_raw["error_rate"], unit="%"),
-                    "success_rate": metric(gateway_raw["success_rate"], unit="%"),
+                    "requests_per_second": metric(
+                        gateway_rps,
+                        unit="req/s",
+                        status=_status_from_value(gateway_rps, warning_at=0.1, critical_at=0.01, lower_is_better=False),
+                    ),
+                    "avg_response_time": metric(
+                        gateway_avg_latency,
+                        unit="ms",
+                        status=_status_from_value(gateway_avg_latency, warning_at=200, critical_at=500, lower_is_better=True),
+                        sparkline_data=gateway_telemetry.get("sparkline", []),
+                        avg_1h=_to_float(gateway_telemetry.get("avg_latency_1h"), gateway_avg_latency),
+                        avg_24h=_to_float(gateway_telemetry.get("avg_latency_24h"), gateway_avg_latency),
+                        avg_7d=_to_float(gateway_telemetry.get("avg_latency_7d"), gateway_avg_latency),
+                    ),
+                    "error_rate": metric(
+                        gateway_raw["error_rate"],
+                        unit="%",
+                        status=_status_from_value(gateway_raw["error_rate"], warning_at=1.0, critical_at=5.0, lower_is_better=True),
+                    ),
+                    "success_rate": metric(
+                        gateway_raw["success_rate"],
+                        unit="%",
+                        status=_status_from_value(gateway_raw["success_rate"], warning_at=99.0, critical_at=95.0, lower_is_better=False),
+                    ),
                 },
                 "modelservice": {
                     "llm": {
-                        "rps": metric(0, unit="req/s"),
-                        "total_requests_24h": 0,
-                        "tps": metric(0, unit="t/s"),
-                        "ttft": metric(0, unit="s"),
-                        "e2e_latency": metric(0, unit="s"),
-                        "success_rate": metric(100, unit="%"),
-                        "total_tokens_24h": 0,
-                        "avg_prompt_length": metric(0, unit="tokens"),
-                        "avg_response_length": metric(0, unit="tokens"),
-                        "active_models": {"value": 0},
-                        "model_usage": {},
+                        "rps": metric(
+                            _to_float(llm_telemetry.get("request_count"), 0.0) / 86400.0,
+                            unit="req/s",
+                            sparkline_data=llm_telemetry.get("sparkline", []),
+                        ),
+                        "total_requests_24h": _to_int(llm_telemetry.get("request_count"), 0),
+                        "tps": metric(_to_float(llm_telemetry.get("tokens_generated"), 0.0) / 86400.0, unit="t/s"),
+                        "ttft": metric(_to_float(llm_telemetry.get("ttft_ms"), 0.0) / 1000.0, unit="s"),
+                        "e2e_latency": metric(_to_float(llm_telemetry.get("duration_ms"), 0.0) / 1000.0, unit="s"),
+                        "success_rate": metric(
+                            (
+                                _to_int(llm_telemetry.get("success_true"), 0)
+                                / max(_to_int(llm_telemetry.get("success_true"), 0) + _to_int(llm_telemetry.get("success_false"), 0), 1)
+                            ) * 100.0
+                            if (_to_int(llm_telemetry.get("success_true"), 0) + _to_int(llm_telemetry.get("success_false"), 0)) > 0
+                            else 100.0,
+                            unit="%",
+                        ),
+                        "total_tokens_24h": _to_int(llm_telemetry.get("tokens_generated"), 0),
+                        "avg_prompt_length": metric(_to_float(llm_telemetry.get("prompt_tokens_mean"), 0.0), unit="tokens"),
+                        "avg_response_length": metric(
+                            _to_float(llm_telemetry.get("tokens_generated"), 0.0) / max(_to_int(llm_telemetry.get("request_count"), 0), 1),
+                            unit="tokens",
+                        ),
+                        "active_models": {"value": loaded_models_count},
+                        "loaded_models": loaded_models,
+                        "expected_models": expected_model_count,
+                        "model_usage": modelservice_telemetry.get("model_usage", {}),
                     },
                     "ner": {
-                        "inference_rate": metric(0, unit="req/s"),
-                        "avg_latency": metric(0, unit="s"),
-                        "p99_latency": 0,
-                        "total_entities_24h": 0,
-                        "success_rate": metric(100, unit="%"),
+                        "inference_rate": metric(_to_float(ner_telemetry.get("request_count"), 0.0) / 86400.0, unit="req/s"),
+                        "avg_latency": metric(_to_float(ner_telemetry.get("duration_ms"), 0.0) / 1000.0, unit="s"),
+                        "p99_latency": _to_float(ner_telemetry.get("p99_duration_ms"), 0.0) / 1000.0,
+                        "total_entities_24h": _to_int(ner_telemetry.get("tokens_generated"), 0),
+                        "success_rate": metric(
+                            (
+                                _to_int(ner_telemetry.get("success_true"), 0)
+                                / max(_to_int(ner_telemetry.get("success_true"), 0) + _to_int(ner_telemetry.get("success_false"), 0), 1)
+                            ) * 100.0
+                            if (_to_int(ner_telemetry.get("success_true"), 0) + _to_int(ner_telemetry.get("success_false"), 0)) > 0
+                            else 100.0,
+                            unit="%",
+                        ),
                     },
                     "sentiment": {
-                        "inference_rate": metric(0, unit="req/s"),
-                        "avg_latency": metric(0, unit="s"),
-                        "p99_latency": 0,
-                        "total_analyses_24h": 0,
-                        "avg_confidence": metric(0),
+                        "inference_rate": metric(_to_float(sentiment_telemetry.get("request_count"), 0.0) / 86400.0, unit="req/s"),
+                        "avg_latency": metric(_to_float(sentiment_telemetry.get("duration_ms"), 0.0) / 1000.0, unit="s"),
+                        "p99_latency": _to_float(sentiment_telemetry.get("p99_duration_ms"), 0.0) / 1000.0,
+                        "total_analyses_24h": _to_int(sentiment_telemetry.get("request_count"), 0),
+                        "avg_confidence": metric(_to_float(sentiment_telemetry.get("confidence_score_mean"), 0.0)),
                     },
                     "embeddings": {
-                        "inference_rate": metric(0, unit="emb/s"),
-                        "avg_latency": metric(0, unit="ms"),
-                        "p99_latency": 0,
-                        "throughput": metric(0, unit="t/s"),
-                        "total_embeddings_24h": 0,
+                        "inference_rate": metric(_to_float(embedding_telemetry.get("request_count"), 0.0) / 86400.0, unit="emb/s"),
+                        "avg_latency": metric(_to_float(embedding_telemetry.get("duration_ms"), 0.0), unit="ms"),
+                        "p99_latency": _to_float(embedding_telemetry.get("p99_duration_ms"), 0.0),
+                        "throughput": metric(_to_float(embedding_telemetry.get("request_count"), 0.0) / 86400.0, unit="t/s"),
+                        "total_embeddings_24h": _to_int(embedding_telemetry.get("request_count"), 0),
                     },
                 },
                 "memory": {
-                    "working_memory_size": metric(0, unit="entries"),
-                    "semantic_queries_per_second": metric(0, unit="queries/s"),
+                    "working_memory_size": metric(_to_float(working_memory_stats.get("active_items"), 0.0), unit="entries"),
+                    "semantic_queries_per_second": metric(_to_float(memory_telemetry.get("queries_per_second"), 0.0), unit="queries/s"),
                     "kg_nodes": metric(kg_nodes_count, unit="nodes"),
                     "kg_relationships": metric(kg_relationships_count, unit="edges"),
-                    "entity_type_distribution": {},
-                    "relationship_type_distribution": {},
+                    "entity_type_distribution": entity_type_distribution,
+                    "relationship_type_distribution": relationship_type_distribution,
                 },
                 "scheduler": {
                     "jobs_today": metric(jobs_today, unit="jobs"),
@@ -2883,20 +3647,21 @@ class CoreNATSHandlers:
                     "queue_utilization": queue_utilization,
                 },
                 "message_bus": {
-                    "messages_per_second": metric(0, unit="msg/s"),
-                    "backlog_depth": metric(0, unit="msgs"),
-                    "top_topics": [],
+                    "messages_per_second": metric(_to_float(message_bus_telemetry.get("messages_per_second"), 0.0), unit="msg/s"),
+                    "backlog_depth": metric(_to_float(message_bus_telemetry.get("backlog_depth"), 0.0), unit="msgs"),
+                    "top_topics": message_bus_telemetry.get("top_topics", []),
                 },
                 "system_health": {
                     "health_score": overall_health_score,
                     "critical_alerts": critical_count,
                     "warnings": warning_count,
+                    "score_breakdown": score_breakdown,
                     "uptime_seconds": uptime_seconds,
-                    "total_throughput": 0,
-                    "system_error_rate": 0,
-                    "avg_latency_ms": 0,
+                    "total_throughput": gateway_rps + _to_float(message_bus_telemetry.get("messages_per_second"), 0.0),
+                    "system_error_rate": gateway_error_rate,
+                    "avg_latency_ms": gateway_avg_latency,
                     "active_sessions": active_sessions,
-                    "queue_backlog": max(0, runs_today - jobs_today),
+                    "queue_backlog": max(_to_int(total_message_backlog, 0), max(0, runs_today - jobs_today)),
                     "cpu_percent": cpu_percent,
                     "memory_percent": memory_percent,
                     "disk_percent": disk_percent,
@@ -2921,7 +3686,13 @@ class CoreNATSHandlers:
 
             session_factory = await get_session_factory()
             async with UnitOfWork(session_factory) as uow:
-                return await get_system_overview(user_id=str(user_id), uow=uow)
+                response = await get_system_overview(user_id=str(user_id), uow=uow)
+                self.logger.info(
+                    "System overview response served: "
+                    f"user_id_present={bool(user_id)}, system_status={response.get('system_status')}, "
+                    f"active_conversations={response.get('active_conversations')}, active_goals={response.get('active_goals')}"
+                )
+                return response
         except Exception as e:
             self.logger.error(f"Failed to get system overview: {e}", exc_info=True)
             return {"error": "SYSTEM_OVERVIEW_FAILED", "message": str(e)}
@@ -2938,6 +3709,7 @@ class CoreNATSHandlers:
     async def handle_system_health_detailed_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Handle detailed health request from gateway"""
         try:
+            from aico.core.version import get_backend_version
             metrics = await self.handle_system_metrics_all_request({})
             if metrics.get("error"):
                 return metrics
@@ -2981,7 +3753,7 @@ class CoreNATSHandlers:
             return {
                 "status": health.get("status", "unknown"),
                 "timestamp": health.get("last_check") or health.get("timestamp") or "",
-                "version": "split-gateway-core",
+                "version": get_backend_version(),
                 "components": components,
                 "metrics": {
                     "cpu_usage": system_health.get("cpu_percent", 0),

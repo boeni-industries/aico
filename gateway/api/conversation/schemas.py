@@ -65,7 +65,7 @@ class MessageHistoryResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     timestamp: datetime
-    version: str = "1.0.0"
+    version: str
 
 
 class UnifiedMessageRequest(BaseModel):

@@ -50,7 +50,10 @@ class AICOKeyManager:
     """
     
     def __init__(self, config: ConfigurationManager):
-        self.service_name = config.get("security.keyring_service_name", "AICO")
+        self.service_name = (
+            config.get("keyring_service_name", None)
+            or config.get("security.keyring_service_name", "AICO")
+        )
         self._session_cache_file = self._get_session_cache_file()
         self._session_cache = self._load_session_cache()  # Load persistent session cache
         self._keyring_bypass_count = self._session_cache.get("keyring_bypass_count", 0)
@@ -183,13 +186,24 @@ class AICOKeyManager:
         config_manager = ConfigurationManager()
         config_manager.initialize()
 
-        try:
-            return config_manager.get(f"security.encryption.{key}")
-        except ConfigurationError:
+        lookup_paths = [
+            key,
+            f"encryption.{key}",
+            f"security.encryption.{key}",
+            f"security.{key}",
+        ]
+
+        for path in lookup_paths:
             try:
-                return config_manager.get(f"security.{key}")
+                value = config_manager.get(path)
+                if value is not None:
+                    return value
             except ConfigurationError:
-                return None
+                pass
+        raise ConfigurationError(
+            f"Missing required security configuration for '{key}'. "
+            f"Tried paths: {', '.join(lookup_paths)}"
+        )
     
     @property
     def KEY_LENGTH(self) -> int:

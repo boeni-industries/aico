@@ -59,7 +59,7 @@ from aico.data.uow import UnitOfWork
 from aico.data.tables import system_events
 from aico.data.system.models import SystemEvent
 from gateway.api.admin.user_cleanup import cleanup_user_data
-from aico.security.key_manager import AICOKeyManager
+from aico.security import AICOKeyManager
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
 from aico.data.user.models import UserProfile
@@ -71,7 +71,23 @@ from passlib.context import CryptContext
 # Removed initialize_router - using proper FastAPI dependency injection
 
 # Protected admin endpoints - authentication handled per endpoint
-router = APIRouter()
+router = APIRouter(prefix="/admin", tags=["admin"])
+security = HTTPBearer()
+
+
+def _coerce_optional_bool(value: Any) -> Optional[bool]:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "on", "enabled"}:
+            return True
+        if normalized in {"false", "0", "no", "off", "disabled"}:
+            return False
+    return None
+
 
 logger = get_logger("gateway.api.admin")
 
@@ -216,11 +232,13 @@ async def admin_health(credentials: HTTPAuthorizationCredentials = Depends(HTTPB
     """Admin health check - requires encryption"""
     # Verify admin token
     user = verify_admin_token(credentials)
-    
+    from aico.core.version import get_backend_version
+
     return AdminHealthResponse(
         status="healthy",
         service="aico-api-gateway-admin",
-        timestamp=datetime.now(timezone.utc).isoformat()
+        timestamp=datetime.now(timezone.utc).isoformat(),
+        version=get_backend_version(),
     )
 
 
@@ -677,14 +695,45 @@ async def security_posture(
     key_manager = AICOKeyManager(cfg)
     health = key_manager.get_security_health_info()
 
-    # Transport posture (CurveZMQ)
-    curvemq_enabled = cfg.get("security.transport.curve.enabled", None)
+    # Transport posture / encryption posture
+    curvemq_enabled = _coerce_optional_bool(
+        cfg.get("security.transport.curve.enabled", None)
+    )
+    if curvemq_enabled is None:
+        curvemq_enabled = _coerce_optional_bool(
+            cfg.get("transport.message_bus_encryption", None)
+        )
+    transport_encryption_enabled = _coerce_optional_bool(
+        cfg.get("security.transport.encryption.enabled", None)
+    )
+    if transport_encryption_enabled is None:
+        transport_encryption_enabled = _coerce_optional_bool(
+            cfg.get("transport.encryption.enabled", None)
+        )
+    service_encryption_enabled = _coerce_optional_bool(
+        cfg.get("services.encryption.enabled", None)
+    )
+    legacy_service_encryption_enabled = _coerce_optional_bool(
+        cfg.get("services.security.encryption", None)
+    )
+    top_level_encryption_configured = cfg.get("encryption.algorithm", None)
+    db_encrypted = (
+        service_encryption_enabled
+        if service_encryption_enabled is not None
+        else legacy_service_encryption_enabled
+        if legacy_service_encryption_enabled is not None
+        else True if top_level_encryption_configured else None
+    )
+    since_24h = datetime.now(timezone.utc) - timedelta(hours=24)
 
     # Authentication posture (best-effort from sessions table)
     active_sessions = await uow.sessions.count(filters={"is_active": True})
+    failed_auth_stmt = select(system_events.c.id).where(
+        and_(system_events.c.topic == "auth.login.failed", system_events.c.timestamp >= since_24h)
+    )
+    failed_auth_rows = (await uow._session.execute(failed_auth_stmt)).fetchall()
 
     # Audit posture (events in last 24h)
-    since_24h = datetime.now(timezone.utc) - timedelta(hours=24)
     audit_count_stmt = select(system_events.c.id).where(
         and_(system_events.c.topic == "audit.admin", system_events.c.timestamp >= since_24h)
     )
@@ -692,25 +741,46 @@ async def security_posture(
 
     return admin_schemas.SecurityPostureResponse(
         encryption={
+            "has_master_key": bool(health.get("has_master_key")),
             "master_key_age_days": health.get("key_age_days"),
-            "db_encrypted": bool(cfg.get("security.encryption.enabled", True)),
+            "db_encrypted": db_encrypted if isinstance(db_encrypted, bool) else None,
             "rotation_due": bool(health.get("rotation_recommended", False)),
             "last_rotation": health.get("key_created"),
+            "security_level": health.get("security_level"),
+            "status": (
+                "enabled"
+                if db_encrypted is True
+                else "disabled"
+                if db_encrypted is False
+                else "unknown"
+            ),
+            "master_key_status": (
+                "present" if bool(health.get("has_master_key")) else "missing"
+            ),
         },
         transport={
             "curvemq_enabled": curvemq_enabled,
-            "tls_status": "n/a",
+            "transport_encryption_enabled": transport_encryption_enabled,
+            "tls_status": None,
+            "status": (
+                "enabled"
+                if transport_encryption_enabled is True or curvemq_enabled is True
+                else "disabled"
+                if transport_encryption_enabled is False and curvemq_enabled is False
+                else "unknown"
+            ),
         },
         authentication={
-            "jwt_valid": True,
+            "jwt_valid": None,
             "active_tokens": active_sessions,
-            "expired_tokens": 0,
-            "failed_logins_24h": 0,
+            "expired_tokens": None,
+            "failed_logins_24h": len(failed_auth_rows),
         },
         audit={
-            "queue_health": "ok",
+            "queue_health": None,
             "events_last_24h": len(audit_rows),
             "disk_usage_mb": None,
+            "status": "active" if len(audit_rows) > 0 else "no_recent_events",
         },
     )
 
@@ -724,9 +794,17 @@ async def security_keys(
     cfg.initialize(lightweight=True)
     key_manager = AICOKeyManager(cfg)
     health = key_manager.get_security_health_info()
+    jwt_secret = key_manager.get_jwt_secret("api_gateway")
 
     key_created = health.get("key_created")
-    key_id = f"{key_manager.service_name}:{key_created}" if key_created else None
+    has_master_key = bool(health.get("has_master_key"))
+    key_id = (
+        f"{key_manager.service_name}:{key_created}"
+        if key_created
+        else f"{key_manager.service_name}:configured"
+        if has_master_key
+        else None
+    )
 
     return admin_schemas.SecurityKeyInfoResponse(
         current_key_id=key_id,
@@ -734,6 +812,10 @@ async def security_keys(
         age_days=health.get("key_age_days"),
         rotation_due=bool(health.get("rotation_recommended", False)),
         algorithm=str(health.get("algorithm", "Argon2id")),
+        asset_name="API signing secret",
+        asset_type="jwt_signing_secret",
+        asset_status="present" if bool(jwt_secret) else "missing",
+        source="credential_provider_or_keyring",
         key_strength={
             "key_size": health.get("key_size"),
             "iterations": health.get("iterations"),
@@ -953,7 +1035,7 @@ async def failed_auth_attempts(
         md = row.metadata or {}
         attempts.append(
             admin_schemas.FailedAuthAttempt(
-                timestamp=row.timestamp,
+                timestamp=_iso_utc(row.timestamp),
                 user_uuid=md.get("user_uuid"),
                 user_name=md.get("user_name"),
                 ip_address=md.get("ip_address"),
@@ -962,11 +1044,14 @@ async def failed_auth_attempts(
             )
         )
 
+    page = (offset // limit) + 1
+    total_pages = (total_count + limit - 1) // limit if total_count > 0 else 0
     return admin_schemas.FailedAuthAttemptsResponse(
         items=attempts,
         total=total_count,
-        limit=limit,
-        offset=offset,
+        page=page,
+        page_size=limit,
+        total_pages=total_pages,
     )
 
 
@@ -1022,7 +1107,7 @@ async def audit_list(
         entries.append(
             admin_schemas.AuditEntry(
                 entry_id=row.message_id,
-                timestamp=row.timestamp,
+                timestamp=_iso_utc(row.timestamp),
                 actor_uuid=md.get("actor_uuid"),
                 actor_name=md.get("actor_name"),
                 action=md.get("action", ""),
@@ -1035,11 +1120,14 @@ async def audit_list(
             )
         )
 
+    page = (offset // limit) + 1
+    total_pages = (total_count + limit - 1) // limit if total_count > 0 else 0
     return admin_schemas.AuditListResponse(
         items=entries,
         total=total_count,
-        limit=limit,
-        offset=offset,
+        page=page,
+        page_size=limit,
+        total_pages=total_pages,
     )
 
 
@@ -1508,7 +1596,10 @@ async def list_logs(
         result = response.json()
         
         if result.get("status") != "success":
-            return LogsListResponse(logs=[], total=0, has_more=False)
+            raise LogsServiceError(
+                f"Loki query failed with status={result.get('status')}",
+                status.HTTP_502_BAD_GATEWAY,
+            )
         
         data = result.get("data", {})
         streams = data.get("result", [])
@@ -1676,7 +1767,10 @@ async def count_logs(
         result = response.json()
 
         if result.get("status") != "success":
-            return {"total": 0}
+            raise LogsServiceError(
+                f"Loki count query failed with status={result.get('status')}",
+                status.HTTP_502_BAD_GATEWAY,
+            )
 
         data = result.get("data", {})
         result_data = data.get("result", [])
@@ -1693,7 +1787,7 @@ async def count_logs(
         return {"total": total}
     except Exception as e:
         logger.error(f"Failed to count Loki logs: {e}")
-        return {"total": 0}
+        raise LogsServiceError(str(e), status.HTTP_502_BAD_GATEWAY)
 
 
 # Cache for stats to avoid repeated slow queries
@@ -1736,7 +1830,10 @@ async def get_logs_stats(
             resp.raise_for_status()
             payload = resp.json()
             if payload.get("status") != "success":
-                return 0.0
+                raise LogsServiceError(
+                    f"Loki metric query failed with status={payload.get('status')}",
+                    status.HTTP_502_BAD_GATEWAY,
+                )
             res = payload.get("data", {}).get("result", [])
             if not res:
                 return 0.0
@@ -1754,7 +1851,10 @@ async def get_logs_stats(
             resp.raise_for_status()
             payload = resp.json()
             if payload.get("status") != "success":
-                return {}
+                raise LogsServiceError(
+                    f"Loki grouped metric query failed with status={payload.get('status')}",
+                    status.HTTP_502_BAD_GATEWAY,
+                )
             out = {}
             for item in payload.get("data", {}).get("result", []):
                 metric = item.get("metric", {})
@@ -1781,7 +1881,10 @@ async def get_logs_stats(
             resp.raise_for_status()
             payload = resp.json()
             if payload.get("status") != "success":
-                return []
+                raise LogsServiceError(
+                    f"Loki series query failed with status={payload.get('status')}",
+                    status.HTTP_502_BAD_GATEWAY,
+                )
             return payload.get("data", {}).get("result", [])
 
         # Time window

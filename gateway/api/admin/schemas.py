@@ -88,6 +88,7 @@ class AdminHealthResponse(BaseModel):
     status: str = Field(..., description="Service status")
     service: str = Field(..., description="Service name")
     timestamp: str = Field(..., description="Health check timestamp")
+    version: str = Field(..., description="Gateway version")
 
 
 class AdminOperationResponse(BaseModel):
@@ -332,6 +333,10 @@ class SecurityKeyInfoResponse(BaseModel):
     rotation_due: bool = Field(False, description="Rotation recommended")
     algorithm: str = Field(..., description="KDF / algorithm")
     key_strength: Optional[Dict[str, Any]] = Field(None, description="Key strength information")
+    asset_name: Optional[str] = Field(None, description="Credential or key asset name")
+    asset_type: Optional[str] = Field(None, description="Credential or key asset type")
+    asset_status: Optional[str] = Field(None, description="Operational status for this asset")
+    source: Optional[str] = Field(None, description="Source of the credential material")
 
 
 class SecurityKeyHistoryEntry(BaseModel):
@@ -369,7 +374,10 @@ class AuthStatsResponse(BaseModel):
 
 class FailedAuthAttempt(BaseModel):
     timestamp: str = Field(..., description="Timestamp (ISO 8601)")
-    ip_address: str = Field(..., description="IP address")
+    user_uuid: Optional[str] = Field(None, description="User UUID")
+    user_name: Optional[str] = Field(None, description="User display name")
+    ip_address: Optional[str] = Field(None, description="IP address")
+    device_type: Optional[str] = Field(None, description="Device type")
     username: Optional[str] = Field(None, description="Username attempted")
     reason: Optional[str] = Field(None, description="Failure reason")
 

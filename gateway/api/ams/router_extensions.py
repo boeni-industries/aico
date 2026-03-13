@@ -78,11 +78,7 @@ async def get_skill_overview(user_id: str) -> SkillOverviewResponse:
         
     except Exception as e:
         logger.warning(f"Skill overview query failed: {e}")
-        return SkillOverviewResponse(
-            total_skills=0,
-            active_skills=0,
-            skills=[],
-        )
+        raise
 
 
 async def get_memory_evolution(user_id: str) -> MemoryEvolutionResponse:
@@ -233,32 +229,4 @@ async def get_memory_evolution(user_id: str) -> MemoryEvolutionResponse:
         
     except Exception as e:
         logger.warning(f"Memory evolution query failed: {e}")
-        
-        # Return default values
-        current_time = datetime.now(timezone.utc)
-        return MemoryEvolutionResponse(
-            current_metrics=MemoryMetricsSnapshot(
-                timestamp=current_time.isoformat(),
-                working_memory_count=0,
-                semantic_facts_count=0,
-                knowledge_graph_entities=0,
-                knowledge_graph_relationships=0,
-                total_conversations=0,
-            ),
-            growth_7d=MemoryGrowthStats(
-                period_days=7,
-                facts_added=0,
-                entities_added=0,
-                relationships_added=0,
-                consolidation_sessions=0,
-            ),
-            growth_30d=MemoryGrowthStats(
-                period_days=30,
-                facts_added=0,
-                entities_added=0,
-                relationships_added=0,
-                consolidation_sessions=0,
-            ),
-            historical_snapshots=[],
-            insights=[],
-        )
+        raise

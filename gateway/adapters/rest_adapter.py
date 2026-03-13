@@ -177,7 +177,13 @@ class RESTAdapter:
         @self.app.get(f"{prefix}/health")
         async def health_check():
             """Health check endpoint"""
-            return {"status": "healthy", "service": "aico-api-gateway"}
+            from aico.core.version import get_backend_version
+
+            return {
+                "status": "healthy",
+                "service": "aico-api-gateway",
+                "version": get_backend_version(),
+            }
 
         @self.app.post(f"{prefix}/handshake")
         async def handshake(request: Request):
@@ -216,7 +222,7 @@ class RESTAdapter:
         self.app.include_router(conversation_router, prefix=f"{prefix}/conversation")
         self.app.include_router(interactions_router, prefix=f"{prefix}/interactions")
         self.app.include_router(operations_router, prefix=prefix)
-        self.app.include_router(admin_router, prefix=f"{prefix}/admin")
+        self.app.include_router(admin_router, prefix=prefix)
         self.app.include_router(agency_router, prefix=prefix)
         self.app.include_router(ams_router, prefix=prefix)
         self.app.include_router(system_router, prefix=prefix)

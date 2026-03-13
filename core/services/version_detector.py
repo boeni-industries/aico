@@ -120,7 +120,7 @@ class DatabaseVersionDetector:
     
     # Default versions as fallback
     DEFAULT_VERSIONS = {
-        "PostgreSQL": "18.1",
+        "PostgreSQL": "unknown",
         "vLLM": "unknown",
     }
     

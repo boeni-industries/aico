@@ -96,18 +96,32 @@ class SchedulerWorkerService(BaseService):
                     task_id = payload["task_id"]
                     task_config = payload["task_config"]
                     run_key = payload.get("run_key")
+                    scheduled_for = payload.get("scheduled_for")
 
                     scheduler = self.container.get_service("task_scheduler")
                     if scheduler is None:
+                        self.logger.warning("Scheduler worker could not find task_scheduler service; nacking message")
                         await msg.nak()
                         continue
 
                     task_class = scheduler.task_registry.get_task_class(task_id)
                     if task_class is None:
+                        self.logger.warning(
+                            f"Scheduler worker dropping job with unknown task class: "
+                            f"task_id={task_id}, run_key={run_key}, scheduled_for={scheduled_for}"
+                        )
                         await msg.ack()
                         continue
 
+                    self.logger.info(
+                        f"Scheduler worker executing job: task_id={task_id}, "
+                        f"run_key={run_key}, scheduled_for={scheduled_for}"
+                    )
                     result = await scheduler.task_executor.execute_task(task_class, task_config, run_key=run_key)
+                    self.logger.info(
+                        f"Scheduler worker completed job: task_id={task_id}, run_key={run_key}, "
+                        f"success={result.success}, skipped={result.skipped}, message={result.message}"
+                    )
                     await msg.ack()
 
                 except Exception as e:

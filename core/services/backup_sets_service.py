@@ -361,14 +361,17 @@ async def delete_backup_set_async(backup_id: str, *, deleted_by_user_uuid: str |
     if row.get("deleted_at") is not None:
         return {"success": True, "backup_id": backup_id, "deleted_dir": False, "deleted_archive": False, "freed_bytes": 0, "message": "Backup set already deleted"}
     deleted_archive = False
+    freed_bytes = 0
     artifact_store = _get_artifact_store_client_or_none()
     if artifact_store is not None:
         key = str(row.get("object_key") or _backup_archive_object_key(backup_id))
         trash_key = _backup_trash_object_key(backup_id)
         try:
             if artifact_store.object_exists(key=key):
+                object_size = artifact_store.get_object_size(key=key)
                 artifact_store.move_object(source_key=key, dest_key=trash_key)
                 deleted_archive = True
+                freed_bytes = int(object_size or 0)
         except Exception:
             pass
     await _db_execute(
@@ -384,7 +387,7 @@ async def delete_backup_set_async(backup_id: str, *, deleted_by_user_uuid: str |
         deleted_by_user_uuid,
         _backup_trash_object_key(backup_id),
     )
-    return {"success": True, "backup_id": backup_id, "deleted_dir": False, "deleted_archive": deleted_archive, "freed_bytes": 0, "message": "Backup set deleted"}
+    return {"success": True, "backup_id": backup_id, "deleted_dir": False, "deleted_archive": deleted_archive, "freed_bytes": freed_bytes, "message": "Backup set deleted"}
 
 
 async def purge_backup_set_async(backup_id: str) -> dict:
@@ -400,17 +403,20 @@ async def purge_backup_set_async(backup_id: str) -> dict:
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backup set not found")
     deleted_archive = False
+    freed_bytes = 0
     artifact_store = _get_artifact_store_client_or_none()
     if artifact_store is not None:
         key = str(row.get("object_key") or _backup_trash_object_key(backup_id))
         try:
             if artifact_store.object_exists(key=key):
+                object_size = artifact_store.get_object_size(key=key)
                 artifact_store.delete_object(key=key)
                 deleted_archive = True
+                freed_bytes = int(object_size or 0)
         except Exception:
             pass
     await _db_execute("DELETE FROM aico_core.backup_sets WHERE backup_id = $1;", backup_id)
-    return {"success": True, "backup_id": backup_id, "deleted_dir": False, "deleted_archive": deleted_archive, "freed_bytes": 0, "message": "Backup set purged"}
+    return {"success": True, "backup_id": backup_id, "deleted_dir": False, "deleted_archive": deleted_archive, "freed_bytes": freed_bytes, "message": "Backup set purged"}
 
 
 async def restore_backup_set(*, backup_id: str, confirm_destroy_existing: bool, restore_to_primary: bool, restore_influx: bool) -> dict:

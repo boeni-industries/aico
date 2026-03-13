@@ -83,26 +83,29 @@ class TaskRegistry:
     async def _load_builtin_tasks(self):
         """Load built-in maintenance tasks"""
         builtin_modules = [
-            "backend.scheduler.tasks.maintenance",
-            "backend.scheduler.tasks.ams_consolidation",  # AMS Phase 1.5
-            "backend.scheduler.tasks.kg_consolidation",  # KG consolidation
-            "backend.scheduler.tasks.ams_feedback_classification",  # AMS Phase 3
-            "backend.scheduler.tasks.ams_thompson_sampling",  # AMS Phase 3
-            "backend.scheduler.tasks.ams_trajectory_cleanup",  # AMS Phase 3
-            "backend.scheduler.tasks.agency_followups",  # Agency Phase 1
-            "backend.scheduler.tasks.curiosity_scan",  # Agency Phase 3
-            "backend.scheduler.tasks.agency_reflection",  # Agency reflection / behavioral learning
-            "backend.scheduler.tasks.agency_arbiter",  # Agency Phase 4 - Goal Arbiter
-            "backend.scheduler.tasks.agency_plan_executor",  # Agency Phase 6.10 - Plan Execution
-            "backend.scheduler.tasks.goal_expiration",  # Agency - Goal expiration cleanup
-            "backend.scheduler.tasks.issue_detection",  # System Health - Issue Detection
+            "core.services.scheduler.tasks.maintenance",
+            "core.services.scheduler.tasks.ams_consolidation",  # AMS Phase 1.5
+            "core.services.scheduler.tasks.kg_consolidation",  # KG consolidation
+            "core.services.scheduler.tasks.kg_quality",  # KG quality monitoring
+            "core.services.scheduler.tasks.ams_feedback_classification",  # AMS Phase 3
+            "core.services.scheduler.tasks.ams_thompson_sampling",  # AMS Phase 3
+            "core.services.scheduler.tasks.ams_trajectory_cleanup",  # AMS Phase 3
+            "core.services.scheduler.tasks.agency_followups",  # Agency Phase 1
+            "core.services.scheduler.tasks.curiosity_scan",  # Agency Phase 3
+            "core.services.scheduler.tasks.agency_reflection",  # Agency reflection / behavioral learning
+            "core.services.scheduler.tasks.agency_arbiter",  # Agency Phase 4 - Goal Arbiter
+            "core.services.scheduler.tasks.agency_plan_executor",  # Agency Phase 6.10 - Plan Execution
+            "core.services.scheduler.tasks.goal_expiration",  # Agency - Goal expiration cleanup
+            "core.services.scheduler.tasks.issue_detection",  # System Health - Issue Detection
         ]
-        
+
+        loaded_modules = 0
+        total_registered = 0
         for module_name in builtin_modules:
             try:
                 module = importlib.import_module(module_name)
                 task_count = 0
-                
+
                 for name in dir(module):
                     obj = getattr(module, name)
                     if (inspect.isclass(obj) and 
@@ -113,13 +116,20 @@ class TaskRegistry:
                         self.tasks[obj.task_id] = obj
                         task_count += 1
                         self.logger.debug(f"Registered built-in task: {obj.task_id}")
-                
+
+                loaded_modules += 1
+                total_registered += task_count
                 self.logger.info(f"Loaded {task_count} tasks from {module_name}")
-                
+
             except ImportError as e:
                 self.logger.warning(f"Could not import built-in module {module_name}: {e}")
             except Exception as e:
                 self.logger.error(f"Error loading built-in tasks from {module_name}: {e}")
+
+        self.logger.info(
+            f"Built-in task discovery summary: loaded_modules={loaded_modules}, "
+            f"registered_tasks={total_registered}, known_tasks={len(self.tasks)}"
+        )
     
     async def _load_plugin_tasks(self):
         """Load tasks from configured plugin modules"""
@@ -187,28 +197,28 @@ class TaskRegistry:
                 return
             
             # Import user task classes from tasks/user/ directory
-            user_tasks_path = Path("backend/scheduler/tasks/user")
+            user_tasks_path = Path(__file__).resolve().parent / "tasks" / "user"
             if not user_tasks_path.exists():
-                self.logger.warning("User tasks directory does not exist: backend/scheduler/tasks/user")
+                self.logger.warning(f"User tasks directory does not exist: {user_tasks_path}")
                 return
-            
+
             task_count = 0
             for task_info in user_tasks:
                 task_id = task_info['task_id']
                 task_class_name = task_info['task_class']
-                
+
                 try:
                     # Derive module name from task_id (user.my_task -> my_task.py)
                     module_name = task_id.replace('user.', '')
-                    module_path = f"backend.scheduler.tasks.user.{module_name}"
-                    
+                    module_path = f"core.services.scheduler.tasks.user.{module_name}"
+
                     module = importlib.import_module(module_path)
                     task_class = getattr(module, task_class_name)
-                    
+
                     if (inspect.isclass(task_class) and 
                         issubclass(task_class, BaseTask) and
                         hasattr(task_class, 'task_id')):
-                        
+
                         self.tasks[task_id] = task_class
                         task_count += 1
                         self.logger.debug(f"Registered user task: {task_id}")
@@ -220,6 +230,8 @@ class TaskRegistry:
             
             if task_count > 0:
                 self.logger.info(f"Loaded {task_count} user tasks")
+            else:
+                self.logger.info("No user-defined scheduler tasks were loaded")
                 
         except Exception as e:
             self.logger.error(f"Error loading user tasks: {e}")
@@ -863,6 +875,7 @@ class TaskScheduler(BaseService if BACKEND_AVAILABLE else object):
         else:
             self.name = name
             self.container = container
+        self.logger = get_logger("core.scheduler.task_scheduler")
         self.config_manager = getattr(container, "config", None)
         
         # Core components
@@ -883,6 +896,7 @@ class TaskScheduler(BaseService if BACKEND_AVAILABLE else object):
 
         # Deterministic planned-run reconciliation
         self._last_run_reconcile_at: datetime | None = None
+        self._last_scheduler_heartbeat_at: datetime | None = None
 
         self._bus_client = None
     
@@ -927,14 +941,20 @@ class TaskScheduler(BaseService if BACKEND_AVAILABLE else object):
         try:
             # Discover and register tasks
             await self.task_registry.discover_tasks()
-            
+
             # Register built-in tasks in database
             await self.task_registry.register_builtin_tasks()
-            
+
             # Calculate initial run times
             await self._calculate_next_run_times()
+
+            self.logger.info(
+                f"Scheduler initialization summary: registered_tasks={len(self.task_registry.tasks)}, "
+                f"scheduled_tasks={len(self.next_run_times)}, "
+                f"distributed_enabled={bool(((self.get_config('scheduler', {}) or {}).get('distributed') or {}).get('enabled', False))}"
+            )
             
-            # Start scheduler loop
+            self.logger.info("Task scheduler started successfully")
             self.running = True
             self.scheduler_task = asyncio.create_task(self._scheduler_loop())
             
@@ -1051,6 +1071,7 @@ class TaskScheduler(BaseService if BACKEND_AVAILABLE else object):
         not prevent other tasks from running.
         """
         now = datetime.now(timezone.utc)
+        await self._maybe_emit_scheduler_heartbeat(now=now)
 
         # -1. Reconcile planned runs (durable run ledger)
         try:
@@ -1100,6 +1121,76 @@ class TaskScheduler(BaseService if BACKEND_AVAILABLE else object):
         except Exception as e:
             self.logger.error(f"❌ Failed to execute from priority queue: {e}", exc_info=True)
             print(f"❌ Failed to execute from priority queue: {e}")
+
+    async def _maybe_emit_scheduler_heartbeat(self, *, now: datetime) -> None:
+        scheduler_config = self.get_config("scheduler", {})
+        observability_cfg = scheduler_config.get("observability", {}) if isinstance(scheduler_config, dict) else {}
+        heartbeat_seconds = int(observability_cfg.get("heartbeat_interval_seconds", 300))
+        if heartbeat_seconds <= 0:
+            return
+        if self._last_scheduler_heartbeat_at is not None:
+            if (now - self._last_scheduler_heartbeat_at).total_seconds() < heartbeat_seconds:
+                return
+        self._last_scheduler_heartbeat_at = now
+        queued_count = 0
+        if hasattr(self, "priority_queue") and self.priority_queue:
+            try:
+                queued_count = sum(len(queue) for queue in self.priority_queue.queues.values())
+            except Exception:
+                queued_count = 0
+        self.logger.info(
+            "Scheduler heartbeat: "
+            f"registered_tasks={len(self.task_registry.tasks) if self.task_registry else 0}, "
+            f"scheduled_tasks={len(self.next_run_times)}, "
+            f"queued_tasks={queued_count}, "
+            f"running_tasks={len(self.task_executor.running_tasks) if self.task_executor else 0}"
+        )
+
+    def _log_scheduler_suppression(
+        self,
+        *,
+        task_id: str,
+        reason_code: str,
+        reason_detail: str,
+        scheduled_for: datetime | None = None,
+        distributed: bool | None = None,
+        level: str = "info",
+    ) -> None:
+        details = [f"task_id={task_id}", f"reason={reason_code}"]
+        if scheduled_for is not None:
+            details.append(f"scheduled_for={scheduled_for.isoformat()}")
+        if distributed is not None:
+            details.append(f"distributed={distributed}")
+        if reason_detail:
+            details.append(f"detail={reason_detail}")
+        message = "Scheduler run suppressed: " + ", ".join(details)
+        log_fn = getattr(self.logger, level, self.logger.info)
+        log_fn(message)
+
+    def _get_priority_queue_depth(self) -> int:
+        if not hasattr(self, "priority_queue") or not self.priority_queue:
+            return 0
+        try:
+            return sum(len(queue) for queue in self.priority_queue.queues.values())
+        except Exception:
+            return 0
+
+    def _log_enqueue_outcome(
+        self,
+        *,
+        source: str,
+        enqueued_count: int,
+        suppressed_counts: Dict[str, int],
+        failed_count: int = 0,
+    ) -> None:
+        suppressed_summary = ", ".join(
+            f"{reason}={count}" for reason, count in sorted(suppressed_counts.items()) if count
+        ) or "none"
+        self.logger.info(
+            "Scheduler enqueue summary: "
+            f"source={source}, enqueued={enqueued_count}, failed={failed_count}, "
+            f"suppressed={suppressed_summary}, queue_depth={self._get_priority_queue_depth()}"
+        )
 
     async def _reconcile_planned_runs(self, *, now: datetime) -> None:
         scheduler_config = self.get_config("scheduler", {})
@@ -1191,9 +1282,9 @@ class TaskScheduler(BaseService if BACKEND_AVAILABLE else object):
 
         self._last_run_reconcile_at = now
         if created_count or missed_count:
-            self.logger.debug(
-                "[SCHEDULER] Reconciled planned runs",
-                extra={"created": created_count, "marked_missed": missed_count},
+            self.logger.info(
+                "Scheduler reconciliation summary: "
+                f"created_runs={created_count}, marked_missed={missed_count}"
             )
     
     async def _enqueue_due_runs(self, *, now: datetime) -> None:
@@ -1218,8 +1309,9 @@ class TaskScheduler(BaseService if BACKEND_AVAILABLE else object):
             
             if not due_runs:
                 return
-            
-            self.logger.debug(f"Found {len(due_runs)} due runs to enqueue")
+            enqueued_count = 0
+            failed_count = 0
+            suppressed_counts: Dict[str, int] = {}
             
             # Enqueue each due run
             for run in due_runs:
@@ -1243,6 +1335,14 @@ class TaskScheduler(BaseService if BACKEND_AVAILABLE else object):
                                 reason_code="TASK_NOT_FOUND",
                                 reason_detail="Task configuration not found",
                             )
+                        suppressed_counts["TASK_NOT_FOUND"] = suppressed_counts.get("TASK_NOT_FOUND", 0) + 1
+                        self._log_scheduler_suppression(
+                            task_id=task_id,
+                            reason_code="TASK_NOT_FOUND",
+                            reason_detail="Task configuration not found",
+                            scheduled_for=scheduled_for,
+                            level="warning",
+                        )
                         continue
                     
                     # Check if task is enabled
@@ -1256,6 +1356,7 @@ class TaskScheduler(BaseService if BACKEND_AVAILABLE else object):
                                 reason_code="DISABLED",
                                 reason_detail="Task disabled",
                             )
+                        suppressed_counts["DISABLED"] = suppressed_counts.get("DISABLED", 0) + 1
                         continue
                     
                     # Get task class
@@ -1271,11 +1372,19 @@ class TaskScheduler(BaseService if BACKEND_AVAILABLE else object):
                                 reason_code="UNKNOWN_TASK",
                                 reason_detail="Task class not found",
                             )
+                        suppressed_counts["UNKNOWN_TASK"] = suppressed_counts.get("UNKNOWN_TASK", 0) + 1
+                        self._log_scheduler_suppression(
+                            task_id=task_id,
+                            reason_code="UNKNOWN_TASK",
+                            reason_detail="Task class not found",
+                            scheduled_for=scheduled_for,
+                            level="warning",
+                        )
                         continue
                     
                     # Check if already running or queued
                     if task_id in self.task_executor.running_tasks:
-                        self.logger.debug(f"Task {task_id} already running - skipping")
+                        suppressed_counts["ALREADY_RUNNING"] = suppressed_counts.get("ALREADY_RUNNING", 0) + 1
                         mark_suppressed = getattr(repo, "mark_suppressed", None)
                         if mark_suppressed:
                             await mark_suppressed(
@@ -1288,7 +1397,7 @@ class TaskScheduler(BaseService if BACKEND_AVAILABLE else object):
                         continue
                     
                     if hasattr(self, "priority_queue") and self.priority_queue and self.priority_queue.has_task(run.run_key):
-                        self.logger.debug(f"Run {run.run_key} for task {task_id} already queued - skipping")
+                        suppressed_counts["ALREADY_QUEUED"] = suppressed_counts.get("ALREADY_QUEUED", 0) + 1
                         mark_suppressed = getattr(repo, "mark_suppressed", None)
                         if mark_suppressed:
                             await mark_suppressed(
@@ -1338,15 +1447,24 @@ class TaskScheduler(BaseService if BACKEND_AVAILABLE else object):
                                 enqueued_at=now,
                                 execution_id=None,
                             )
-                        self.logger.debug(f"Enqueued due run: {task_id} (scheduled for {scheduled_for})")
+                        enqueued_count += 1
                     else:
+                        failed_count += 1
+                        suppressed_counts["QUEUE_FULL"] = suppressed_counts.get("QUEUE_FULL", 0) + 1
                         self.logger.warning(f"Failed to enqueue {task_id} - queue full")
                         
                 except Exception as e:
+                    failed_count += 1
                     self.logger.error(f"Failed to enqueue due run {task_id}: {e}", exc_info=True)
             
             # Commit all state changes
             await uow.commit()
+        self._log_enqueue_outcome(
+            source="deterministic_due_runs",
+            enqueued_count=enqueued_count,
+            suppressed_counts=suppressed_counts,
+            failed_count=failed_count,
+        )
     
     async def _enqueue_task(self, task_id: str, is_scheduled: bool = True):
         """Enqueue task to priority queue
@@ -1371,6 +1489,7 @@ class TaskScheduler(BaseService if BACKEND_AVAILABLE else object):
             due_run_at = self.next_run_times.get(task_id)
             if due_run_at is None:
                 due_run_at = datetime.now(timezone.utc)
+            distributed_enabled = bool((((self.get_config("scheduler", {}) or {}).get("distributed") or {}).get("enabled", False)))
 
             async def _mark_suppressed(reason_code: str, reason_detail: str) -> None:
                 if not is_scheduled:
@@ -1535,6 +1654,11 @@ class TaskScheduler(BaseService if BACKEND_AVAILABLE else object):
                 except Exception as e:
                     self.logger.warning(f"Inline scheduler job publish failed; will retry via outbox: {e}")
 
+                self.logger.info(
+                    "Scheduler dispatch summary: "
+                    f"task_id={task_id}, mode=distributed, scheduled_for={due_run_at.isoformat()}, "
+                    f"run_key={run_key}, queue_subject={publish_subject}"
+                )
                 return
 
             # Prevent enqueue storms: if already running or already queued, don't enqueue again
@@ -1570,9 +1694,11 @@ class TaskScheduler(BaseService if BACKEND_AVAILABLE else object):
             )
             
             if success:
-                self.logger.debug(
-                    f"Enqueued {task_id} to {task_instance.queue.value} queue "
-                    f"(priority={task_instance.priority.name})"
+                self.logger.info(
+                    "Scheduler dispatch summary: "
+                    f"task_id={task_id}, mode=local, scheduled_for={due_run_at.isoformat()}, "
+                    f"queue={task_instance.queue.value}, priority={task_instance.priority.name}, "
+                    f"queue_depth={self._get_priority_queue_depth()}"
                 )
                 await _mark_enqueued()
             else:
@@ -1631,6 +1757,11 @@ class TaskScheduler(BaseService if BACKEND_AVAILABLE else object):
                 continue
             
             # Execute task asynchronously with retry support
+            self.logger.info(
+                "Scheduler execution dispatch: "
+                f"task_id={prioritized_task.task_id}, queue={prioritized_task.queue.value}, "
+                f"priority={prioritized_task.priority.name}, retry_count={prioritized_task.retry_count}"
+            )
             asyncio.create_task(
                 self._execute_task_with_retry(task_class, prioritized_task)
             )
@@ -1720,18 +1851,23 @@ class TaskScheduler(BaseService if BACKEND_AVAILABLE else object):
             
             now = datetime.now(timezone.utc)
             
+            invalid_schedules = 0
             for task_model in task_models:
                 task_id = task_model.task_id
                 schedule = task_model.schedule
-                
+
                 next_run = self.cron_parser.next_run_time(schedule, now)
                 if next_run:
                     self.next_run_times[task_id] = next_run
                     self.logger.debug(f"Next run for {task_id}: {next_run}")
                 else:
+                    invalid_schedules += 1
                     self.logger.error(f"Invalid schedule for task {task_id}: {schedule}")
-            
-            self.logger.info(f"Calculated next run times for {len(self.next_run_times)} tasks")
+
+            self.logger.info(
+                f"Calculated next run times for {len(self.next_run_times)} tasks "
+                f"(invalid_schedules={invalid_schedules})"
+            )
             
         except Exception as e:
             self.logger.error(f"Failed to calculate next run times: {e}")

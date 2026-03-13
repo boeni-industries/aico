@@ -13,6 +13,7 @@ dependencies = [
     "uvicorn>=0.35.0",
     "httpx>=0.28.1",
     "pydantic>=2.11.7",
+    "pyyaml",
     "python-multipart>=0.0.20",
     "websockets>=13.0",
     "passlib[bcrypt]>=1.7.4",

@@ -338,11 +338,47 @@ async def catchup_my_messages(
 @router.get("/status", response_model=ConversationStatus)
 async def get_my_conversation_status(
     current_user=Depends(get_current_user),
+    uow: UnitOfWork = Depends(get_uow),
 ):
     user_id = current_user["user_uuid"]
+    tenant_id = current_user["tenant_id"]
+
+    conversations = await uow.conversations.list_by_user(
+        tenant_id=tenant_id,
+        user_id=user_id,
+        limit=1,
+        offset=0,
+        status="active",
+    )
+
+    if conversations:
+        conversation = conversations[0]
+        message_count = await uow.conversation_messages.count_by_conversation(
+            tenant_id=tenant_id,
+            conversation_id=conversation.conversation_id,
+        )
+        last_activity = (
+            getattr(conversation, "updated_at", None)
+            or getattr(conversation, "created_at", None)
+            or datetime.now(timezone.utc)
+        )
+        return ConversationStatus(
+            conversation_id=conversation.conversation_id,
+            active=str(getattr(conversation, "status", "") or "").lower() == "active",
+            message_count=message_count,
+            last_activity=last_activity.isoformat() if hasattr(last_activity, "isoformat") else str(last_activity),
+            context={
+                "title": getattr(conversation, "title", None),
+                "status": getattr(conversation, "status", None),
+                "created_at": getattr(conversation, "created_at", None).isoformat() if getattr(conversation, "created_at", None) else None,
+                "updated_at": getattr(conversation, "updated_at", None).isoformat() if getattr(conversation, "updated_at", None) else None,
+            },
+            user_id=user_id,
+        )
+
     return ConversationStatus(
         conversation_id=f"user_{user_id}",
-        active=True,
+        active=False,
         message_count=0,
         last_activity=datetime.now(timezone.utc).isoformat(),
         context=None,
@@ -352,7 +388,13 @@ async def get_my_conversation_status(
 
 @router.post("/health", response_model=HealthResponse)
 async def health_check():
-    return HealthResponse(status="healthy", timestamp=datetime.now(timezone.utc), version="1.0.0")
+    from aico.core.version import get_backend_version
+
+    return HealthResponse(
+        status="healthy",
+        timestamp=datetime.now(timezone.utc),
+        version=get_backend_version(),
+    )
 
 
 @router.get("/conversations", response_model=ConversationPageResponse)

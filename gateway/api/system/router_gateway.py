@@ -9,10 +9,12 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from typing import Any, Dict
 
+from aico.core.logging import get_logger
 from gateway.api.errors import raise_api_error
 from gateway.api.system.dependencies import get_current_user
 
 router = APIRouter(prefix="/system", tags=["system"])
+logger = get_logger("gateway.api.system")
 
 # Include config router for direct access to configuration endpoints
 from gateway.api.system.config.router import router as config_router
@@ -37,7 +39,13 @@ async def get_system_overview(_auth: dict = Depends(get_current_user)):
         from gateway.core.nats_client import get_gateway_nats_client
         nats_client = get_gateway_nats_client()
         user_id = str(_auth.get("user_id") or _auth.get("user_uuid") or _auth.get("uuid") or "")
-        return await nats_client.request_system_overview(user_id)
+        response = await nats_client.request_system_overview(user_id)
+        logger.info(
+            "System API success: endpoint=/system/overview, "
+            f"user_id_present={bool(user_id)}, system_status={response.get('system_status')}, "
+            f"active_conversations={response.get('active_conversations')}, active_goals={response.get('active_goals')}"
+        )
+        return response
     except Exception as e:
         raise_api_error(status_code=500, error_code="SYSTEM_OVERVIEW_FAILED", message=str(e))
 
@@ -48,7 +56,13 @@ async def get_system_health():
     try:
         from gateway.core.nats_client import get_gateway_nats_client
         nats_client = get_gateway_nats_client()
-        return await nats_client.request_system_health()
+        response = await nats_client.request_system_health()
+        logger.info(
+            "System API success: endpoint=/system/health, "
+            f"status={response.get('status')}, healthy_services={response.get('healthy_services')}, "
+            f"total_services={response.get('total_services')}"
+        )
+        return response
     except Exception as e:
         raise_api_error(status_code=500, error_code="SYSTEM_HEALTH_FAILED", message=str(e))
 
@@ -59,7 +73,13 @@ async def get_health_services():
     try:
         from gateway.core.nats_client import get_gateway_nats_client
         nats_client = get_gateway_nats_client()
-        return await nats_client.request_health_services()
+        response = await nats_client.request_health_services()
+        services = response.get("services") or []
+        logger.info(
+            "System API success: endpoint=/system/health/services, "
+            f"service_count={len(services)}"
+        )
+        return response
     except Exception as e:
         raise_api_error(status_code=500, error_code="HEALTH_SERVICES_FAILED", message=str(e))
 
@@ -70,7 +90,12 @@ async def get_health_issues():
     try:
         from gateway.core.nats_client import get_gateway_nats_client
         nats_client = get_gateway_nats_client()
-        return await nats_client.request_health_issues()
+        response = await nats_client.request_health_issues()
+        logger.info(
+            "System API success: endpoint=/system/health/issues, "
+            f"total_count={response.get('total_count')}"
+        )
+        return response
     except Exception as e:
         raise_api_error(status_code=500, error_code="HEALTH_ISSUES_FAILED", message=str(e))
 

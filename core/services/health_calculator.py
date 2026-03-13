@@ -45,14 +45,16 @@ class HealthCalculator:
         Factors:
         - Error Rate (40% weight): <0.5% = 100, 0.5-1% = 90, 1-2% = 75, 2-5% = 50, >5% = 0
         - P95 Latency (30% weight): <100ms = 100, 100-200ms = 90, 200-500ms = 75, 500-1000ms = 50, >1000ms = 0
-        - Success Rate (30% weight): >99.5% = 100, 99-99.5% = 90, 98-99% = 75, 95-98% = 50, <95% = 0
+
+        Note:
+        Success rate is intentionally not scored separately because it is the
+        inverse of error rate and would double-penalize the same condition.
         """
         issues = []
         score = 100
         
         error_rate = metrics.get("error_rate", 0.0)
         p95_latency = metrics.get("p95_response_time", 0.0)
-        success_rate = metrics.get("success_rate", 100.0)
         
         # Error Rate (40 points max)
         if error_rate >= 5.0:
@@ -151,56 +153,6 @@ class HealthCalculator:
                 threshold=100,
                 impact=deduction,
                 message=f"P95 latency slightly elevated at {p95_latency:.0f}ms (target: <100ms)"
-            ))
-            score -= deduction
-        
-        # Success Rate (30 points max)
-        if success_rate < 95.0:
-            deduction = 30
-            issues.append(HealthIssue(
-                severity="critical",
-                component="API Gateway",
-                metric="success_rate",
-                current_value=success_rate,
-                threshold=95.0,
-                impact=deduction,
-                message=f"Success rate critically low at {success_rate:.1f}% (threshold: >95%)"
-            ))
-            score -= deduction
-        elif success_rate < 98.0:
-            deduction = 15
-            issues.append(HealthIssue(
-                severity="warning",
-                component="API Gateway",
-                metric="success_rate",
-                current_value=success_rate,
-                threshold=98.0,
-                impact=deduction,
-                message=f"Success rate below target at {success_rate:.1f}% (threshold: >98%)"
-            ))
-            score -= deduction
-        elif success_rate < 99.0:
-            deduction = 8
-            issues.append(HealthIssue(
-                severity="warning",
-                component="API Gateway",
-                metric="success_rate",
-                current_value=success_rate,
-                threshold=99.0,
-                impact=deduction,
-                message=f"Success rate slightly low at {success_rate:.1f}% (target: >99%)"
-            ))
-            score -= deduction
-        elif success_rate < 99.5:
-            deduction = 3
-            issues.append(HealthIssue(
-                severity="info",
-                component="API Gateway",
-                metric="success_rate",
-                current_value=success_rate,
-                threshold=99.5,
-                impact=deduction,
-                message=f"Success rate below optimal at {success_rate:.1f}% (target: >99.5%)"
             ))
             score -= deduction
         

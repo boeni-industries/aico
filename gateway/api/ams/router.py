@@ -59,6 +59,7 @@ async def _get_consolidation_status(uow: UnitOfWork, user_id: str) -> Consolidat
         states = await uow.ams_consolidation_state.list(limit=1)
         
         state_row = states[0] if states else None
+        state_json = state_row.state_json if state_row and isinstance(state_row.state_json, dict) else {}
         last_session = None
         last_run = None
         
@@ -103,7 +104,7 @@ async def _get_consolidation_status(uow: UnitOfWork, user_id: str) -> Consolidat
                         last_run = f"{days} day{'s' if days != 1 else ''} ago"
                 except Exception as e:
                     logger.warning(f"Failed to parse completed_at timestamp: {e}")
-                    last_run = "Unknown"
+                    last_run = None
         
         # Get current cycle day (based on actual date progression)
         # Use day of year modulo 7 to ensure consistent daily progression
@@ -112,14 +113,13 @@ async def _get_consolidation_status(uow: UnitOfWork, user_id: str) -> Consolidat
         day_of_year = current_date.timetuple().tm_yday
         current_cycle_day = (day_of_year % 7) + 1
         
-        # Next scheduled is always 2 AM (configurable in scheduler)
-        next_scheduled = "Tonight at 2:00 AM"
+        next_scheduled = str(state_json.get("next_scheduled") or "unknown")
         
         # Check if consolidation is currently running
         user_states = await uow.ams_consolidation_state.list(filters={"user_id": user_id}, limit=1)
         
         current_status = "idle"
-        if user_states and user_states[0].status == "running":
+        if str(state_json.get("status") or "").lower() == "running":
             current_status = "running"
         elif state_row:
             current_status = "idle"
@@ -136,16 +136,8 @@ async def _get_consolidation_status(uow: UnitOfWork, user_id: str) -> Consolidat
         )
         
     except (RuntimeError, ValueError) as e:
-        # Tables don't exist yet - return default values
         logger.warning(f"AMS consolidation tables not found: {e}")
-        return ConsolidationStatusResponse(
-            last_run=None,
-            next_scheduled="Tonight at 2:00 AM",
-            current_cycle_day=1,
-            total_cycle_days=7,
-            status="scheduled",
-            last_session=None,
-        )
+        raise
 
 
 async def _get_behavioral_learning_stats(uow: UnitOfWork, user_id: str) -> BehavioralLearningStatsResponse:
@@ -170,7 +162,7 @@ async def _get_behavioral_learning_stats(uow: UnitOfWork, user_id: str) -> Behav
             avg_conf = sum(sc.confidence_score for sc in skill_confidences) / len(skill_confidences)
             avg_confidence = avg_conf * 100
         else:
-            avg_confidence = 50.0
+            avg_confidence = 0.0
         
         # Get top 5 skills
         skills_dict = {}
@@ -199,13 +191,13 @@ async def _get_behavioral_learning_stats(uow: UnitOfWork, user_id: str) -> Behav
             top_skills.append(
                 SkillInfoResponse(
                     skill_id=sc.skill_id,
-                    skill_name=skills_by_id.get(sc.skill_id, "Unknown"),
+                    skill_name=skills_by_id.get(sc.skill_id, sc.skill_id),
                     confidence=sc.confidence_score * 100,  # Convert to percentage
                     last_feedback=last_feedback,
                     last_updated=sc.last_updated_at.isoformat() if hasattr(sc.last_updated_at, 'isoformat') else sc.last_updated_at
                 )
             )     # Determine learning rate based on recent feedback
-        learning_rate = "Stable"
+        learning_rate = "No feedback yet"
         if total_feedback > 0:
             seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
             recent_feedback = sum(1 for f in all_feedback if f.timestamp and f.timestamp > seven_days_ago)
@@ -214,12 +206,14 @@ async def _get_behavioral_learning_stats(uow: UnitOfWork, user_id: str) -> Behav
                 learning_rate = "Adapting"
             elif recent_feedback > 5:
                 learning_rate = "Learning"
+            else:
+                learning_rate = "Stable"
         
         # Generate recent learning insights
         insights = []
         if total_feedback > 0 and sorted_skills:
             # Get most improved skill
-            top_skill_name = skills_by_id.get(sorted_skills[0].skill_id, "Unknown")
+            top_skill_name = skills_by_id.get(sorted_skills[0].skill_id, sorted_skills[0].skill_id)
             insights.append(f"Learned: {top_skill_name} performing well")
         
         # Only show insights if we have actual data to base them on
@@ -237,14 +231,7 @@ async def _get_behavioral_learning_stats(uow: UnitOfWork, user_id: str) -> Behav
         
     except (RuntimeError, ValueError) as e:
         logger.warning(f"AMS behavioral learning tables not found: {e}")
-        return BehavioralLearningStatsResponse(
-            active_skills=0,
-            total_feedback_received=0,
-            learning_rate="Stable",
-            average_confidence=0.0,
-            top_skills=[],
-            recent_learning_insights=[],
-        )
+        raise
 
 
 async def _get_user_preferences(uow: UnitOfWork, user_id: str) -> UserPreferencesResponse:
@@ -344,19 +331,23 @@ async def _get_user_preferences(uow: UnitOfWork, user_id: str) -> UserPreference
             else:
                 insights.append("No preferences learned yet")
         
+        context_bucket_count = len(
+            {
+                str(getattr(vector, "context_bucket", "") or "")
+                for vector in pref_vectors
+                if getattr(vector, "context_bucket", None) is not None
+            }
+        )
+
         return UserPreferencesResponse(
             dimensions=dimensions,
-            context_buckets=100,
+            context_buckets=context_bucket_count,
             insights=insights,
         )
         
     except (RuntimeError, ValueError) as e:
         logger.warning(f"AMS user preferences tables not found: {e}")
-        return UserPreferencesResponse(
-            dimensions=[],
-            context_buckets=0,
-            insights=[],
-        )
+        raise
 
 
 async def _get_feedback_stats(uow: UnitOfWork, user_id: str) -> FeedbackStatsResponse:
@@ -440,14 +431,7 @@ async def _get_feedback_stats(uow: UnitOfWork, user_id: str) -> FeedbackStatsRes
         
     except (RuntimeError, ValueError) as e:
         logger.warning(f"AMS consolidation tables not found: {e}")
-        return FeedbackStatsResponse(
-            total=0,
-            positive=0,
-            negative=0,
-            neutral=0,
-            response_rate=0.0,
-            recent_feedback=[],
-        )
+        raise
 
 
 # ============================================================================

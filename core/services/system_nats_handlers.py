@@ -129,7 +129,78 @@ class SystemNATSHandlers:
             return "degraded"
         elif status == "unhealthy":
             return "critical"
-        return status or "healthy"
+        return status or "unknown"
+
+    def _explain_check(self, check: Dict[str, Any], default: str) -> str:
+        if not isinstance(check, dict):
+            return default
+        details = check.get("details")
+        error_message = check.get("error_message")
+        latency_ms = check.get("latency_ms")
+        if error_message:
+            return str(error_message)
+        if isinstance(details, dict):
+            for key in ("message", "summary", "reason", "status_message"):
+                value = details.get(key)
+                if value:
+                    return str(value)
+            available_models = details.get("available_models")
+            model_count = details.get("model_count")
+            if isinstance(available_models, list) and available_models:
+                return f"Available models: {', '.join(str(model) for model in available_models[:3])}"
+            if isinstance(model_count, int) and model_count >= 0:
+                return f"Modelservice responded with {model_count} available model{'s' if model_count != 1 else ''}."
+        if latency_ms:
+            return f"Last check latency {int(latency_ms)}ms"
+        return default
+
+    def _summarize_health_result(self, result: Dict[str, Any], fallback_name: str) -> Dict[str, str]:
+        if not isinstance(result, dict):
+            return {"component": fallback_name, "status": "unknown", "reason": "No diagnostic output returned."}
+        component = str(result.get("component") or fallback_name)
+        status = str(result.get("summary_status") or "unknown")
+        checks = result.get("checks") if isinstance(result.get("checks"), dict) else {}
+        for check_name, check_value in checks.items():
+            mapped_status = str(check_value.get("status") or "unknown") if isinstance(check_value, dict) else "unknown"
+            if mapped_status in {"error", "unhealthy", "warning", "unsupported"}:
+                return {
+                    "component": component,
+                    "status": status,
+                    "reason": self._explain_check(
+                        check_value,
+                        f"{component} check '{check_name}' reported status {mapped_status}.",
+                    ),
+                }
+        return {
+            "component": component,
+            "status": status,
+            "reason": f"{component} reported status {status}.",
+        }
+
+    def _summarize_service_health(self, service: Dict[str, Any]) -> Dict[str, str] | None:
+        if not isinstance(service, dict):
+            return None
+        status = str(service.get("status") or "unknown")
+        if status not in {"warning", "degraded", "critical", "error"}:
+            return None
+        details = service.get("details") if isinstance(service.get("details"), dict) else {}
+        checks = details.get("checks") if isinstance(details.get("checks"), list) else []
+        reason = None
+        for check in checks:
+            if not isinstance(check, dict):
+                continue
+            check_status = str(check.get("status") or "unknown")
+            if check_status in {"warning", "degraded", "critical", "error", "unknown"}:
+                reason = str(check.get("message") or "").strip() or None
+                if reason:
+                    break
+        if not reason:
+            reason = str(details.get("summary") or "").strip() or f"{service.get('name', 'Component')} reported status {status}."
+        return {
+            "name": str(service.get("name") or "Unknown"),
+            "status": "critical" if status in {"critical", "error"} else "degraded",
+            "reason": reason,
+        }
     
     async def handle_system_health_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Handle system health request - GET /system/health"""
@@ -140,6 +211,11 @@ class SystemNATSHandlers:
                 cached_response, cached_at = self._health_cache
                 cache_age = (now - cached_at).total_seconds()
                 if cache_age < 30:
+                    self.logger.info(
+                        "System health response served: source=cache, "
+                        f"status={cached_response.get('status')}, healthy_services={cached_response.get('healthy_services')}, "
+                        f"total_services={cached_response.get('total_services')}, cache_age_seconds={cache_age:.1f}"
+                    )
                     return cached_response
             
             # Run all health check skills in parallel
@@ -151,46 +227,109 @@ class SystemNATSHandlers:
                 self._run_skill("maint.agency.re_evaluate_behaviour_health", {}),
                 return_exceptions=True,
             )
+            services_response = await self.handle_system_health_services_request({})
+            services = services_response.get("services") if isinstance(services_response, dict) else []
             
+            check_names = [
+                "Connectivity Scan",
+                "Resource Scan",
+                "Models & Pipeline",
+                "AI Behaviour Scan",
+            ]
+
             # Handle exceptions
             processed_results = []
-            for result in results:
+            degraded_components = []
+            for index, result in enumerate(results):
                 if isinstance(result, Exception):
-                    processed_results.append({"summary_status": "unhealthy"})
+                    processed = {
+                        "component": check_names[index],
+                        "summary_status": "unhealthy",
+                        "checks": {},
+                        "error_message": str(result),
+                    }
+                    processed_results.append(processed)
+                    degraded_components.append({
+                        "name": check_names[index],
+                        "status": "critical",
+                        "reason": str(result),
+                    })
                 else:
                     processed_results.append(result)
+                    if result.get("summary_status") in {"degraded", "unhealthy"}:
+                        summary = self._summarize_health_result(result, check_names[index])
+                        degraded_components.append({
+                            "name": summary["component"],
+                            "status": self._map_service_status(summary["status"]),
+                            "reason": summary["reason"],
+                        })
             
-            healthy_count = sum(1 for r in processed_results if r.get("summary_status") == "healthy")
-            total_count = len(processed_results)
-            
-            # Determine overall status
-            if any(r.get("summary_status") == "unhealthy" for r in processed_results):
-                overall_status = "critical"
-            elif any(r.get("summary_status") == "degraded" for r in processed_results):
-                overall_status = "degraded"
+            service_summaries = [
+                summary
+                for service in (services if isinstance(services, list) else [])
+                for summary in [self._summarize_service_health(service)]
+                if summary is not None
+            ]
+            if service_summaries:
+                degraded_components = service_summaries
+
+            if isinstance(services, list) and services:
+                healthy_count = sum(1 for service in services if str(service.get("status")) in {"healthy", "ok"})
+                total_count = len(services)
+                critical_issues = sum(
+                    1 for service in services if str(service.get("status")) in {"critical", "error"}
+                )
+                warnings = sum(
+                    1 for service in services if str(service.get("status")) in {"warning", "degraded"}
+                )
+                if critical_issues > 0:
+                    overall_status = "critical"
+                elif warnings > 0:
+                    overall_status = "degraded"
+                else:
+                    overall_status = "healthy"
             else:
-                overall_status = "healthy"
-            
-            critical_issues = 1 if overall_status == "critical" else 0
-            warnings = sum(1 for r in processed_results if r.get("summary_status") == "degraded")
+                healthy_count = sum(1 for r in processed_results if r.get("summary_status") == "healthy")
+                total_count = len(processed_results)
+
+                if any(r.get("summary_status") == "unhealthy" for r in processed_results):
+                    overall_status = "critical"
+                elif any(r.get("summary_status") == "degraded" for r in processed_results):
+                    overall_status = "degraded"
+                else:
+                    overall_status = "healthy"
+
+                critical_issues = 1 if overall_status == "critical" else 0
+                warnings = sum(1 for r in processed_results if r.get("summary_status") == "degraded")
             uptime_seconds = int(time.time() - self.start_time)
             
             response = {
                 "status": overall_status,
                 "healthy_services": healthy_count,
                 "total_services": total_count,
-                "uptime_percentage": 99.8,
+                "uptime_percentage": (healthy_count / total_count * 100.0) if total_count else 0.0,
                 "uptime_seconds": uptime_seconds,
                 "last_check": now.isoformat(),
                 "summary": {
                     "critical_issues": critical_issues,
                     "warnings": warnings,
                     "healthy_components": healthy_count,
+                    "affected_components": degraded_components,
+                    "headline": (
+                        "All monitored health checks are passing."
+                        if not degraded_components
+                        else f"{len(degraded_components)} health check(s) need attention."
+                    ),
                 },
             }
             
             # Cache the response
             self._health_cache = (response, now)
+            self.logger.info(
+                "System health response served: source=fresh, "
+                f"status={response.get('status')}, healthy_services={response.get('healthy_services')}, "
+                f"total_services={response.get('total_services')}"
+            )
             return response
             
         except Exception as e:
@@ -206,6 +345,10 @@ class SystemNATSHandlers:
                 cached_response, cached_at = self._service_health_cache
                 cache_age = (now - cached_at).total_seconds()
                 if cache_age < 30:
+                    self.logger.info(
+                        "System services health response served: source=cache, "
+                        f"service_count={len(cached_response.get('services') or [])}, cache_age_seconds={cache_age:.1f}"
+                    )
                     return cached_response
             
             # Run connectivity and health checks in parallel
@@ -239,29 +382,109 @@ class SystemNATSHandlers:
                 modelservice_result = {"output": {}}
             
             checks = connectivity.get("checks", {})
+            connectivity_status = connectivity.get("summary_status")
             services = []
             
+            modelservice_connectivity_check = checks.get("modelservice", {})
+            api_gateway_status = "healthy"
+            if isinstance(modelservice_connectivity_check, dict):
+                modelservice_connectivity_status = modelservice_connectivity_check.get("status")
+                if modelservice_connectivity_status in {"error", "unhealthy"}:
+                    api_gateway_status = "degraded"
+                elif modelservice_connectivity_status in {"warning", "unsupported"}:
+                    api_gateway_status = "degraded"
+
             # API Gateway
             uptime_seconds = int(time.time() - self.start_time)
             uptime_display = f"{int(uptime_seconds / 3600)}h" if uptime_seconds >= 3600 else f"{int(uptime_seconds / 60)}m" if uptime_seconds >= 60 else f"{uptime_seconds}s"
             
             services.append({
                 "name": "API Gateway",
-                "status": "healthy",
+                "status": self._map_service_status(api_gateway_status),
                 "group": "api",
                 "metric": {"label": "Uptime", "value": uptime_display, "unit": "time"},
                 "trend": None,
                 "last_checked": now.isoformat(),
+                "dependencies": ["Core Services", "PostgreSQL", "Modelservice"],
+                "details": {
+                    "summary": (
+                        "Gateway process reachable; downstream dependency issues may degrade request handling."
+                        if api_gateway_status != "healthy"
+                        else "Gateway process is healthy and serving API traffic."
+                    ),
+                    "checks": [
+                        {
+                            "name": "Modelservice connectivity",
+                            "status": self._map_service_status(
+                                "healthy" if modelservice_connectivity_check.get("status") == "ok" else "unhealthy" if modelservice_connectivity_check.get("status") == "error" else "degraded"
+                            ) if isinstance(modelservice_connectivity_check, dict) and modelservice_connectivity_check.get("status") else "unknown",
+                            "message": self._explain_check(
+                                modelservice_connectivity_check,
+                                "No downstream connectivity details were returned.",
+                            ),
+                        }
+                    ],
+                },
             })
             
             # Core Services
+            core_check_statuses = []
+            for result in (messagebus_result, scheduler_result, modelservice_result):
+                if isinstance(result, dict):
+                    summary_status = result.get("output", {}).get("summary_status")
+                    if summary_status:
+                        core_check_statuses.append(summary_status)
+
+            healthy_core_checks = sum(1 for status in core_check_statuses if status == "healthy")
+            if core_check_statuses:
+                core_status = "healthy" if healthy_core_checks == len(core_check_statuses) else "degraded" if healthy_core_checks > 0 else "critical"
+                core_metric_value = f"{healthy_core_checks}/{len(core_check_statuses)}"
+            else:
+                core_status = "unknown"
+                core_metric_value = "unknown"
+
             services.append({
                 "name": "Core Services",
-                "status": "healthy",
+                "status": core_status,
                 "group": "processing",
-                "metric": {"label": "Active Conversations", "value": "0", "unit": "conversations"},
+                "metric": {"label": "Healthy Checks", "value": core_metric_value, "unit": "checks" if core_check_statuses else None},
                 "trend": None,
                 "last_checked": now.isoformat(),
+                "dependencies": ["Message Bus", "Scheduler", "Modelservice"],
+                "details": {
+                    "summary": (
+                        f"{healthy_core_checks} of {len(core_check_statuses)} core service checks are healthy."
+                        if core_check_statuses
+                        else "No core service health checks returned data."
+                    ),
+                    "checks": [
+                        {
+                            "name": "Message Bus",
+                            "status": self._map_service_status(messagebus_result.get("output", {}).get("summary_status", "unknown")),
+                            "message": self._explain_check(
+                                messagebus_result.get("output", {}).get("checks", {}).get("status", {}),
+                                "No message bus status details were returned.",
+                            ),
+                        },
+                        {
+                            "name": "Scheduler",
+                            "status": self._map_service_status(scheduler_result.get("output", {}).get("summary_status", "unknown")),
+                            "message": self._explain_check(
+                                scheduler_result.get("output", {}).get("checks", {}).get("status", {}),
+                                "No scheduler status details were returned.",
+                            ),
+                        },
+                        {
+                            "name": "Modelservice",
+                            "status": self._map_service_status(modelservice_result.get("output", {}).get("summary_status", "unknown")),
+                            "message": self._explain_check(
+                                modelservice_result.get("output", {}).get("checks", {}).get("health", {})
+                                or modelservice_result.get("output", {}).get("checks", {}).get("connectivity", {}),
+                                "No modelservice health details were returned.",
+                            ),
+                        },
+                    ],
+                },
             })
             
             # PostgreSQL
@@ -273,14 +496,21 @@ class SystemNATSHandlers:
                 db_size = float(db_size)
             pg_tables = pg_details.get("tables", [])
             
+            pg_status = self._map_service_status(pg_check.get("status"))
+            if pg_status == "unknown" and db_size:
+                pg_status = "healthy"
+
             services.append({
                 "name": "PostgreSQL",
-                "status": self._map_service_status(pg_check.get("status")),
+                "status": pg_status,
                 "group": "storage",
                 "metric": {"label": "Database Size", "value": f"{db_size}MB", "unit": "MB"},
                 "trend": None,
                 "last_checked": now.isoformat(),
-                "details": {"tables": pg_tables} if pg_tables else None,
+                "details": {
+                    "summary": self._explain_check(pg_check, "Database size and table statistics loaded successfully."),
+                    "tables": pg_tables,
+                },
             })
             
             # Message Bus
@@ -288,7 +518,7 @@ class SystemNATSHandlers:
             messagebus_status = messagebus_output.get("summary_status", "unknown")
             messagebus_checks = messagebus_output.get("checks", {})
             messagebus_details = messagebus_checks.get("status", {}).get("details", {})
-            zmq_version = messagebus_details.get("zmq_version", "N/A")
+            zmq_version = messagebus_details.get("zmq_version", "unknown")
             
             services.append({
                 "name": "Message Bus",
@@ -297,6 +527,12 @@ class SystemNATSHandlers:
                 "metric": {"label": "ZMQ Version", "value": zmq_version},
                 "trend": None,
                 "last_checked": now.isoformat(),
+                "details": {
+                    "summary": self._explain_check(
+                        messagebus_checks.get("status", {}),
+                        "Message bus status check completed.",
+                    ),
+                },
             })
             
             # Scheduler
@@ -314,6 +550,13 @@ class SystemNATSHandlers:
                 "metric": {"label": "Active Tasks", "value": task_display, "unit": "tasks"},
                 "trend": None,
                 "last_checked": now.isoformat(),
+                "details": {
+                    "summary": self._explain_check(
+                        scheduler_checks.get("status", {}),
+                        "Scheduler status check completed.",
+                    ),
+                    "jobs": scheduler_details.get("jobs") if isinstance(scheduler_details.get("jobs"), list) else [],
+                },
             })
             
             # Modelservice
@@ -330,15 +573,44 @@ class SystemNATSHandlers:
                 ms_health = modelservice_checks.get("health", {})
                 ms_latency = ms_health.get("latency_ms")
             
-            latency_display = f"{int(ms_latency)}ms" if ms_latency and ms_latency > 0 else "N/A"
+            latency_display = f"{int(ms_latency)}ms" if ms_latency and ms_latency > 0 else "unknown"
+            modelservice_summary_source = modelservice_checks.get("connectivity", {}) or modelservice_checks.get("health", {})
+            modelservice_service_status = self._map_service_status(modelservice_status)
+            if modelservice_service_status == "unknown" and ms_latency and ms_latency > 0:
+                modelservice_service_status = "healthy"
             
             services.append({
                 "name": "Modelservice",
-                "status": self._map_service_status(modelservice_status),
+                "status": modelservice_service_status,
                 "group": "processing",
-                "metric": {"label": "Latency", "value": latency_display, "unit": "ms" if ms_latency else None},
+                "metric": {"label": "Latency", "value": latency_display, "unit": "ms" if ms_latency and ms_latency > 0 else None},
                 "trend": None,
                 "last_checked": now.isoformat(),
+                "details": {
+                    "summary": self._explain_check(
+                        modelservice_summary_source,
+                        "Modelservice scan completed.",
+                    ),
+                    "checks": [
+                        {
+                            "name": "Connectivity",
+                            "status": self._map_service_status(
+                                "healthy" if ms_connectivity.get("status") == "ok" else "unhealthy" if ms_connectivity.get("status") == "error" else "degraded"
+                            ) if ms_connectivity.get("status") else "unknown",
+                            "message": self._explain_check(ms_connectivity, "No connectivity details were returned."),
+                        },
+                        {
+                            "name": "Health",
+                            "status": self._map_service_status(
+                                "healthy" if modelservice_checks.get("health", {}).get("status") == "ok" else "unhealthy" if modelservice_checks.get("health", {}).get("status") == "error" else "degraded"
+                            ) if modelservice_checks.get("health", {}).get("status") else "unknown",
+                            "message": self._explain_check(
+                                modelservice_checks.get("health", {}),
+                                "No model health details were returned.",
+                            ),
+                        },
+                    ],
+                },
             })
             
             response = {"services": services}
@@ -348,6 +620,15 @@ class SystemNATSHandlers:
             
             # Cache the response
             self._service_health_cache = (response, now)
+            service_count = len(response.get("services") or [])
+            healthy_count = len([service for service in (response.get("services") or []) if service.get("status") == "healthy"])
+            degraded_count = len([service for service in (response.get("services") or []) if service.get("status") in {"degraded", "warning"}])
+            unhealthy_count = len([service for service in (response.get("services") or []) if service.get("status") in {"critical", "unhealthy"}])
+            self.logger.info(
+                "System services health response served: source=fresh, "
+                f"service_count={service_count}, healthy={healthy_count}, "
+                f"degraded={degraded_count}, unhealthy={unhealthy_count}"
+            )
             return response
             
         except Exception as e:
@@ -368,6 +649,10 @@ class SystemNATSHandlers:
                 "total_count": len(issues),
             }
 
+            self.logger.info(
+                "System issues response served: "
+                f"service_filter={service or 'all'}, severity_filter={severity or 'all'}, total_count={len(issues)}"
+            )
             return convert_decimals(response)
         except Exception as e:
             self.logger.error(f"Failed to get system issues: {e}", exc_info=True)
