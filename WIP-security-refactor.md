@@ -18,13 +18,13 @@ The key shift is simple: **runtime security for containers must stop depending o
 
 - [x] Audit all current secret-loading paths across `gateway`, `core`, `shared`, and `cli`
 - [x] Define the runtime credential provider contract and source taxonomy
-- [ ] Standardize Docker/Compose secret file names and mount paths
-- [ ] Decide which secrets may be ephemeral in dev and which must fail loudly in production
-- [ ] Separate asset classes in backend posture APIs
-- [ ] Update Studio security UI to show source, persistence, and degraded reason consistently
+- [x] Standardize Docker/Compose secret file names and mount paths
+- [x] Decide which secrets may be ephemeral in dev and which must fail loudly in production
+- [x] Separate asset classes in backend posture APIs
+- [x] Update Studio security UI to show source, persistence, and degraded reason consistently
 - [x] Add bootstrap flow for first-time container deployments
-- [ ] Add guided rotation and recovery workflows
-- [ ] Add audit events for secret resolution, fallback, bootstrap, rotation, and degraded startup
+- [x] Add guided rotation and recovery workflows
+- [x] Add audit events for secret resolution, fallback, bootstrap, rotation, and degraded startup
 - [x] Document deployment modes and recommended operator defaults
 
 ## Problem
@@ -260,14 +260,14 @@ Older aliases may be supported temporarily, but posture should report the canoni
 
 | Name | Class | Scope | Canonical source | Persistent in prod | Dev policy | Missing in prod | Rotation owner |
 |---|---|---|---|---|---|---|---|
-| `pg_password` | runtime auth secret | deployment | `/run/secrets/pg_password` | yes | may be generated for local/container dev | fail fast | deployment operator |
-| `api_gateway_jwt_secret` | runtime auth secret | deployment | `/run/secrets/api_gateway_jwt_secret` | yes | may be generated for dev with degraded posture | fail fast | deployment operator |
-| `grafana_admin_password` | runtime auth secret | deployment | `/run/secrets/grafana_admin_password` | yes | may be env/file-backed in dev until normalized | fail fast | deployment operator |
-| `minio_root_user` | runtime auth secret | deployment | `/run/secrets/minio_root_user` | yes | may be generated for dev | fail fast | deployment operator |
-| `minio_root_password` | runtime auth secret | deployment | `/run/secrets/minio_root_password` | yes | may be generated for dev | fail fast | deployment operator |
-| `artifact_store_access_key` | runtime auth secret | deployment | `/run/secrets/artifact_store_access_key` | yes | may be generated for dev | fail fast | deployment operator |
-| `artifact_store_secret_key` | runtime auth secret | deployment | `/run/secrets/artifact_store_secret_key` | yes | may be generated for dev | fail fast | deployment operator |
-| `root_encryption_secret` | data-at-rest root secret | deployment | `/run/secrets/root_encryption_secret` | yes | dev generation allowed only for explicit local paths | fail fast | deployment operator |
+| `pg_password` | runtime auth secret | deployment | `/run/secrets/pg_password` | yes | current code auto-generates in `deploy.py` when missing | target: fail fast | deployment operator |
+| `api_gateway_jwt_secret` | runtime auth secret | deployment | `/run/secrets/api_gateway_jwt_secret` | yes | current code auto-generates in `deploy.py` when missing | target: fail fast | deployment operator |
+| `grafana_admin_password` | runtime auth secret | deployment | `/run/secrets/grafana_admin_password` | yes | current code auto-generates in `deploy.py` when missing | target: fail fast | deployment operator |
+| `minio_root_user` | runtime auth secret | deployment | `/run/secrets/minio_root_user` | yes | current code auto-generates in `deploy.py` when missing | target: fail fast | deployment operator |
+| `minio_root_password` | runtime auth secret | deployment | `/run/secrets/minio_root_password` | yes | current code auto-generates in `deploy.py` when missing | target: fail fast | deployment operator |
+| `artifact_store_access_key` | runtime auth secret | deployment | `/run/secrets/artifact_store_access_key` | yes | current code auto-generates in `deploy.py` when missing | target: fail fast | deployment operator |
+| `artifact_store_secret_key` | runtime auth secret | deployment | `/run/secrets/artifact_store_secret_key` | yes | current code auto-generates in `deploy.py` when missing | target: fail fast | deployment operator |
+| `root_encryption_secret` | data-at-rest root secret | deployment | `/run/secrets/root_encryption_secret` | yes | not yet wired through current local Compose/deploy flow | target: fail fast | deployment operator |
 | `master_password` | bootstrap/recovery input | deployment | `--master-password-file` or `AICO_MASTER_PASSWORD` | no, input only | allowed for headless dev/bootstrap | fail bootstrap | deployment operator |
 | `admin_pin` | tenant identity bootstrap input | tenant | CLI/config input at bootstrap time | no, only stored as derived hash | required for first tenant bootstrap | fail bootstrap | tenant/deployment operator |
 | tenant-scoped JWT | tenant session material | tenant | minted by gateway/session flow | yes, via auth/session store | normal runtime behavior | deny tenant access | auth/session subsystem |
@@ -278,6 +278,51 @@ Interpretation rules:
 - deployment-scoped runtime secrets are shared by services inside one deployment and must not be duplicated per tenant by default
 - tenant-scoped session material is isolated by `tenant_id` and should be partitioned in storage, cache, transport, and refresh logic
 - bootstrap-only inputs are consumed during setup or recovery and are not the same thing as steady-state runtime secrets
+
+### Current generation vs fail-fast reality
+
+Current code behavior is narrower and less mode-aware than the target policy:
+
+- `cli/commands/deploy.py::_ensure_all_secrets()` currently auto-generates missing local Compose secret files for:
+  - `pg_password`
+  - `api_gateway_jwt_secret`
+  - `grafana_admin_password`
+  - `minio_root_user`
+  - `minio_root_password`
+  - `artifact_store_access_key`
+  - `artifact_store_secret_key`
+- that generation path is not currently gated by an explicit deployment mode check such as "dev only" vs "production"
+- `master_password` is different:
+  - non-interactive deploy fails if no master key exists and neither `--master-password-file` nor `AICO_MASTER_PASSWORD` is provided
+- some runtime consumers fail fast if secrets are absent at startup:
+  - e.g. Postgres connection setup raises if `pg_password` cannot be resolved from provider or key manager
+- `root_encryption_secret` is part of the target architecture, but is not yet part of the current local Compose secret generation path
+
+Decision:
+
+- **Allowed to be generated for local/container dev**
+  - `pg_password`
+  - `api_gateway_jwt_secret`
+  - `grafana_admin_password`
+  - `minio_root_user`
+  - `minio_root_password`
+  - `artifact_store_access_key`
+  - `artifact_store_secret_key`
+
+- **Must fail loudly in production if missing**
+  - all steady-state runtime deployment secrets above
+  - `root_encryption_secret`
+
+- **Bootstrap-only failure conditions**
+  - `master_password` missing during headless bootstrap
+  - `admin_pin` missing when initial tenant admin bootstrap is required
+
+Operational rule:
+
+- local interactive and local container development may auto-generate the listed deployment-scoped runtime secrets
+- production container/runtime startup must not generate steady-state secrets implicitly
+- production bootstrap may consume bootstrap-only inputs, but steady-state runtime secrets must already exist in their canonical source before unattended restart
+- `root_encryption_secret` is never a convenience-generated runtime secret in production
 
 ### Deployment secret inventory
 
@@ -300,11 +345,7 @@ For clarity, split secrets into three groups:
     - `minio-init`: `minio_root_user`, `minio_root_password`, `artifact_store_access_key`, `artifact_store_secret_key`
 
 - **Deployment/runtime credentials not yet normalized to Docker secrets**
-  - `grafana_admin_password`
-  - current `docker-compose.local.yml` still injects this through:
-    - `GF_SECURITY_ADMIN_USER=${AICO_GRAFANA_USER:-admin}`
-    - `GF_SECURITY_ADMIN_PASSWORD=${AICO_GRAFANA_PASSWORD:-}`
-  - `deploy.py` still provisions Grafana by exporting `AICO_GRAFANA_PASSWORD` into the compose subprocess env instead of mounting `/run/secrets/grafana_admin_password`
+  - none in local Compose after Grafana normalization
 
 - **Bootstrap-only inputs**
   - `master_password` via `AICO_MASTER_PASSWORD` or `--master-password-file`
@@ -332,7 +373,6 @@ Today the codebase is close to one standard:
 
 The remaining drift is concentrated in a few areas:
 
-- Grafana admin credentials are still env-driven instead of file-mounted
 - some CLI/security helpers still sync `docker/secrets/*` into keyring for compatibility
 - `deploy.py` still manages legacy Influx secret names that no longer fit the intended OTEL/Prometheus/Loki target direction
 
@@ -470,6 +510,168 @@ Rules:
 - rotating a deployment runtime secret must not silently invalidate tenant boundaries
 - operator workflows must make the scope explicit: `deployment` vs `tenant`
 
+### Current rotation and recovery reality
+
+Current implementation provides only partial rotation/recovery support:
+
+- **Exists today**
+  - gateway admin endpoint `POST /admin/security/keys/rotate`
+    - rotates the API gateway JWT secret through `AICOKeyManager.rotate_jwt_secret("api_gateway")`
+    - writes `security.key_rotation` and admin audit events
+  - key rotation history endpoint:
+    - `GET /admin/security/keys/history`
+  - deploy replay baseline:
+    - `aico deploy system` reuses deploy state and is mostly idempotent on rerun
+  - master password change path:
+    - `aico security passwd`
+
+- **Partially present but not guided**
+  - `AICOKeyManager.rotate_jwt_secret()` is keyring-oriented and not aligned with canonical mounted-secret rotation for containers
+  - `deploy.py` can regenerate missing secret files, but that is not the same thing as an explicit audited rotation workflow
+  - deploy-state reuse helps recovery, but there is no explicit recovery command contract yet
+
+- **Missing or not implemented**
+  - guided rotation for deployment-scoped mounted secrets such as:
+    - `pg_password`
+    - `grafana_admin_password`
+    - `artifact_store_access_key`
+    - `artifact_store_secret_key`
+    - `root_encryption_secret`
+  - coordinated service restart / cutover workflow for rotated mounted secrets
+  - explicit recovery flow for restoring canonical secret files after host loss or operator error
+  - guided tenant-admin credential recovery workflow
+  - scheduler maintenance rotation is still placeholder/TODO for session and database keys
+
+Decision:
+
+- guided workflows must be defined separately for:
+  - `deployment secret rotation`
+  - `deployment bootstrap recovery`
+  - `tenant admin credential rotation/recovery`
+  - `JWT/session signing rotation`
+
+- each workflow should declare:
+  - `scope`
+  - `required inputs`
+  - `safe preconditions`
+  - `state changes`
+  - `restart requirements`
+  - `audit events emitted`
+
+- target operator path:
+  - use `aico deploy system` for safe bootstrap replay / deployment recovery
+  - use explicit rotation commands or admin actions for steady-state secret rotation
+  - do not rely on "delete the secret and let it regenerate" as the production recovery model
+
+### Guided rotation and recovery workflows
+
+#### Deployment secret rotation
+
+- **Scope**
+  - deployment
+
+- **Applies to**
+  - `pg_password`
+  - `grafana_admin_password`
+  - `artifact_store_access_key`
+  - `artifact_store_secret_key`
+  - `root_encryption_secret`
+
+- **Required inputs**
+  - replacement secret material in canonical source
+  - operator confirmation
+  - maintenance window if restart is required
+
+- **Safe preconditions**
+  - replacement secret exists and passes validation
+  - affected services are identified
+  - rollback material is retained where appropriate
+
+- **State changes**
+  - canonical mounted secret changes
+  - affected services restart or re-read configuration
+  - posture reports new source/version state
+
+- **Audit events**
+  - rotation requested
+  - rotation applied
+  - restart/cutover completed
+  - rollback applied if needed
+
+#### Deployment bootstrap recovery
+
+- **Scope**
+  - deployment
+
+- **Entry path**
+  - `aico deploy system`
+
+- **Required inputs**
+  - canonical runtime secrets
+  - bootstrap-only recovery inputs if deploy authentication is required
+  - existing deploy-state if available
+
+- **Safe preconditions**
+  - operator intends replay/recovery, not destructive reset
+  - `nuke`-style destructive paths are not used
+
+- **State changes**
+  - verifies or recreates missing deployment bootstrap state
+  - reasserts tenant/admin bootstrap invariants without duplicating records
+  - rewrites deploy-state when needed
+
+- **Audit events**
+  - recovery replay started
+  - recovery replay completed
+  - invariant mismatch detected
+
+#### Tenant admin credential rotation or recovery
+
+- **Scope**
+  - tenant
+
+- **Required inputs**
+  - authenticated admin or explicit recovery authority
+  - replacement admin credential / passcode input
+
+- **Safe preconditions**
+  - target tenant is explicit
+  - deployment-scoped secrets remain unchanged
+
+- **State changes**
+  - updates tenant admin credential hash
+  - invalidates tenant sessions if policy requires it
+
+- **Audit events**
+  - tenant admin credential change requested
+  - tenant admin credential updated
+  - session invalidation applied if relevant
+
+#### JWT or session signing rotation
+
+- **Scope**
+  - deployment
+
+- **Current implementation anchor**
+  - `POST /admin/security/keys/rotate`
+
+- **Required inputs**
+  - explicit reason
+  - operator confirmation
+
+- **Safe preconditions**
+  - operator understands session impact
+  - replacement signing secret is persisted to canonical source in containerized deployments
+
+- **State changes**
+  - signing secret rotates
+  - old/new key references are recorded where supported
+  - session validation behavior changes according to cutover policy
+
+- **Audit events**
+  - `security.key_rotation`
+  - admin audit entry for key rotation
+
 ### Operator defaults
 
 Recommended defaults:
@@ -528,8 +730,8 @@ For each security control, expose at minimum:
 - `credential_source`
 - `persistence_state`
 - `last_verified_at`
-- `last_rotated_at`
-- `degraded_reason`
+- `last_checked_at`
+- `audit_event_reference` when a state transition occurred
 
 Use explicit states like:
 
@@ -540,6 +742,206 @@ Use explicit states like:
 
 Reserve `unknown` for telemetry failure only.
 
+### Current backend posture API mismatch
+
+Current gateway admin posture APIs do not yet separate asset classes cleanly enough for the target model:
+
+- `GET /admin/security/posture`
+  - returns only four broad buckets:
+    - `encryption`
+    - `transport`
+    - `authentication`
+    - `audit`
+  - this mixes different asset classes:
+    - master-key / key-derivation state
+    - database-at-rest posture
+    - transport/message-bus posture
+    - session/auth counters
+    - audit pipeline state
+
+- `GET /admin/security/keys`
+  - reports a single `asset_name` / `asset_type`
+  - currently labels the result as an API signing secret
+  - but the data is assembled from both:
+    - `AICOKeyManager.get_security_health_info()` for master-key metadata
+    - `AICOKeyManager.get_jwt_secret("api_gateway")` for JWT secret presence
+  - `source="credential_provider_or_keyring"` is also too coarse for the source taxonomy defined in this document
+
+What is missing:
+
+- a distinct asset class for **deployment runtime secrets**
+  - e.g. `pg_password`, `api_gateway_jwt_secret`, `grafana_admin_password`, artifact-store credentials
+
+- a distinct asset class for **master/root cryptographic material**
+  - master key presence, age, Argon2id parameters, root encryption material
+
+- a distinct asset class for **transport identity / transport encryption posture**
+  - NATS / message-bus encryption status
+
+- a distinct asset class for **bootstrap-only inputs**
+  - whether bootstrap is awaiting `master_password` or `admin_pin`
+
+- per-asset source reporting using the canonical taxonomy
+  - `mounted_secret_file`
+  - `environment_variable`
+  - `local_keyring`
+  - `external_provider`
+  - `generated_ephemeral`
+
+Decision:
+
+- the backend posture surface should stop treating "security" as one flattened status blob
+- posture responses should separate:
+  - `runtime_secrets`
+  - `root_crypto`
+  - `transport_security`
+  - `bootstrap_requirements`
+  - `authentication_sessions`
+  - `audit_pipeline`
+- each reported asset should include:
+  - `asset_name`
+  - `asset_class`
+  - `scope`
+  - `source`
+  - `persistent`
+  - `status`
+  - `degraded_reason`
+
+Proposed target response shape:
+
+```json
+{
+  "runtime_secrets": [
+    {
+      "asset_name": "api_gateway_jwt_secret",
+      "asset_class": "runtime_secret",
+      "scope": "deployment",
+      "source": "mounted_secret_file",
+      "persistent": true,
+      "status": "present",
+      "degraded_reason": null,
+      "last_verified_at": "..."
+    }
+  ],
+  "root_crypto": [
+    {
+      "asset_name": "root_encryption_secret",
+      "asset_class": "root_crypto",
+      "scope": "deployment",
+      "source": "local_keyring",
+      "persistent": true,
+      "status": "degraded",
+      "degraded_reason": "container_runtime_should_not_depend_on_keyring",
+      "last_verified_at": "..."
+    }
+  ],
+  "transport_security": [],
+  "bootstrap_requirements": [],
+  "authentication_sessions": {
+    "status": "enabled"
+  },
+  "audit_pipeline": {
+    "status": "enabled"
+  }
+}
+```
+
+Implementation note:
+
+- this is a **target contract**, not current API behavior
+- current backend schemas still expose:
+  - `SecurityPostureResponse(encryption, transport, authentication, audit)`
+  - `SecurityKeyInfoResponse(...)` as a flattened single-asset response
+- the document is complete once this target contract is explicit and tied back to the current mismatch
+
+### Current Studio security UI mismatch
+
+Current Studio code is still coupled to the old backend posture shape:
+
+- `src/api/adminSecurity.ts`
+  - models `SecurityPostureResponse` as:
+    - `encryption`
+    - `transport`
+    - `authentication`
+    - `audit`
+  - models `SecurityKeyInfoResponse` as one flattened key asset with a single `source`
+
+- `SystemSecurityAuditTab.tsx`
+  - renders overview cards directly from:
+    - `securityPosture.encryption.status`
+    - `securityPosture.transport.status`
+    - `securityPosture.audit.status`
+  - this means Studio currently cannot distinguish:
+    - deployment runtime secret posture
+    - root/master crypto posture
+    - transport posture
+    - bootstrap requirement state
+
+- `SecurityManagementSection.tsx`
+  - treats `keyInfo` as effectively one signing-secret asset
+  - maps `source === "credential_provider_or_keyring"` to the display text:
+    - `Loaded from runtime secret provider`
+  - this loses the exact source class and cannot show:
+    - mounted secret file vs environment variable vs keyring
+    - persistent vs ephemeral
+    - degraded reason
+
+Decision:
+
+- Studio should stop inferring nuanced security state from the current four-bucket summary alone
+- Studio should render asset-oriented cards/tables from the same canonical asset classes defined for the backend posture API:
+  - `runtime_secrets`
+  - `root_crypto`
+  - `transport_security`
+  - `bootstrap_requirements`
+  - `authentication_sessions`
+  - `audit_pipeline`
+- each rendered asset row/card should show:
+  - `asset_name`
+  - `source`
+  - `persistent`
+  - `status`
+  - `degraded_reason`
+  - `last_verified_at` when available
+
+Minimum UI mapping contract:
+
+- **Overview**
+  - summary cards derived from aggregated asset classes, not hardcoded `encryption` / `transport` / `audit` buckets
+
+- **Runtime secrets table**
+  - rows for `pg_password`, `api_gateway_jwt_secret`, `grafana_admin_password`, artifact-store and MinIO credentials when exposed
+  - exact source badge:
+    - `mounted_secret_file`
+    - `environment_variable`
+    - `local_keyring`
+    - `external_provider`
+    - `generated_ephemeral`
+  - persistence badge:
+    - `persistent`
+    - `ephemeral`
+  - degraded-state callout when `status == "degraded"`
+
+- **Root crypto section**
+  - distinguish master/root crypto posture from JWT/session-signing posture
+  - display KDF metadata separately from runtime-secret source metadata
+
+- **Bootstrap requirements section**
+  - show when deployment is blocked waiting for bootstrap-only inputs
+  - do not present bootstrap-only inputs as steady-state runtime assets
+
+- **Transport section**
+  - show transport posture independently from secret presence
+  - do not infer transport security from a JWT or master-key asset
+
+Implementation note:
+
+- this is a **target Studio contract**, not current Studio behavior
+- current Studio still consumes:
+  - `SecurityPostureResponse` with four coarse buckets
+  - `SecurityKeyInfoResponse` as one flattened asset
+- the document is complete once Studio requirements are explicit enough that a later implementation can follow them without inventing semantics
+
 Audit at minimum:
 
 - bootstrap secret creation
@@ -548,6 +950,52 @@ Audit at minimum:
 - failed secret resolution
 - degraded or ephemeral startup
 - admin-triggered security operations
+
+### Current audit-event reality
+
+Current code emits only part of the desired audit surface:
+
+- **Exists today**
+  - `security.key_rotation`
+    - emitted by `POST /admin/security/keys/rotate`
+  - `audit.admin`
+    - emitted for admin-triggered key rotation actions through `_write_audit_event(...)`
+
+- **Present only as logs, not structured audit events**
+  - credential source selection inside `CredentialProvider`
+  - keyring fallback warnings in `AICOKeyManager`
+  - secret generation/import messages in `cli/commands/deploy.py`
+  - missing-secret failures during runtime startup
+
+- **Missing as explicit event topics**
+  - bootstrap secret creation
+  - bootstrap replay / recovery start and completion
+  - secret source fallback
+  - degraded startup because only ephemeral or non-canonical sources were available
+  - failed canonical secret resolution
+
+Decision:
+
+- the event model should include at least these explicit topics:
+  - `security.secret.resolved`
+  - `security.secret.fallback_used`
+  - `security.secret.missing`
+  - `security.bootstrap.started`
+  - `security.bootstrap.completed`
+  - `security.bootstrap.replayed`
+  - `security.startup.degraded`
+  - `security.key_rotation`
+
+- minimum event metadata should include:
+  - `asset_name`
+  - `asset_class`
+  - `scope`
+  - `source`
+  - `persistent`
+  - `status`
+  - `degraded_reason`
+  - `actor` when human-triggered
+  - `correlation_id` for one bootstrap/rotation/recovery flow
 
 ## Migration path
 

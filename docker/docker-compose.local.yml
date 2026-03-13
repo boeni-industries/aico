@@ -429,9 +429,8 @@ services:
     container_name: aico-grafana
     restart: unless-stopped
     environment:
-      # Admin credentials provided via environment
-      GF_SECURITY_ADMIN_USER: ${AICO_GRAFANA_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${AICO_GRAFANA_PASSWORD:-}
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
       # Disable analytics and update checks
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
@@ -444,6 +443,8 @@ services:
       GF_USERS_HOME_PAGE: "/d/aico-logs-overview"
     ports:
       - "3001:3000"
+    secrets:
+      - grafana_admin_password
     volumes:
       - aico-grafanadata:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
@@ -541,6 +542,8 @@ secrets:
     file: ./secrets/pg_password
   api_gateway_jwt_secret:
     file: ./secrets/api_gateway_jwt_secret
+  grafana_admin_password:
+    file: ./secrets/grafana_admin_password
   minio_root_user:
     file: ./secrets/minio_root_user
   minio_root_password:

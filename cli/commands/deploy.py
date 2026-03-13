@@ -224,6 +224,7 @@ def _ensure_all_secrets() -> dict[str, str]:
         "influx_admin_password": 32,
         "influx_admin_token": 48,
         "api_gateway_jwt_secret": 48,
+        "grafana_admin_password": 48,
         # MinIO (artifact store)
         # Root user is an access key; keep it short-ish for compatibility.
         "minio_root_user": 0,
@@ -2210,11 +2211,6 @@ def deploy_grafana(
     console.print("🔐 [cyan]Managing Grafana credentials...[/cyan]")
     grafana_password = _get_or_create_grafana_password()
     
-    # Set environment variables for docker-compose
-    env = os.environ.copy()
-    env["AICO_GRAFANA_USER"] = "admin"
-    env["AICO_GRAFANA_PASSWORD"] = grafana_password
-
     # Verify provisioning configs exist
     grafana_provisioning = Path(__file__).parent.parent.parent / "docker" / "grafana" / "provisioning"
     if not grafana_provisioning.exists():
@@ -2222,7 +2218,7 @@ def deploy_grafana(
         raise typer.Exit(1)
 
     console.print("🚀 [cyan]Starting Grafana container...[/cyan]")
-    code = _run_compose(["up", "-d", "grafana"], env=env)
+    code = _run_compose(["up", "-d", "grafana"], env=None)
     if code != 0:
         console.print(format_error("Failed to start Grafana container"))
         raise typer.Exit(code)
@@ -2578,6 +2574,11 @@ def _get_or_create_grafana_password() -> str:
     Returns:
         Grafana admin password
     """
+    secrets = _ensure_all_secrets()
+    grafana_password = secrets.get("grafana_admin_password")
+    if grafana_password:
+        return grafana_password
+
     config = ConfigurationManager()
     config.initialize(lightweight=True)
     key_manager = AICOKeyManager(config)
