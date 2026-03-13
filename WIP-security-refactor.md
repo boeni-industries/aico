@@ -27,6 +27,142 @@ The key shift is simple: **runtime security for containers must stop depending o
 - [x] Add audit events for secret resolution, fallback, bootstrap, rotation, and degraded startup
 - [x] Document deployment modes and recommended operator defaults
 
+## Implementation todo list
+
+Use this section as the actual engineering backlog for the implementation phase.
+
+### Phase 1: backend contract and posture truthfulness
+
+- [ ] Replace the coarse `SecurityPostureResponse` shape in `gateway/api/admin/schemas.py`
+  - remove the assumption that posture is only:
+    - `encryption`
+    - `transport`
+    - `authentication`
+    - `audit`
+  - introduce asset-oriented response types for:
+    - `runtime_secrets`
+    - `root_crypto`
+    - `transport_security`
+    - `bootstrap_requirements`
+    - `authentication_sessions`
+    - `audit_pipeline`
+
+- [ ] Refactor `GET /admin/security/posture` in `gateway/api/admin/router.py`
+  - assemble posture by asset class instead of coarse buckets
+  - report exact source taxonomy per asset
+  - report `persistent`, `status`, and `degraded_reason`
+  - keep current implementation honest where data is unavailable
+
+- [ ] Refactor `GET /admin/security/keys`
+  - stop mixing master-key metadata with JWT secret presence in one flattened asset
+  - either:
+    - convert it into an asset-list endpoint
+    - or narrow it explicitly to one asset class and add separate endpoints for others
+
+### Phase 2: runtime secret resolution alignment
+
+- [ ] Extend the credential-provider contract in `shared/aico/security/credential_provider.py`
+  - return structured source metadata, not only raw values
+  - expose whether the source is persistent
+  - expose degraded/fallback state
+
+- [ ] Move runtime consumers toward one shared resolution model
+  - verify all runtime secret consumers use canonical names
+  - remove ad hoc keyring-only reads where container runtime should use env or mounted secrets
+  - align PostgreSQL, JWT, Grafana, MinIO, and artifact-store credential handling
+
+- [ ] Decide and implement root/master secret handling for container runtime
+  - stop treating system keyring as the default container durability mechanism
+  - define how `root_encryption_secret` is resolved, persisted, and reported
+  - keep keyring support only for explicit local interactive workflows
+
+- [ ] Align `aico pg` and related CLI/database bootstrap commands with the runtime resolution chain
+  - stop requiring keyring copies when canonical file/env sources already exist
+  - ensure status/doctor commands report source-aware truth instead of keyring assumptions
+
+### Phase 3: bootstrap, recovery, and deploy alignment
+
+- [ ] Refactor `cli/commands/deploy.py` bootstrap behavior around canonical secret sources
+  - preserve `aico deploy system` as the authoritative bootstrap/replay entrypoint
+  - keep idempotent replay behavior
+  - reduce keyring backfill/sync behavior that exists only for compatibility
+
+- [ ] Implement explicit recovery semantics
+  - define when deploy replay is recovery vs first bootstrap
+  - emit clear failure conditions for missing production secrets
+  - avoid silent regeneration as the production recovery model
+
+- [ ] Standardize Compose/runtime secret names and env aliases across deployment code
+  - ensure docs, compose, and runtime consumers all reference the same canonical names
+  - remove ambiguous secret-name drift where possible
+
+### Phase 4: audit events and degraded-startup reporting
+
+- [ ] Add structured security events for secret lifecycle and startup state
+  - `security.secret.resolved`
+  - `security.secret.fallback_used`
+  - `security.secret.missing`
+  - `security.bootstrap.started`
+  - `security.bootstrap.completed`
+  - `security.bootstrap.replayed`
+  - `security.startup.degraded`
+
+- [ ] Emit audit/event metadata consistently
+  - `asset_name`
+  - `asset_class`
+  - `scope`
+  - `source`
+  - `persistent`
+  - `status`
+  - `degraded_reason`
+  - `correlation_id`
+
+- [ ] Keep existing admin audit behavior and extend it where needed
+  - preserve `security.key_rotation`
+  - preserve `audit.admin`
+  - add missing lifecycle coverage without inventing misleading success states
+
+### Phase 5: Studio API and UI migration
+
+- [ ] Update `aico-studio/src/api/adminSecurity.ts`
+  - replace the coarse `SecurityPostureResponse` typing with the asset-oriented contract
+  - update key-info typing to match the backend redesign
+
+- [ ] Refactor `SystemSecurityAuditTab.tsx`
+  - stop deriving overview from the old four-bucket model
+  - render asset-class summaries from backend-provided asset data
+  - surface degraded states explicitly
+
+- [ ] Refactor `SecurityManagementSection.tsx`
+  - show exact source badges
+  - show persistent vs ephemeral state
+  - show degraded reasons
+  - stop collapsing all runtime providers into `credential_provider_or_keyring`
+
+- [ ] Verify any other Studio security/admin views coupled to the old posture shape
+  - update them to the new asset-oriented contract
+
+### Phase 6: rollout and verification
+
+- [ ] Add compatibility/migration strategy for existing clients
+  - decide whether backend should support old and new posture responses temporarily
+  - avoid breaking Studio during rollout
+
+- [ ] Verify dev vs production behavior end-to-end
+  - dev may allow explicit degraded/ephemeral paths
+  - production must fail loudly for required runtime secrets
+
+- [ ] Test operator workflows end-to-end
+  - first bootstrap
+  - restart with existing secrets
+  - deploy replay / recovery
+  - JWT rotation
+  - tenant admin credential rotation
+
+- [ ] Re-audit the final implementation against this document
+  - remove any remaining aspirational text once code lands
+  - keep the document aligned strictly with real behavior
+
 ## Problem
 
 Some of AICO's current documentation and runtime behavior still assume platform-native secure storage like macOS Keychain, Windows Credential Manager, or Linux Secret Service. That works for local CLI and some coupled desktop scenarios, but not for long-running Dockerized services.
