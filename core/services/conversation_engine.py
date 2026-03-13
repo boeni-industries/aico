@@ -1287,22 +1287,21 @@ class ConversationEngine(BaseService):
             # Publish final response to both topics for compatibility
             try:
                 self.logger.info(f"🔍 [FINALIZE] Publishing to NATS topic: {AICOTopics.CONVERSATION_RESPONSE}")
-                await self.bus_client.publish_durable(
+                await self.bus_client.publish(
                     AICOTopics.CONVERSATION_RESPONSE,
                     conv_message,
+                    tenant_id=tenant_id,
                     correlation_id=request_id,
-                    audit_subject="audit.events.conversation.final",
                 )
                 self.logger.info(f"✅ [FINALIZE] Published to {AICOTopics.CONVERSATION_RESPONSE}")
 
                 # Also publish to AI response topic for API layer with user_uuid for WS routing
                 self.logger.info(f"🔍 [FINALIZE] Publishing to NATS topic: conversation/ai/response/v1")
-                await self.bus_client.publish_durable(
+                await self.bus_client.publish(
                     "conversation/ai/response/v1",
                     conv_message,
                     tenant_id=tenant_id,
                     correlation_id=request_id,
-                    audit_subject="audit.events.conversation.final",
                     attributes={"user_uuid": user_id},
                 )
                 self.logger.info(f"✅ [FINALIZE] Published to conversation/ai/response/v1")
@@ -1336,8 +1335,7 @@ class ConversationEngine(BaseService):
                         agency_data  # Pass agency context
                     )
             
-            # Don't clean up here - let the LLM response handler clean up
-            # This prevents race condition where LLM response arrives after cleanup
+            await self._cleanup_request(request_id)
             
         except Exception as e:
             self.logger.error(f"Error finalizing streaming response for {request_id}: {e}")

@@ -645,11 +645,11 @@ class MessageBusClient:
         if not self.running or self._nats is None:
             return
 
-        sid = self.subscriptions.get(topic_pattern)
-        if sid is None:
+        subscription = self.subscriptions.get(topic_pattern)
+        if subscription is None:
             return
 
-        await self._nats.unsubscribe(sid)
+        await subscription.unsubscribe()
         del self.subscriptions[topic_pattern]
         self.logger.info(f"Unsubscribed from topic pattern: {topic_pattern}")
     

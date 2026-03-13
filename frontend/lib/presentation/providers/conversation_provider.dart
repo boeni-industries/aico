@@ -120,6 +120,20 @@ class ConversationNotifier extends _$ConversationNotifier {
   late final String _userId;
   static const _uuid = Uuid();
 
+  List<Message> _mergeMessages(List<Message> existing, List<Message> incoming) {
+    final mergedById = <String, Message>{};
+    for (final message in existing) {
+      mergedById[message.id] = message;
+    }
+    for (final message in incoming) {
+      mergedById[message.id] = message;
+    }
+
+    final merged = mergedById.values.toList()
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    return merged;
+  }
+
   @override
   ConversationState build() {
     // Initialize dependencies from ref
@@ -145,16 +159,18 @@ class ConversationNotifier extends _$ConversationNotifier {
       final allMessages = await _messageRepository.getMessages(
         '', // Empty string loads all user messages
         onBackgroundSyncComplete: (freshMessages) {
-          // Update with fresh messages from background sync.
-          // IMPORTANT: The backend message history can be empty (e.g. working-memory retention)
-          // even when the local cache has older history. Never wipe an existing non-empty UI
-          // state with an empty background-sync result.
-          if (freshMessages.isNotEmpty || state.messages.isEmpty) {
-            state = state.copyWith(
-              messages: freshMessages,
-              allMessages: freshMessages,
-            );
+          if (freshMessages.isEmpty && state.messages.isNotEmpty) {
+            return;
           }
+
+          final mergedMessages = _mergeMessages(state.allMessages, freshMessages);
+          state = state.copyWith(
+            messages: mergedMessages,
+            allMessages: mergedMessages,
+            currentConversationId: mergedMessages.isNotEmpty
+                ? mergedMessages.last.conversationId
+                : state.currentConversationId,
+          );
         },
       );
       
@@ -173,7 +189,7 @@ class ConversationNotifier extends _$ConversationNotifier {
         messages: allMessages,
         allMessages: allMessages,
         isLoading: false,
-        currentConversationId: allMessages.first.conversationId, // Track for new messages
+        currentConversationId: allMessages.last.conversationId,
       );
       
       AICOLog.info('Loaded messages from cache',
