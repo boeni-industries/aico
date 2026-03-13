@@ -133,12 +133,18 @@
             "description": "Health check timestamp",
             "title": "Timestamp",
             "type": "string"
+          },
+          "version": {
+            "description": "Gateway version",
+            "title": "Version",
+            "type": "string"
           }
         },
         "required": [
           "status",
           "service",
-          "timestamp"
+          "timestamp",
+          "version"
         ],
         "title": "AdminHealthResponse",
         "type": "object"
@@ -1949,10 +1955,29 @@
       },
       "FailedAuthAttempt": {
         "properties": {
+          "device_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Device type",
+            "title": "Device Type"
+          },
           "ip_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "description": "IP address",
-            "title": "Ip Address",
-            "type": "string"
+            "title": "Ip Address"
           },
           "reason": {
             "anyOf": [
@@ -1971,6 +1996,30 @@
             "title": "Timestamp",
             "type": "string"
           },
+          "user_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "User display name",
+            "title": "User Name"
+          },
+          "user_uuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "User UUID",
+            "title": "User Uuid"
+          },
           "username": {
             "anyOf": [
               {
@@ -1985,8 +2034,7 @@
           }
         },
         "required": [
-          "timestamp",
-          "ip_address"
+          "timestamp"
         ],
         "title": "FailedAuthAttempt",
         "type": "object"
@@ -2360,14 +2408,14 @@
             "type": "string"
           },
           "version": {
-            "default": "1.0.0",
             "title": "Version",
             "type": "string"
           }
         },
         "required": [
           "status",
-          "timestamp"
+          "timestamp",
+          "version"
         ],
         "title": "HealthResponse",
         "type": "object"
@@ -4545,6 +4593,42 @@
             "title": "Algorithm",
             "type": "string"
           },
+          "asset_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Credential or key asset name",
+            "title": "Asset Name"
+          },
+          "asset_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Operational status for this asset",
+            "title": "Asset Status"
+          },
+          "asset_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Credential or key asset type",
+            "title": "Asset Type"
+          },
           "created_at": {
             "anyOf": [
               {
@@ -4587,6 +4671,18 @@
             "description": "Rotation recommended",
             "title": "Rotation Due",
             "type": "boolean"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Source of the credential material",
+            "title": "Source"
           }
         },
         "required": [

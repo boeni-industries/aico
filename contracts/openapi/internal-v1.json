@@ -133,12 +133,18 @@
             "description": "Health check timestamp",
             "title": "Timestamp",
             "type": "string"
+          },
+          "version": {
+            "description": "Gateway version",
+            "title": "Version",
+            "type": "string"
           }
         },
         "required": [
           "status",
           "service",
-          "timestamp"
+          "timestamp",
+          "version"
         ],
         "title": "AdminHealthResponse",
         "type": "object"
@@ -1949,10 +1955,29 @@
       },
       "FailedAuthAttempt": {
         "properties": {
+          "device_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Device type",
+            "title": "Device Type"
+          },
           "ip_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "description": "IP address",
-            "title": "Ip Address",
-            "type": "string"
+            "title": "Ip Address"
           },
           "reason": {
             "anyOf": [
@@ -1971,6 +1996,30 @@
             "title": "Timestamp",
             "type": "string"
           },
+          "user_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "User display name",
+            "title": "User Name"
+          },
+          "user_uuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "User UUID",
+            "title": "User Uuid"
+          },
           "username": {
             "anyOf": [
               {
@@ -1985,8 +2034,7 @@
           }
         },
         "required": [
-          "timestamp",
-          "ip_address"
+          "timestamp"
         ],
         "title": "FailedAuthAttempt",
         "type": "object"
@@ -2360,14 +2408,14 @@
             "type": "string"
           },
           "version": {
-            "default": "1.0.0",
             "title": "Version",
             "type": "string"
           }
         },
         "required": [
           "status",
-          "timestamp"
+          "timestamp",
+          "version"
         ],
         "title": "HealthResponse",
         "type": "object"
@@ -4545,6 +4593,42 @@
             "title": "Algorithm",
             "type": "string"
           },
+          "asset_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Credential or key asset name",
+            "title": "Asset Name"
+          },
+          "asset_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Operational status for this asset",
+            "title": "Asset Status"
+          },
+          "asset_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Credential or key asset type",
+            "title": "Asset Type"
+          },
           "created_at": {
             "anyOf": [
               {
@@ -4587,6 +4671,18 @@
             "description": "Rotation recommended",
             "title": "Rotation Due",
             "type": "boolean"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Source of the credential material",
+            "title": "Source"
           }
         },
         "required": [
@@ -5626,7 +5722,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Sessions"
+        "summary": "List Sessions",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/auth/sessions/{session_id}": {
@@ -5666,7 +5765,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Revoke Session"
+        "summary": "Revoke Session",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/auth/tokens/revoke": {
@@ -5705,7 +5807,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Revoke Token"
+        "summary": "Revoke Token",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/config": {
@@ -5724,7 +5829,10 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Get Config"
+        "summary": "Get Config",
+        "tags": [
+          "admin"
+        ]
       },
       "put": {
         "description": "Set configuration value",
@@ -5766,7 +5874,10 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Set Config Value"
+        "summary": "Set Config Value",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/config/all": {
@@ -5838,7 +5949,10 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Get All Config"
+        "summary": "Get All Config",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/config/domains": {
@@ -5866,7 +5980,10 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Get Config Domains"
+        "summary": "Get Config Domains",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/config/reload": {
@@ -5890,7 +6007,10 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Reload Config"
+        "summary": "Reload Config",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/config/validate": {
@@ -5934,7 +6054,10 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Validate Config"
+        "summary": "Validate Config",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/config/{key}": {
@@ -5979,7 +6102,10 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Reset Config Value"
+        "summary": "Reset Config Value",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/gateway/stats": {
@@ -6003,7 +6129,10 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Gateway Stats"
+        "summary": "Gateway Stats",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/gateway/status": {
@@ -6027,7 +6156,10 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Gateway Status"
+        "summary": "Gateway Status",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/health": {
@@ -6051,7 +6183,10 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Admin Health"
+        "summary": "Admin Health",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/interactions": {
@@ -6159,6 +6294,7 @@
         ],
         "summary": "List Interactions Admin",
         "tags": [
+          "admin",
           "interactions"
         ]
       }
@@ -6206,6 +6342,7 @@
         ],
         "summary": "Get Interaction Detail Admin",
         "tags": [
+          "admin",
           "interactions"
         ]
       }
@@ -6271,6 +6408,7 @@
         ],
         "summary": "Cancel Interaction Admin",
         "tags": [
+          "admin",
           "interactions"
         ]
       }
@@ -6457,7 +6595,10 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "List Logs"
+        "summary": "List Logs",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/logs/count": {
@@ -6589,7 +6730,10 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Count Logs"
+        "summary": "Count Logs",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/logs/stats": {
@@ -6613,7 +6757,10 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Get Logs Stats"
+        "summary": "Get Logs Stats",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/security/audit": {
@@ -6785,7 +6932,10 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Audit List"
+        "summary": "Audit List",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/security/audit/export": {
@@ -6826,7 +6976,10 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Audit Export"
+        "summary": "Audit Export",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/security/audit/{entry_id}": {
@@ -6870,7 +7023,10 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Audit Detail"
+        "summary": "Audit Detail",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/security/auth/failed-attempts": {
@@ -6978,7 +7134,10 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Failed Auth Attempts"
+        "summary": "Failed Auth Attempts",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/security/auth/stats": {
@@ -7047,7 +7206,10 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Auth Stats"
+        "summary": "Auth Stats",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/security/block-ip": {
@@ -7086,7 +7248,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Block Ip"
+        "summary": "Block Ip",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/security/block-ip/{ip}": {
@@ -7126,7 +7291,10 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Unblock Ip"
+        "summary": "Unblock Ip",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/security/keys": {
@@ -7149,7 +7317,10 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Security Keys"
+        "summary": "Security Keys",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/security/keys/history": {
@@ -7196,7 +7367,10 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Security Keys History"
+        "summary": "Security Keys History",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/security/keys/rotate": {
@@ -7239,7 +7413,10 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Security Keys Rotate"
+        "summary": "Security Keys Rotate",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/security/posture": {
@@ -7262,7 +7439,10 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Security Posture"
+        "summary": "Security Posture",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/security/stats": {
@@ -7281,7 +7461,10 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Security Stats"
+        "summary": "Security Stats",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/users": {
@@ -7324,7 +7507,10 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Admin Create User"
+        "summary": "Admin Create User",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/users/bulk-delete": {
@@ -7368,7 +7554,10 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Admin Bulk Delete Users"
+        "summary": "Admin Bulk Delete Users",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/users/{user_uuid}": {
@@ -7422,7 +7611,10 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Admin Delete User"
+        "summary": "Admin Delete User",
+        "tags": [
+          "admin"
+        ]
       },
       "put": {
         "operationId": "admin_update_user_api_v1_admin_users__user_uuid__put",
@@ -7474,7 +7666,10 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Admin Update User"
+        "summary": "Admin Update User",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/users/{user_uuid}/audit-log": {
@@ -7591,7 +7786,10 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Admin User Audit Log"
+        "summary": "Admin User Audit Log",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/users/{user_uuid}/password": {
@@ -7645,7 +7843,10 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Admin Set User Password"
+        "summary": "Admin Set User Password",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/admin/users/{user_uuid}/restore": {
@@ -7699,7 +7900,10 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Admin Restore User"
+        "summary": "Admin Restore User",
+        "tags": [
+          "admin"
+        ]
       }
     },
     "/api/v1/agency/connectivity/scan": {

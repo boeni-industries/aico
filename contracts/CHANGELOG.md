@@ -31,6 +31,14 @@ This file tracks all changes to the frozen API contracts in `/contracts/`.
 
 ## [Unreleased]
 
+### 2026-03-13 - Security & Audit Admin Contract Clarification
+- **Updated (Admin Security)**: Refreshed `contracts/openapi/v1.json` and `contracts/openapi/internal-v1.json` for the Security & Audit admin endpoints.
+- **Added fields**:
+  - `SecurityKeyInfoResponse`: `asset_name`, `asset_type`, `asset_status`, `source`
+  - `SecurityPostureResponse` nested posture objects now expose explicit operational status fields for encryption, transport, and audit sections
+- **Why**: Align the admin security contract with container-aware operational semantics so the UI can distinguish control posture, credential presence, and audit coverage without ambiguous fallback states.
+- **Compatibility**: Non-breaking additive contract update only; no existing response fields were removed or renamed.
+
 ### 2026-03-11 - Contract Gate Split-Repo Alignment
 - **CI Gates**: Updated contract workflows and helper scripts to run from the split-era `gateway/` package instead of the removed `backend/` directory.
 - **WebSocket v1**: Refreshed frozen adapter metadata in `contracts/websocket/v1.json` to match the current gateway adapter path.
