@@ -697,7 +697,7 @@ async def security_posture(
 
     # Transport posture / encryption posture
     curvemq_enabled = _coerce_optional_bool(
-        cfg.get("security.transport.curve.enabled", None)
+        cfg.get("security.transport.message_bus_encryption", None)
     )
     if curvemq_enabled is None:
         curvemq_enabled = _coerce_optional_bool(
@@ -711,12 +711,12 @@ async def security_posture(
             cfg.get("transport.encryption.enabled", None)
         )
     service_encryption_enabled = _coerce_optional_bool(
-        cfg.get("services.encryption.enabled", None)
+        cfg.get("security.transport.encryption.enabled", None)
     )
     legacy_service_encryption_enabled = _coerce_optional_bool(
-        cfg.get("services.security.encryption", None)
+        cfg.get("transport.encryption.enabled", None)
     )
-    top_level_encryption_configured = cfg.get("encryption.algorithm", None)
+    top_level_encryption_configured = cfg.get("security.encryption.algorithm", None)
     db_encrypted = (
         service_encryption_enabled
         if service_encryption_enabled is not None

@@ -639,7 +639,14 @@ class ConversationEngine(BaseService):
             
             # Generate LLM response with memory context
             await self._generate_llm_response(request_id, user_context, user_message, memory_context)
-            
+
+            if request_id not in self.pending_responses:
+                self.logger.warning(
+                    "Request %s was cleaned up during LLM generation; skipping post-LLM bookkeeping",
+                    request_id,
+                )
+                return
+
             self.pending_responses[request_id]["components_needed"] = components_needed
             
             # Note: LLM response already generated above, no need for fallback logic

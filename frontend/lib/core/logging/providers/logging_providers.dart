@@ -17,6 +17,7 @@ final loggingConfigProvider = Provider<LoggingConfig>((ref) {
     retryDelayMs: 1000,         // From core.yaml: logging.transport.retry_delay_ms
     enableCompression: true,     // From core.yaml: logging.transport.compression.enabled
     compressionThreshold: 1024,  // From core.yaml: logging.transport.compression.threshold
+    enableRemoteLogging: false,
   );
 });
 

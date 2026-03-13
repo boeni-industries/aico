@@ -254,26 +254,6 @@ class ConfigurationManager:
             if isinstance(value, dict) and k in value:
                 value = value[k]
             else:
-                strict_missing = os.environ.get("AICO_CONFIG_STRICT_MISSING_KEYS") == "1"
-                if default is not _CONFIG_DEFAULT_UNSET and not strict_missing:
-                    import logging
-                    logger = logging.getLogger("shared.core.config")
-                    if key not in self._missing_key_errors_logged:
-                        self._missing_key_errors_logged.add(key)
-                        available = []
-                        if isinstance(value, dict):
-                            available = list(value.keys())
-                        # Missing optional keys are expected during incremental config migration.
-                        # Do not emit stack traces in this case (it creates noisy log storms).
-                        logger.warning(
-                            "[CONFIG_WARNING] Configuration key '%s' not found (missing segment '%s'). "
-                            "Returning provided default. Available keys at this level: %s",
-                            key,
-                            k,
-                            available,
-                        )
-                    return default
-
                 available = []
                 if isinstance(value, dict):
                     available = list(value.keys())
@@ -292,7 +272,10 @@ class ConfigurationManager:
 
     def get_optional(self, key: str, default: Any = None) -> Any:
         """Get configuration value, always returning a fallback if missing."""
-        return self.get(key, default=default)
+        try:
+            return self.get(key)
+        except ConfigurationError:
+            return default
 
     def require(self, key: str, *, allow_empty_dict: bool = False) -> Any:
         """Get configuration value and fail loudly if missing (or empty dict, unless allowed)."""

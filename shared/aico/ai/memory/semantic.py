@@ -26,6 +26,7 @@ from datetime import datetime, timedelta
 from dataclasses import dataclass
 import uuid
 import math
+import json
 from collections import Counter
 
 from aico.core.config import ConfigurationManager
@@ -214,7 +215,16 @@ class SemanticMemoryStore:
                         text("""
                         INSERT INTO aico_core.conversation_segments 
                         (id, user_id, conversation_id, role, content, embedding, timestamp, metadata)
-                        VALUES (:id, :user_id, :conversation_id, :role, :content, :embedding::vector, :timestamp, :metadata::jsonb)
+                        VALUES (
+                            :id,
+                            :user_id,
+                            :conversation_id,
+                            :role,
+                            :content,
+                            CAST(:embedding AS vector),
+                            :timestamp,
+                            CAST(:metadata AS jsonb)
+                        )
                         """),
                         {
                             'id': segment.segment_id,
@@ -224,7 +234,7 @@ class SemanticMemoryStore:
                             'content': content,
                             'embedding': embedding_str,
                             'timestamp': segment.timestamp,
-                            'metadata': str(metadata).replace("'", '"')
+                            'metadata': json.dumps(metadata)
                         }
                     )
                     await uow.commit()
@@ -308,10 +318,10 @@ class SemanticMemoryStore:
                             content,
                             timestamp,
                             metadata,
-                            1 - (embedding <=> :embedding::vector) as similarity
+                            1 - (embedding <=> CAST(:embedding AS vector)) as similarity
                         FROM aico_core.conversation_segments
                         WHERE 1=1 {where_clause}
-                        ORDER BY embedding <=> :embedding::vector
+                        ORDER BY embedding <=> CAST(:embedding AS vector)
                         """),
                         params
                     )

@@ -180,7 +180,7 @@
             "$__all"
           ]
         },
-        "allValue": ".*",
+        "allValue": ".+",
         "hide": 0,
         "includeAll": true,
         "label": "Method",

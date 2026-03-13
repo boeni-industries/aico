@@ -591,6 +591,13 @@ class RESTAdapter:
                 tenant_id=tenant_id,
             )
 
+        @self.app.get(f"{prefix}/emotion/current")
+        async def emotion_current(
+            _user: Dict[str, Any] = Depends(get_current_user),
+        ):
+            from gateway.core.nats_client import get_gateway_nats_client
+            return await get_gateway_nats_client().request_current_emotion()
+
         @self.app.get(f"{prefix}/emotion/history")
         async def emotion_history(
             limit: int = Query(200),

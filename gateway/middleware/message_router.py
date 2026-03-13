@@ -49,8 +49,8 @@ class MessageRouter:
         self.logger = get_logger("gateway.middleware.message_router")
         
         # Routing configuration
-        self.default_timeout = config.get("message_bus.timeout", 5.0)
-        self.max_retries = config.get("message_router.max_retries", 2)
+        self.default_timeout = config.get_optional("message_bus.timeout", 5.0)
+        self.max_retries = config.get_optional("message_bus.max_retries", 2)
         
         # Subject prefixes for routing
         self.core_prefix = "core"

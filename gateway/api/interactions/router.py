@@ -54,12 +54,27 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _iso_or_none(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    return str(value)
+
+
 def _to_interaction_response(i: InteractionRequest) -> InteractionResponse:
-    return InteractionResponse(**i.model_dump())
+    data = i.model_dump()
+    data["answered_at"] = _iso_or_none(data.get("answered_at"))
+    data["expires_at"] = _iso_or_none(data.get("expires_at"))
+    data["created_at"] = _iso_or_none(data.get("created_at"))
+    data["updated_at"] = _iso_or_none(data.get("updated_at"))
+    return InteractionResponse(**data)
 
 
 def _to_event_response(e: InteractionEvent) -> InteractionEventResponse:
-    return InteractionEventResponse(**e.model_dump())
+    data = e.model_dump()
+    data["created_at"] = _iso_or_none(data.get("created_at"))
+    return InteractionEventResponse(**data)
 
 
 def _assert_not_expired(i: InteractionRequest) -> None:

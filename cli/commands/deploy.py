@@ -334,6 +334,7 @@ def _authenticate_for_deploy(*, non_interactive: bool, master_password_file: str
     """
 
     config = ConfigurationManager()
+    config.initialize(lightweight=True)
     key_manager = AICOKeyManager(config)
 
     password = _get_master_password(master_password_file=master_password_file, non_interactive=non_interactive)
@@ -2578,6 +2579,7 @@ def _get_or_create_grafana_password() -> str:
         Grafana admin password
     """
     config = ConfigurationManager()
+    config.initialize(lightweight=True)
     key_manager = AICOKeyManager(config)
     
     # Check if password already exists

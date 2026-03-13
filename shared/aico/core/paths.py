@@ -59,9 +59,19 @@ class AICOPaths:
         # Check for explicit override first
         if override := os.getenv("AICO_CONFIG_DIR"):
             return Path(override)
-        
-        # Use unified approach - all subdirectories under main data directory
-        return cls.get_data_directory() / "config"
+
+        try:
+            repo_root = Path(__file__).resolve().parents[3]
+            repo_config_dir = repo_root / "config"
+            if (repo_config_dir / "defaults").exists():
+                return repo_config_dir
+        except Exception:
+            pass
+
+        raise RuntimeError(
+            "AICO configuration directory could not be resolved. "
+            "Set AICO_CONFIG_DIR explicitly or run from a source tree containing config/defaults."
+        )
     
     @classmethod
     def get_cache_directory(cls) -> Path:

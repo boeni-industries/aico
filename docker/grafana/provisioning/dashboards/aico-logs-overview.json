@@ -1258,6 +1258,7 @@
           "type": "loki",
           "uid": "loki"
         },
+        "allValue": ".+",
         "definition": "label_values(service)",
         "hide": 0,
         "includeAll": true,
@@ -1281,6 +1282,7 @@
             "$__all"
           ]
         },
+        "allValue": ".+",
         "hide": 0,
         "includeAll": true,
         "label": "Level",
@@ -1363,6 +1365,6 @@
   "timezone": "browser",
   "title": "AICO Logs Overview",
   "uid": "aico-logs-overview",
-  "version": 21,
+  "version": 22,
   "weekStart": ""
 }

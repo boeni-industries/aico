@@ -50,10 +50,7 @@ class AICOKeyManager:
     """
     
     def __init__(self, config: ConfigurationManager):
-        self.service_name = (
-            config.get("keyring_service_name", None)
-            or config.get("security.keyring_service_name", "AICO")
-        )
+        self.service_name = config.get("security.keyring_service_name", "AICO")
         self._session_cache_file = self._get_session_cache_file()
         self._session_cache = self._load_session_cache()  # Load persistent session cache
         self._keyring_bypass_count = self._session_cache.get("keyring_bypass_count", 0)

@@ -11,10 +11,11 @@ Replaces ChromaDB with Postgres + pgvector for:
 """
 
 import asyncio
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
+import uuid
+import json
 from datetime import datetime, timedelta
 from dataclasses import dataclass
-import uuid
 
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
@@ -157,7 +158,16 @@ class SemanticMemoryStore:
                     """
                     INSERT INTO aico_core.conversation_segments 
                     (id, user_id, conversation_id, role, content, embedding, timestamp, metadata)
-                    VALUES (:id, :user_id, :conversation_id, :role, :content, :embedding::vector, :timestamp, :metadata::jsonb)
+                    VALUES (
+                        :id,
+                        :user_id,
+                        :conversation_id,
+                        :role,
+                        :content,
+                        CAST(:embedding AS vector),
+                        :timestamp,
+                        CAST(:metadata AS jsonb)
+                    )
                     """,
                     {
                         'id': segment_id,
@@ -167,7 +177,7 @@ class SemanticMemoryStore:
                         'content': content,
                         'embedding': '[' + ','.join(str(x) for x in embedding) + ']',
                         'timestamp': timestamp,
-                        'metadata': '{"language": "' + language + '"}'
+                        'metadata': json.dumps({"language": language})
                     }
                 )
                 await uow.commit()
@@ -242,10 +252,10 @@ class SemanticMemoryStore:
                         content,
                         timestamp,
                         metadata,
-                        1 - (embedding <=> :embedding::vector) as similarity
+                        1 - (embedding <=> CAST(:embedding AS vector)) as similarity
                     FROM aico_core.conversation_segments
                     WHERE 1=1 {where_clause}
-                    ORDER BY embedding <=> :embedding::vector
+                    ORDER BY embedding <=> CAST(:embedding AS vector)
                     LIMIT :limit
                     """,
                     params
