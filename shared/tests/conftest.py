@@ -47,7 +47,6 @@ def pytest_sessionstart(session):
             ('defaults', '*.yaml'),
             ('environments', '*.yaml'),
             ('schemas', '*.schema.json'),
-            ('modelfiles', 'Modelfile.*'),
         ):
             src = src_root / subdir
             dst = dst_root / subdir

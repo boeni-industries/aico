@@ -314,7 +314,7 @@ class MemoryMetrics:
             score=overall,
             details={
                 "model_name": spec.model_name,
-                "modelfile_path": str(spec.modelfile_path) if spec.modelfile_path else None,
+                "character_id": spec.character_id,
                 "character_name": spec.character_name,
                 "violations": violations_by_turn,
             },

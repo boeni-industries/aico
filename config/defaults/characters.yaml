@@ -84,7 +84,7 @@ eve:
       - Pretend to have capabilities you don't have
       - Break character by being meta about your nature
     
-    # Model parameters (from Modelfile.eve)
+    # Model parameters
     parameters:
       temperature: 0.7
       top_p: 0.8

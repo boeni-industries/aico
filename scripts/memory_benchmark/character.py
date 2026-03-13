@@ -1,53 +1,44 @@
-"""Character specification loader for memory benchmarks.
-
-The benchmark must verify the assistant stays in character.
-We auto-detect the active conversation model from effective runtime config and load
-its deployed Modelfile from the OS-specific config directory.
-"""
+"""Character specification loader for memory benchmarks."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import List, Optional, Tuple
 import re
 
 from aico.core.config import ConfigurationManager
-from aico.core.paths import AICOPaths
+from aico.ai.characters import CharacterManager
 
 
 @dataclass
 class CharacterSpec:
     model_name: str
-    modelfile_path: Optional[Path]
+    character_id: str
     system_prompt: str
     character_name: Optional[str]
     forbidden_phrases: List[str]
 
 
-_SYSTEM_BLOCK_RE = re.compile(r'\bSYSTEM\s+"""(.*?)"""', re.DOTALL)
-
-
 def get_active_conversation_model_name() -> str:
     config = ConfigurationManager()
     config.initialize(lightweight=True)
+    character_name = config.get("llm.vllm.default_character")
+    if isinstance(character_name, str) and character_name.strip():
+        character_manager = CharacterManager(config)
+        return character_manager.get_base_model(character_name.strip())
     value = config.get("llm.vllm.model")
     if not isinstance(value, str) or not value.strip():
-        raise ValueError("Missing config key: llm.vllm.model")
+        raise ValueError("Missing config key: llm.vllm.default_character or llm.vllm.model")
     return value.strip()
 
 
-def resolve_deployed_modelfile(*, model_name: str) -> Optional[Path]:
-    modelfiles_dir = AICOPaths.get_config_directory() / "modelfiles"
-    candidate = modelfiles_dir / f"Modelfile.{model_name}"
-    if candidate.exists():
-        return candidate
-    return None
-
-
-def _extract_system_prompt(modelfile_text: str) -> str:
-    m = _SYSTEM_BLOCK_RE.search(modelfile_text)
-    return m.group(1).strip() if m else ""
+def get_active_character_name() -> str:
+    config = ConfigurationManager()
+    config.initialize(lightweight=True)
+    value = config.get("llm.vllm.default_character")
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("Missing config key: llm.vllm.default_character")
+    return value.strip()
 
 
 def _infer_character_name(system_prompt: str) -> Optional[str]:
@@ -91,19 +82,20 @@ def _extract_forbidden_phrases(system_prompt: str) -> List[str]:
 
 
 def load_active_character_spec() -> CharacterSpec:
+    config = ConfigurationManager()
+    config.initialize(lightweight=True)
+    character_manager = CharacterManager(config)
+    character_id = get_active_character_name()
     model_name = get_active_conversation_model_name()
-    path = resolve_deployed_modelfile(model_name=model_name)
-
-    system_prompt = ""
-    if path and path.exists():
-        system_prompt = _extract_system_prompt(path.read_text(encoding="utf-8"))
+    character = character_manager.get_character(character_id)
+    system_prompt = character.get("system_prompt", "")
 
     character_name = _infer_character_name(system_prompt)
     forbidden_phrases = _extract_forbidden_phrases(system_prompt)
 
     return CharacterSpec(
         model_name=model_name,
-        modelfile_path=path,
+        character_id=character_id,
         system_prompt=system_prompt,
         character_name=character_name,
         forbidden_phrases=forbidden_phrases,

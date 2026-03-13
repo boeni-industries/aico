@@ -36,7 +36,6 @@ def _isolate_runtime_config_dir(tmp_path_factory):
         ("defaults", "*.yaml"),
         ("environments", "*.yaml"),
         ("schemas", "*.schema.json"),
-        ("modelfiles", "Modelfile.*"),
     ):
         src = project_config_dir / subdir
         dst = config_root / subdir

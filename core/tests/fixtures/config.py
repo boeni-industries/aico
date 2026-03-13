@@ -31,7 +31,6 @@ def test_config(tmp_path):
         ("defaults", "*.yaml"),
         ("environments", "*.yaml"),
         ("schemas", "*.schema.json"),
-        ("modelfiles", "Modelfile.*"),
     ):
         src = project_config_dir / subdir
         dst = config_root / subdir

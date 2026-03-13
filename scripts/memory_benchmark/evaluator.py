@@ -309,13 +309,13 @@ class MemoryIntelligenceEvaluator:
         # Set as current session so authentication can set user_id
         self.current_session = session
 
-        # Load active character spec (from runtime config + deployed Modelfile)
+        # Load active character spec from runtime configuration
         try:
             session.character_spec = load_active_character_spec()
-            if session.character_spec.modelfile_path:
-                print(f"🎭 Active character model: {session.character_spec.model_name} (Modelfile: {session.character_spec.modelfile_path})")
-            else:
-                print(f"🎭 Active character model: {session.character_spec.model_name} (Modelfile not found in deployed config)")
+            print(
+                f"🎭 Active character: {session.character_spec.character_id} "
+                f"(model: {session.character_spec.model_name})"
+            )
         except Exception as e:
             session.character_spec = None
             print(f"⚠️ Failed to load active character spec: {e}")

@@ -94,7 +94,6 @@ def _ensure_test_config_dir():
         ("defaults", "*.yaml"),
         ("environments", "*.yaml"),
         ("schemas", "*.schema.json"),
-        ("modelfiles", "Modelfile.*"),
     ):
         src = src_root / subdir
         dst = dst_root / subdir
