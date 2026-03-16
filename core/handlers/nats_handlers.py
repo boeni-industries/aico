@@ -3064,8 +3064,12 @@ from(bucket: "{conn.bucket}")
 
             def _prometheus_metrics_snapshot() -> Dict[str, Any]:
                 config = ConfigurationManager()
+                prometheus_enabled = bool(
+                    config.get_optional("instrumentation.exporters.prometheus.enabled", False)
+                )
                 configured_url = (
-                    config.get("prometheus.url", None)
+                    config.get_optional("instrumentation.exporters.prometheus.url")
+                    or config.get_optional("prometheus.url")
                     or os.getenv("PROMETHEUS_URL")
                     or os.getenv("AICO_PROMETHEUS_URL")
                 )
@@ -3094,6 +3098,8 @@ from(bucket: "{conn.bucket}")
                         last_error = exc
 
                 if not prometheus_base_url:
+                    if not prometheus_enabled:
+                        return {}
                     raise RuntimeError(f"Unable to connect to Prometheus via {candidate_urls}") from last_error
 
                 def _query(query: str) -> Dict[str, Any]:
@@ -3316,7 +3322,10 @@ from(bucket: "{conn.bucket}")
             try:
                 telemetry_metrics = await asyncio.to_thread(_prometheus_metrics_snapshot)
             except Exception as e:
-                raise RuntimeError("Failed to load Prometheus/OTel metrics for system metrics response") from e
+                self.logger.warning(
+                    f"Prometheus telemetry unavailable for system metrics response; falling back to empty telemetry: {e}"
+                )
+                telemetry_metrics = {}
 
             handlers = await self._get_system_handlers()
             health = await handlers.handle_system_health_request({})
