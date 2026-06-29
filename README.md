@@ -1,5 +1,16 @@
 # AICO
 
+---
+> [!IMPORTANT]
+> IMPORTANT NOTICE: AICO  is now hosted on Gitoro. You find the repository at:
+> - **Gitoro**: https://gitoro.com/boeni-industries/aico
+> 
+> - AICO will continue to be avaiable open source with the same license. We are just moving our repositories to Europe.
+---
+
+
+
+
 AICO is an **open-source, local-first AI companion stack**. It’s built for long-lived relationships, and it’s designed so your data stays under your control.
 
 At its core, AICO is a system with memory, emotion simulation, and agency. The goal is a companion that can hold continuity over time, take initiative, and still stay inspectable and operable.
