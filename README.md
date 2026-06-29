@@ -6,7 +6,8 @@
 > - **Gitoro**: https://gitoro.com/boeni-industries/aico
 > 
 > AICO will continue to be avaiable open source with the same license. We are just moving our repositories to Europe.
-> This repository will be archived.
+>
+> **This repository will be archived.**
 ---
 
 
